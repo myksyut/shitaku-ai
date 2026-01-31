@@ -88,9 +88,7 @@ class TestDictionaryIntegration:
     # - エラーメッセージに重複の旨が含まれる
     # - DBにエントリが追加されていない
     @pytest.mark.skip(reason="Not implemented yet")
-    def test_create_dictionary_entry_duplicate_name_error(
-        self, authenticated_client: TestClient
-    ) -> None:
+    def test_create_dictionary_entry_duplicate_name_error(self, authenticated_client: TestClient) -> None:
         """AC5: 正式名称重複時にエラーレスポンスが返却される"""
         # Arrange:
         # - 認証済みユーザーを準備

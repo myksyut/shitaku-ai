@@ -30,9 +30,7 @@ class TestSlackIntegration:
     # - 不正なstateの場合、400エラーが返却される
     # - CSRF攻撃パターンが拒否される
     @pytest.mark.skip(reason="Not implemented yet")
-    def test_oauth_callback_validates_state_csrf_protection(
-        self, authenticated_client: TestClient
-    ) -> None:
+    def test_oauth_callback_validates_state_csrf_protection(self, authenticated_client: TestClient) -> None:
         """AC2: OAuthコールバックでstateを検証しCSRF攻撃を防止する"""
         # Arrange:
         # - 認証済みユーザーを準備
@@ -62,9 +60,7 @@ class TestSlackIntegration:
     # - 取得した全メッセージのtimestampが前回MTG日時以降
     # - 前回MTG日時より前のメッセージが含まれていない
     @pytest.mark.skip(reason="Not implemented yet")
-    def test_get_slack_messages_filters_by_meeting_date(
-        self, authenticated_client: TestClient
-    ) -> None:
+    def test_get_slack_messages_filters_by_meeting_date(self, authenticated_client: TestClient) -> None:
         """AC7: Slackメッセージ取得で前回MTG日時以降のメッセージのみ取得される"""
         # Arrange:
         # - 認証済みユーザーを準備
