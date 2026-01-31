@@ -1,11 +1,11 @@
-"""AWS Bedrock client module for Claude and Titan Embeddings invocations."""
+"""AWS Bedrock client module for Claude and Titan Embeddings invocations.
+
+Uses API Key (Bearer Token) authentication instead of IAM credentials.
+"""
 
 import json
-from typing import Any
 
-import boto3
-from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError
+import httpx
 
 from src.config import settings
 
@@ -14,26 +14,20 @@ CLAUDE_HAIKU_MODEL_ID = "anthropic.claude-haiku-4-5-20251001-v1:0"
 TITAN_EMBEDDINGS_MODEL_ID = "amazon.titan-embed-text-v2:0"
 
 
-def get_bedrock_client() -> Any | None:
-    """Initialize and return a Bedrock Runtime client.
+def _get_headers() -> dict[str, str] | None:
+    """Get headers for Bedrock API requests.
 
     Returns:
-        Boto3 Bedrock Runtime client if credentials are configured, None otherwise.
+        Headers dict with Bearer token if configured, None otherwise.
     """
-    if settings.AWS_ACCESS_KEY_ID is None or settings.AWS_SECRET_ACCESS_KEY is None:
+    if settings.AWS_BEARER_TOKEN_BEDROCK is None:
         return None
 
-    config = Config(
-        region_name=settings.AWS_REGION,
-        retries={"max_attempts": 3, "mode": "standard"},
-    )
-
-    return boto3.client(
-        "bedrock-runtime",
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        config=config,
-    )
+    return {
+        "Authorization": f"Bearer {settings.AWS_BEARER_TOKEN_BEDROCK}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
 
 
 def invoke_claude(prompt: str, max_tokens: int = 512) -> str | None:
@@ -46,8 +40,8 @@ def invoke_claude(prompt: str, max_tokens: int = 512) -> str | None:
     Returns:
         Generated text response if successful, None otherwise.
     """
-    client = get_bedrock_client()
-    if client is None:
+    headers = _get_headers()
+    if headers is None:
         return None
 
     request_body = {
@@ -56,25 +50,24 @@ def invoke_claude(prompt: str, max_tokens: int = 512) -> str | None:
         "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
     }
 
+    url = f"{settings.AWS_BEDROCK_ENDPOINT}/model/{CLAUDE_HAIKU_MODEL_ID}/invoke"
+
     try:
-        response = client.invoke_model(
-            modelId=CLAUDE_HAIKU_MODEL_ID,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(request_body),
-        )
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(url, headers=headers, json=request_body)
+            response.raise_for_status()
 
-        response_body = json.loads(response["body"].read())
-        content = response_body.get("content", [])
+            response_body = response.json()
+            content = response_body.get("content", [])
 
-        if content and isinstance(content, list) and len(content) > 0:
-            first_content = content[0]
-            if isinstance(first_content, dict) and first_content.get("type") == "text":
-                return str(first_content.get("text", ""))
+            if content and isinstance(content, list) and len(content) > 0:
+                first_content = content[0]
+                if isinstance(first_content, dict) and first_content.get("type") == "text":
+                    return str(first_content.get("text", ""))
 
-        return None
+            return None
 
-    except (BotoCoreError, ClientError, json.JSONDecodeError, KeyError):
+    except (httpx.HTTPError, json.JSONDecodeError, KeyError):
         return None
 
 
@@ -88,8 +81,8 @@ def invoke_embeddings(text: str, dimensions: int = 1024) -> list[float] | None:
     Returns:
         List of embedding floats if successful, None otherwise.
     """
-    client = get_bedrock_client()
-    if client is None:
+    headers = _get_headers()
+    if headers is None:
         return None
 
     if dimensions not in (256, 512, 1024):
@@ -101,21 +94,29 @@ def invoke_embeddings(text: str, dimensions: int = 1024) -> list[float] | None:
         "normalize": True,
     }
 
+    url = f"{settings.AWS_BEDROCK_ENDPOINT}/model/{TITAN_EMBEDDINGS_MODEL_ID}/invoke"
+
     try:
-        response = client.invoke_model(
-            modelId=TITAN_EMBEDDINGS_MODEL_ID,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(request_body),
-        )
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(url, headers=headers, json=request_body)
+            response.raise_for_status()
 
-        response_body = json.loads(response["body"].read())
-        embedding = response_body.get("embedding")
+            response_body = response.json()
+            embedding = response_body.get("embedding")
 
-        if isinstance(embedding, list):
-            return [float(x) for x in embedding]
+            if isinstance(embedding, list):
+                return [float(x) for x in embedding]
 
+            return None
+
+    except (httpx.HTTPError, json.JSONDecodeError, KeyError):
         return None
 
-    except (BotoCoreError, ClientError, json.JSONDecodeError, KeyError):
-        return None
+
+def is_bedrock_configured() -> bool:
+    """Check if Bedrock API key is configured.
+
+    Returns:
+        True if AWS_BEARER_TOKEN_BEDROCK is set, False otherwise.
+    """
+    return settings.AWS_BEARER_TOKEN_BEDROCK is not None

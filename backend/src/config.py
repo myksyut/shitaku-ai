@@ -26,10 +26,9 @@ class Settings(BaseSettings):
     SUPABASE_DATABASE_URL: str | None = None
     SUPABASE_JWT_SECRET: str | None = None
 
-    # AWS
-    AWS_REGION: str = "us-east-1"
-    AWS_ACCESS_KEY_ID: str | None = None
-    AWS_SECRET_ACCESS_KEY: str | None = None
+    # AWS Bedrock (API Key Authentication)
+    AWS_BEARER_TOKEN_BEDROCK: str | None = None
+    AWS_BEDROCK_ENDPOINT: str = "https://bedrock-runtime.us-east-1.amazonaws.com"
 
 
 @lru_cache
