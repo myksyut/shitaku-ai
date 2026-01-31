@@ -2,17 +2,18 @@ import os
 import sys
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # プロジェクトルートをPythonパスに追加
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.config import settings
-from app.db.base import Base
+from src.config import settings
+from src.infrastructure.database.base import Base
 
 # 全モデルをインポート（自動検出用）
-from app.models import user  # noqa: F401
+from src.infrastructure.database.models import user  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
