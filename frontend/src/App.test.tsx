@@ -1,17 +1,44 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
+// Mock supabase
+vi.mock('./lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      onAuthStateChange: vi.fn().mockReturnValue({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      }),
+      signOut: vi.fn(),
+    },
+  },
+}))
+
+const createWrapper = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+}
+
 describe('App', () => {
-  it('renders the heading', () => {
-    render(<App />)
-    expect(screen.getByRole('heading', { name: /vite \+ react \+ typescript/i })).toBeInTheDocument()
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  it('increments counter when button is clicked', () => {
-    render(<App />)
-    const button = screen.getByRole('button', { name: /count is 0/i })
-    fireEvent.click(button)
-    expect(screen.getByRole('button', { name: /count is 1/i })).toBeInTheDocument()
+  it('shows loading state initially', () => {
+    render(<App />, { wrapper: createWrapper() })
+    expect(screen.getByText('読み込み中...')).toBeInTheDocument()
+  })
+
+  it('shows auth page when not logged in', async () => {
+    render(<App />, { wrapper: createWrapper() })
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'ログイン' })).toBeInTheDocument()
+    })
   })
 })
