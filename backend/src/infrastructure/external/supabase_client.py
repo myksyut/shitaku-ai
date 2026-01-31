@@ -1,9 +1,31 @@
 """Supabase client module for authentication and database operations."""
 
 import jwt
+from jwt import PyJWKClient
 from supabase import Client, create_client
 
 from src.config import settings
+
+# JWKS client (lazy initialization)
+_jwks_client: PyJWKClient | None = None
+
+
+def _get_jwks_client() -> PyJWKClient | None:
+    """Get or create JWKS client for JWT verification.
+
+    Returns:
+        PyJWKClient instance if SUPABASE_URL is configured, None otherwise.
+    """
+    global _jwks_client
+
+    if settings.SUPABASE_URL is None:
+        return None
+
+    if _jwks_client is None:
+        jwks_url = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+        _jwks_client = PyJWKClient(jwks_url, cache_keys=True)
+
+    return _jwks_client
 
 
 def get_supabase_client() -> Client | None:
@@ -19,7 +41,10 @@ def get_supabase_client() -> Client | None:
 
 
 def verify_supabase_jwt(token: str) -> dict[str, object] | None:
-    """Verify a Supabase JWT token and return the decoded payload.
+    """Verify a Supabase JWT token using JWKS and return the decoded payload.
+
+    Uses asymmetric key verification via the JWKS endpoint.
+    Supports RS256 and ES256 algorithms.
 
     Args:
         token: JWT token string to verify.
@@ -27,16 +52,31 @@ def verify_supabase_jwt(token: str) -> dict[str, object] | None:
     Returns:
         Decoded JWT payload as a dictionary if valid, None otherwise.
     """
-    if settings.SUPABASE_JWT_SECRET is None:
+    jwks_client = _get_jwks_client()
+    if jwks_client is None:
         return None
 
     try:
+        # Get signing key from JWKS
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+
+        # Verify and decode
         decoded = jwt.decode(
             token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["RS256", "ES256"],
             audience="authenticated",
+            issuer=f"{settings.SUPABASE_URL}/auth/v1",
         )
         return dict(decoded)
     except jwt.PyJWTError:
         return None
+
+
+def is_supabase_configured() -> bool:
+    """Check if Supabase credentials are configured.
+
+    Returns:
+        True if SUPABASE_URL and SUPABASE_KEY are set, False otherwise.
+    """
+    return settings.SUPABASE_URL is not None and settings.SUPABASE_KEY is not None

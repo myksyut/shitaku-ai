@@ -24,7 +24,6 @@ class Settings(BaseSettings):
     SUPABASE_URL: str | None = None
     SUPABASE_KEY: str | None = None
     SUPABASE_DATABASE_URL: str | None = None
-    SUPABASE_JWT_SECRET: str | None = None
 
     # AWS Bedrock (API Key Authentication)
     AWS_BEARER_TOKEN_BEDROCK: str | None = None
