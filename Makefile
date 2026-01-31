@@ -6,13 +6,24 @@ setup:
 	cd frontend && npm install
 	supabase start
 
+# 環境切り替え
+env-local:
+	cp backend/.env.local backend/.env
+	@echo "Switched to LOCAL environment"
+
+env-prod:
+	cp backend/.env.production backend/.env
+	@echo "Switched to PRODUCTION environment"
+
 # 開発環境起動（Supabase + App）
 dev:
+	cp backend/.env.local backend/.env
 	supabase start
 	docker-compose up
 
 # 開発環境起動（バックグラウンド）
 dev-d:
+	cp backend/.env.local backend/.env
 	supabase start
 	docker-compose up -d
 
@@ -117,6 +128,10 @@ help:
 	@echo "  make migrate-local  - ローカルDBリセット＆マイグレーション"
 	@echo "  make migrate-new    - 新規マイグレーション作成"
 	@echo "  make migrate-status - マイグレーション状態確認"
+	@echo ""
+	@echo "環境切り替え:"
+	@echo "  make env-local      - ローカル環境に切り替え"
+	@echo "  make env-prod       - 本番環境に切り替え"
 	@echo ""
 	@echo "その他:"
 	@echo "  make build          - 本番ビルド"
