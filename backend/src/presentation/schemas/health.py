@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 
 class ServiceHealthResponse(BaseModel):
-    """サービス接続確認レスポンス"""
+    """Service health check response schema."""
 
     supabase_db: bool
     supabase_auth: bool

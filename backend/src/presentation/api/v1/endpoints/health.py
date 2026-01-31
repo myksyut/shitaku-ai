@@ -17,12 +17,13 @@ router = APIRouter()
 
 @router.get("/health")
 def health_check() -> dict[str, str]:
+    """Return basic health status."""
     return {"status": "healthy"}
 
 
 @router.get("/health/services", response_model=ServiceHealthResponse)
 def service_health_check() -> ServiceHealthResponse:
-    """外部サービスの接続状態を確認するエンドポイント"""
+    """Check external service connection status."""
     details: dict[str, str | None] = {}
 
     # Supabase DB check

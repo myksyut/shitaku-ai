@@ -2,44 +2,133 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
-  ci:
+  backend:
+    name: Backend (Python)
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        node-version: [20.x]
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.changed_files, 'backend/'))
+    defaults:
+      run:
+        working-directory: backend
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Set timezone
-      run: |
-        sudo timedatectl set-timezone Asia/Tokyo
-        echo "TZ=Asia/Tokyo" >> $GITHUB_ENV
+      - name: Check for backend changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '^backend/' || true)
+          else
+            CHANGED=$(git diff --name-only HEAD~1 | grep -E '^backend/' || true)
+          fi
+          if [ -n "$CHANGED" ]; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+          else
+            echo "backend=false" >> $GITHUB_OUTPUT
+          fi
 
-    - name: Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
+      - name: Install uv
+        if: steps.changes.outputs.backend == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
 
-    - name: Install dependencies
-      run: npm install
+      - name: Set up Python
+        if: steps.changes.outputs.backend == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Lint check
-      run: npm run lint
+      - name: Install dependencies
+        if: steps.changes.outputs.backend == 'true'
+        run: uv sync --frozen
 
-    - name: Format check
-      run: npm run format:check
+      - name: Lint check (ruff)
+        if: steps.changes.outputs.backend == 'true'
+        run: uv run ruff check .
 
-    - name: Type check
-      run: npm run build
+      - name: Format check (ruff)
+        if: steps.changes.outputs.backend == 'true'
+        run: uv run ruff format --check .
 
-    # TODO: Enable tests when test files are added
-    # - name: Run tests
-    #   run: npm test
+      - name: Type check (ty)
+        if: steps.changes.outputs.backend == 'true'
+        run: uv run ty check .
+
+      - name: Type check (mypy)
+        if: steps.changes.outputs.backend == 'true'
+        run: uv run mypy .
+
+      - name: Run tests
+        if: steps.changes.outputs.backend == 'true'
+        run: uv run pytest
+
+      - name: Skip notification
+        if: steps.changes.outputs.backend == 'false'
+        run: echo "No backend changes detected, skipping checks"
+
+  frontend:
+    name: Frontend (TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for frontend changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '^frontend/' || true)
+          else
+            CHANGED=$(git diff --name-only HEAD~1 | grep -E '^frontend/' || true)
+          fi
+          if [ -n "$CHANGED" ]; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.frontend == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: steps.changes.outputs.frontend == 'true'
+        run: npm ci
+
+      - name: Lint and Format check (Biome)
+        if: steps.changes.outputs.frontend == 'true'
+        run: npm run check
+
+      - name: Type check (tsc)
+        if: steps.changes.outputs.frontend == 'true'
+        run: npm run type-check
+
+      - name: Run tests (Vitest)
+        if: steps.changes.outputs.frontend == 'true'
+        run: npm run test
+
+      - name: Skip notification
+        if: steps.changes.outputs.frontend == 'false'
+        run: echo "No frontend changes detected, skipping checks"

@@ -6,6 +6,7 @@ from src.presentation.api.v1.router import api_router
 
 
 def create_app() -> FastAPI:
+    """Create and configure the FastAPI application."""
     app = FastAPI(
         title=settings.PROJECT_NAME,
         version=settings.VERSION,
