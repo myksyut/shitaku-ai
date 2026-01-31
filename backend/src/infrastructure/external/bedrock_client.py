@@ -9,8 +9,8 @@ import httpx
 
 from src.config import settings
 
-# Model IDs
-CLAUDE_HAIKU_MODEL_ID = "anthropic.claude-haiku-4-5-20251001-v1:0"
+# Model IDs (using system-defined inference profiles)
+CLAUDE_HAIKU_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 TITAN_EMBEDDINGS_MODEL_ID = "amazon.titan-embed-text-v2:0"
 
 

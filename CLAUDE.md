@@ -107,15 +107,17 @@ AI実行精度最大化のための中核ルール。全ての指示はこのフ
 - **言語**: Python 3.12+
 - **フレームワーク**: FastAPI
 - **ORM**: SQLAlchemy 2.0
-- **マイグレーション**: Alembic
-- **データベース**: PostgreSQL 16
+- **マイグレーション**: Supabase CLI (MCP)
+- **データベース**: PostgreSQL 16 (Supabase)
 - **パッケージ管理**: uv
 
 ### フロントエンド（frontend/）
 - **言語**: TypeScript
-- **フレームワーク**: NextJS 14 (App Router)
-- **UIライブラリ**: React 18
-- **スタイリング**: Tailwind CSS
+- **ビルドツール**: Vite
+- **UIライブラリ**: React 19
+- **スタイリング**: Tailwind CSS v4
+- **テスト**: Vitest + React Testing Library
+- **Lint/Format**: Biome
 - **パッケージ管理**: npm
 
 ### インフラ
@@ -136,11 +138,11 @@ uv run pytest --cov       # カバレッジ
 ### フロントエンド（frontend/）
 ```bash
 cd frontend
-npm run lint              # ESLint
-npm run check             # Biome
+npm run check             # Biome (lint + format)
 npm run type-check        # TypeScript型チェック
 npm run test              # テスト
 npm run test:coverage     # カバレッジ
+npm run build             # 本番ビルド
 ```
 
 ### Docker操作
@@ -151,10 +153,9 @@ docker-compose down       # 停止
 docker-compose logs -f    # ログ確認
 ```
 
-### データベースマイグレーション
-```bash
-cd backend
-uv run alembic revision --autogenerate -m "メッセージ"  # マイグレーション生成
-uv run alembic upgrade head                             # マイグレーション適用
-uv run alembic downgrade -1                             # ロールバック
-```
+### データベースマイグレーション (Supabase MCP)
+マイグレーションはSupabase MCPを使用して管理:
+- `mcp__supabase__list_migrations` - マイグレーション一覧
+- `mcp__supabase__apply_migration` - マイグレーション適用（DDL操作）
+- `mcp__supabase__execute_sql` - SQL実行（DML操作）
+- `mcp__supabase__list_tables` - テーブル一覧確認

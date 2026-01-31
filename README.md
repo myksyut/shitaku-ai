@@ -1,6 +1,6 @@
-# FastAPI + NextJS Boilerplate
+# FastAPI + Vite React Boilerplate
 
-本番環境で使用可能なFastAPI + NextJSのフルスタックボイラープレートです。Claude Code用のスキル・エージェント定義を含みます。
+本番環境で使用可能なFastAPI + Vite Reactのフルスタックボイラープレートです。Claude Code用のスキル・エージェント定義を含みます。
 
 ## 技術スタック
 
@@ -14,10 +14,11 @@
 
 ### フロントエンド
 - TypeScript
-- NextJS 14 (App Router)
-- React 18
-- Tailwind CSS
+- Vite
+- React 19
+- Tailwind CSS v4
 - Biome（Lint/Format）
+- Vitest（テスト）
 
 ### インフラ
 - Docker / Docker Compose
@@ -47,7 +48,7 @@ docker-compose up
 ```
 
 アクセス先:
-- フロントエンド: http://localhost:3000
+- フロントエンド: http://localhost:5173
 - バックエンドAPI: http://localhost:8000
 - API Docs (Swagger): http://localhost:8000/docs
 
@@ -81,13 +82,13 @@ npm run dev
 │   ├── tests/              # テスト
 │   └── pyproject.toml
 │
-├── frontend/               # NextJS フロントエンド
+├── frontend/               # Vite + React フロントエンド
 │   ├── src/
-│   │   ├── app/           # App Router
-│   │   ├── components/    # コンポーネント
-│   │   ├── lib/           # ユーティリティ
-│   │   └── types/         # 型定義
-│   ├── tests/             # テスト
+│   │   ├── assets/        # 静的アセット
+│   │   ├── test/          # テストセットアップ
+│   │   ├── App.tsx        # メインコンポーネント
+│   │   └── main.tsx       # エントリーポイント
+│   ├── public/            # 公開アセット
 │   └── package.json
 │
 ├── docker/                 # Docker関連
@@ -96,7 +97,7 @@ npm run dev
 │   ├── commands/          # コマンド定義
 │   └── skills/            # スキル定義
 │       ├── backend/       # Python/FastAPI用
-│       └── frontend/      # TypeScript/NextJS用
+│       └── frontend/      # TypeScript/Vite+React用
 ├── docker-compose.yml
 ├── Makefile
 └── CLAUDE.md              # 開発ルール
@@ -150,7 +151,9 @@ make migrate-gen
 ### フロントエンド用スキル
 - `frontend/typescript-rules` - TypeScriptコーディング規約
 - `frontend/typescript-testing` - Vitestテスト規約
-- `frontend/nextjs-spec` - NextJS技術仕様
+- `frontend/vite-react-spec` - Vite + React技術仕様
+- `frontend/technical-spec` - フロントエンド技術仕様
+- `frontend-design` - フロントエンドデザイン
 
 ## ライセンス
 

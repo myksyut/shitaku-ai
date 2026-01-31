@@ -36,34 +36,6 @@ skills:
       - "テストの粒度原則"
       - "継続性テストの範囲"
 
-  typescript-rules:
-    skill: "typescript-rules"
-    tags: [implementation, type-safety, async, coding-style, functional-programming, dependency-injection, backend]
-    typical-use: "バックエンドTypeScriptコードの作成・修正、クラス使用判断、DI実装"
-    size: small
-    key-references:
-      - "Dependency Injection - Martin Fowler"
-    sections:
-      - "Backend実装における型安全性"
-      - "コーディング規約"
-      - "エラーハンドリング"
-      - "パフォーマンス最適化"
-
-  typescript-testing:
-    skill: "typescript-testing"
-    tags: [quality, testing, coverage, vitest, backend, implementation]
-    typical-use: "バックエンドテスト作成、Vitest設定、70%カバレッジ要件、テスト品質基準"
-    size: small
-    key-references:
-      - "Vitest公式ドキュメント"
-    sections:
-      - "テストフレームワーク"
-      - "テストの基本方針"
-      - "テストの実装規約"
-      - "テスト品質基準"
-      - "モックの型安全性"
-      - "Vitestの基本例"
-
   technical-spec:
     skill: "technical-spec"
     tags: [architecture, design, documentation, environment, data-flow, implementation, quality-commands, testing, build]
@@ -82,15 +54,18 @@ skills:
 
   project-context:
     skill: "project-context"
-    tags: [context, project-specific, implementation]
-    typical-use: "プロジェクト固有情報、実装原則の理解"
+    tags: [context, project-specific, shitaku, mtg, agenda, slack, dictionary]
+    typical-use: "Shitaku.ai固有情報：MTGアジェンダ自動生成、ユビキタス言語辞書、Slack連携、確定的情報ベースの生成フロー"
     size: small
     key-references:
-      - "プロジェクト固有（経験則）"
+      - "MVP要求仕様書 v0.3"
+      - "NotebookLM検証結果（辞書必須の根拠）"
     sections:
-      - "基本設定"
-      - "実装原則"
-      - "カスタマイズガイド"
+      - "プロジェクト概要"
+      - "開発体制"
+      - "ビジネス制約"
+      - "コア機能（P0）"
+      - "ドメイン知識"
 
   documentation-criteria:
     skill: "documentation-criteria"
@@ -159,21 +134,70 @@ skills:
       - "停止ポイント"
       - "自律実行モード"
 
+  # バックエンド固有スキル
+  backend/fastapi-spec:
+    skill: "backend/fastapi-spec"
+    tags: [backend, python, fastapi, api, sqlalchemy, alembic, rest, dependency-injection]
+    typical-use: "FastAPIプロジェクト構造、レイヤー構成、SQLAlchemy 2.0、Alembicマイグレーション、API設計規約"
+    size: small
+    key-references:
+      - "FastAPI公式ドキュメント"
+      - "SQLAlchemy 2.0公式ドキュメント"
+      - "Alembic公式ドキュメント"
+    sections:
+      - "プロジェクト構造"
+      - "レイヤー構成"
+      - "依存性注入パターン"
+      - "SQLAlchemy 2.0"
+      - "Alembic マイグレーション"
+      - "API設計規約"
+
+  backend/python-rules:
+    skill: "backend/python-rules"
+    tags: [backend, python, type-hints, pydantic, async, ruff, coding-style]
+    typical-use: "Python型ヒント、Pydanticバリデーション、非同期処理、ruff設定、コードスタイル"
+    size: small
+    key-references:
+      - "Python公式ドキュメント - Type Hints"
+      - "Pydantic公式ドキュメント"
+      - "ruff公式ドキュメント"
+    sections:
+      - "基本原則"
+      - "コードスタイル"
+      - "品質チェック"
+
+  backend/python-testing:
+    skill: "backend/python-testing"
+    tags: [backend, python, pytest, testing, coverage, fixtures, async-test]
+    typical-use: "pytestテスト作成、フィクスチャパターン、カバレッジ要件、AAAパターン"
+    size: small
+    key-references:
+      - "pytest公式ドキュメント"
+      - "pytest-asyncio公式ドキュメント"
+    sections:
+      - "テストフレームワーク"
+      - "ディレクトリ構造"
+      - "フィクスチャパターン"
+      - "テスト記述ルール"
+      - "カバレッジ要件"
+
   # フロントエンド固有スキル
   frontend/typescript-rules:
     skill: "frontend/typescript-rules"
-    tags: [frontend, react, implementation, type-safety, props-driven, hooks, component-design, vite, error-boundary]
-    typical-use: "React/Viteでのフロントエンド開発、コンポーネント設計、Props設計、環境変数管理"
+    tags: [frontend, react, implementation, type-safety, props-driven, hooks, component-design, state-management, error-boundary]
+    typical-use: "React/TypeScriptでのフロントエンド開発、型システム、コンポーネント設計、状態管理、Props設計"
     size: small
     key-references:
       - "React公式ドキュメント - Function Components"
       - "Props-driven開発 - React Patterns"
     sections:
-      - "フロントエンド固有のアンチパターン"
-      - "Frontend実装における型安全性"
-      - "コーディング規約"
+      - "型システム"
+      - "Reactコンポーネント設計"
+      - "状態管理"
       - "エラーハンドリング"
-      - "パフォーマンス最適化"
+      - "イベントハンドリング"
+      - "コーディング規約"
+      - "アンチパターン"
 
   frontend/typescript-testing:
     skill: "frontend/typescript-testing"
@@ -190,6 +214,8 @@ skills:
       - "テストの実装規約"
       - "モックの型安全性の徹底"
       - "React Testing Libraryの基本例"
+      - "テスト品質基準"
+      - "アンチパターン"
 
   frontend/technical-spec:
     skill: "frontend/technical-spec"
@@ -209,3 +235,34 @@ skills:
       - "アーキテクチャ設計"
       - "データフロー統一原則"
       - "ビルドとテスト"
+
+  frontend/vite-react-spec:
+    skill: "frontend/vite-react-spec"
+    tags: [frontend, react, vite, spa, project-structure, routing, api-client, tailwind]
+    typical-use: "Vite + React SPAのプロジェクト構造、ルーティング、API通信パターン、環境変数設定"
+    size: small
+    key-references:
+      - "Vite公式ドキュメント"
+      - "React Router公式ドキュメント"
+      - "Tailwind CSS v4"
+    sections:
+      - "プロジェクト構造"
+      - "Vite設定"
+      - "コンポーネント設計"
+      - "ルーティング（React Router）"
+      - "API通信"
+      - "スタイリング"
+      - "品質チェック"
+
+  frontend-design:
+    skill: "frontend-design"
+    tags: [frontend, ui, ux, design, aesthetics, typography, color, animation, css, creative]
+    typical-use: "高品質なフロントエンドUI作成、独自性のあるデザイン、タイポグラフィ、カラー、アニメーション設計"
+    size: small
+    key-references:
+      - "Design Thinking"
+      - "Motion Library for React"
+      - "CSS Custom Properties"
+    sections:
+      - "Design Thinking"
+      - "Frontend Aesthetics Guidelines"
