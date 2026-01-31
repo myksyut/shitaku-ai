@@ -106,9 +106,9 @@ AI実行精度最大化のための中核ルール。全ての指示はこのフ
 ### バックエンド（backend/）
 - **言語**: Python 3.12+
 - **フレームワーク**: FastAPI
-- **ORM**: SQLAlchemy 2.0
-- **マイグレーション**: Supabase CLI (MCP)
-- **データベース**: PostgreSQL 16 (Supabase)
+- **データベース**: Supabase (PostgreSQL + Auth + Storage)
+- **マイグレーション**: Supabase CLI
+- **AI**: AWS Bedrock (Claude Haiku 4.5, Titan Embeddings)
 - **パッケージ管理**: uv
 
 ### フロントエンド（frontend/）
@@ -145,17 +145,27 @@ npm run test:coverage     # カバレッジ
 npm run build             # 本番ビルド
 ```
 
-### Docker操作
+### 開発環境（Makefile）
 ```bash
-docker-compose up         # 開発環境起動
-docker-compose up -d      # バックグラウンド起動
-docker-compose down       # 停止
-docker-compose logs -f    # ログ確認
+make dev              # Supabase + App 起動
+make down             # 停止
+make logs             # ログ確認
+make supabase-status  # Supabaseステータス
 ```
 
-### データベースマイグレーション (Supabase MCP)
-マイグレーションはSupabase MCPを使用して管理:
-- `mcp__supabase__list_migrations` - マイグレーション一覧
-- `mcp__supabase__apply_migration` - マイグレーション適用（DDL操作）
-- `mcp__supabase__execute_sql` - SQL実行（DML操作）
-- `mcp__supabase__list_tables` - テーブル一覧確認
+### データベースマイグレーション (Supabase CLI)
+```bash
+make migrate          # 本番にマイグレーション適用
+make migrate-local    # ローカルDBリセット＆適用
+make migrate-new      # 新規マイグレーション作成
+make migrate-status   # マイグレーション状態確認
+```
+
+マイグレーションファイルは `supabase/migrations/` に配置:
+- ローカル: `supabase start` で自動適用
+- 本番: `supabase db push` で適用
+
+### Supabase MCP（補助ツール）
+- `mcp__supabase__list_tables` - テーブル一覧
+- `mcp__supabase__execute_sql` - SQL実行
+- `mcp__supabase__get_logs` - ログ確認
