@@ -56,14 +56,9 @@ class SlackClient:
             SlackApiError: If API call fails.
         """
         try:
-            result = self.client.conversations_list(
-                types="public_channel,private_channel"
-            )
+            result = self.client.conversations_list(types="public_channel,private_channel")
             channels: list[dict[str, str]] = result.get("channels", [])
-            return [
-                SlackChannel(id=c["id"], name=c["name"])
-                for c in channels
-            ]
+            return [SlackChannel(id=c["id"], name=c["name"]) for c in channels]
         except SlackApiError as e:
             logger.error("Failed to get channels: %s", e)
             raise

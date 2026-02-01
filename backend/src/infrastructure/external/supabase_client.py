@@ -71,6 +71,7 @@ def verify_supabase_jwt(token: str) -> dict[str, object] | None:
         return dict(decoded)
     except jwt.PyJWTError as e:
         import logging
+
         logging.error(f"JWT verification failed: {e}")
         return None
 

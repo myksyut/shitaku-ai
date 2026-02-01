@@ -38,9 +38,7 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
         self._client.table("slack_integrations").insert(data).execute()
         return integration
 
-    async def get_by_id(
-        self, integration_id: UUID, user_id: UUID
-    ) -> SlackIntegration | None:
+    async def get_by_id(self, integration_id: UUID, user_id: UUID) -> SlackIntegration | None:
         """IDでSlack連携を取得する."""
         if self._client is None:
             return None
@@ -109,9 +107,7 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
             "encrypted_access_token": integration.encrypted_access_token,
             "updated_at": datetime.now().isoformat(),
         }
-        self._client.table("slack_integrations").update(data).eq(
-            "id", str(integration.id)
-        ).execute()
+        self._client.table("slack_integrations").update(data).eq("id", str(integration.id)).execute()
         return integration
 
     async def delete(self, integration_id: UUID, user_id: UUID) -> bool:
@@ -146,9 +142,7 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
             for msg in messages
         ]
         # upsertで重複を避ける
-        self._client.table("slack_messages").upsert(
-            data, on_conflict="integration_id,channel_id,message_ts"
-        ).execute()
+        self._client.table("slack_messages").upsert(data, on_conflict="integration_id,channel_id,message_ts").execute()
 
     async def get_messages_by_channel(
         self,
@@ -188,9 +182,7 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
             workspace_name=str(data["workspace_name"]),
             encrypted_access_token=str(data["encrypted_access_token"]),
             created_at=(
-                datetime.fromisoformat(str(created_at_str))
-                if isinstance(created_at_str, str)
-                else datetime.now()
+                datetime.fromisoformat(str(created_at_str)) if isinstance(created_at_str, str) else datetime.now()
             ),
             updated_at=(
                 datetime.fromisoformat(str(updated_at_str))
@@ -211,8 +203,6 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
             user_name=str(data["user_name"]),
             text=str(data["text"]),
             posted_at=(
-                datetime.fromisoformat(str(posted_at_str))
-                if isinstance(posted_at_str, str)
-                else datetime.now()
+                datetime.fromisoformat(str(posted_at_str)) if isinstance(posted_at_str, str) else datetime.now()
             ),
         )

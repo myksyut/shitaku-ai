@@ -42,9 +42,7 @@ class TestSlackClient:
         assert len(channels) == 2
         assert channels[0] == SlackChannel(id="C001", name="general")
         assert channels[1] == SlackChannel(id="C002", name="random")
-        mock_web_client.conversations_list.assert_called_once_with(
-            types="public_channel,private_channel"
-        )
+        mock_web_client.conversations_list.assert_called_once_with(types="public_channel,private_channel")
 
     def test_get_channels_api_error(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
         """API エラー時に例外を発生させる"""

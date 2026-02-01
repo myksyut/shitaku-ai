@@ -31,9 +31,7 @@ class SlackIntegrationRepository(ABC):
         """
 
     @abstractmethod
-    async def get_by_id(
-        self, integration_id: UUID, user_id: UUID
-    ) -> SlackIntegration | None:
+    async def get_by_id(self, integration_id: UUID, user_id: UUID) -> SlackIntegration | None:
         """Retrieve a Slack integration by ID.
 
         Args:
