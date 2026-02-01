@@ -89,8 +89,7 @@ class GenerateAgendaUseCase:
                 error_code = e.response.get("error", "")
                 if error_code == "not_in_channel":
                     slack_error = (
-                        "アプリがチャンネルに追加されていません。"
-                        "Slackでチャンネルにアプリを招待してください。"
+                        "アプリがチャンネルに追加されていません。Slackでチャンネルにアプリを招待してください。"
                     )
                 elif error_code == "ratelimited":
                     slack_error = "Slack APIのレート制限に達しました。しばらく待ってから再試行してください。"

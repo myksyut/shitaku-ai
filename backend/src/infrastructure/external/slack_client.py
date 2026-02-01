@@ -66,9 +66,7 @@ class SlackClient:
                     cursor=cursor,
                 )
                 channels: list[dict[str, str]] = result.get("channels", [])
-                all_channels.extend(
-                    SlackChannel(id=c["id"], name=c["name"]) for c in channels
-                )
+                all_channels.extend(SlackChannel(id=c["id"], name=c["name"]) for c in channels)
 
                 # 次ページのcursorを取得
                 response_metadata: dict[str, str] = result.get("response_metadata", {})
