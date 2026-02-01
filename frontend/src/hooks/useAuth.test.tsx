@@ -173,7 +173,7 @@ describe('apiClient', () => {
       ok: true,
       json: () => Promise.resolve({ data: 'test' }),
     })
-    global.fetch = mockFetch
+    globalThis.fetch = mockFetch
 
     const { apiClient } = await import('../lib/api-client')
     await apiClient('/test')
@@ -200,7 +200,7 @@ describe('apiClient', () => {
       status: 401,
       json: () => Promise.resolve({ detail: 'Unauthorized' }),
     })
-    global.fetch = mockFetch
+    globalThis.fetch = mockFetch
 
     const { apiClient } = await import('../lib/api-client')
 

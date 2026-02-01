@@ -15,6 +15,8 @@ dependencies = [
     "bcrypt>=5.0.0",
     "supabase>=2.0.0",
     "pyjwt[crypto]>=2.8.0",
+    "cryptography>=46.0.4",
+    "slack-sdk>=3.39.0",
 ]
 
 [dependency-groups]
@@ -41,7 +43,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "ANN", "D"]
+"tests/*" = ["S101", "S105", "S106", "ANN", "D"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -57,6 +59,8 @@ max-complexity = 10
 # Starlette add_middleware との互換性問題（ty が対応したら再有効化）
 # ref: https://github.com/encode/starlette/discussions/2423
 invalid-argument-type = "ignore"
+# mypyとの互換性のためtype: ignoreコメントを許可
+unused-ignore-comment = "ignore"
 
 [tool.mypy]
 python_version = "3.12"

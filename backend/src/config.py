@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     AWS_BEARER_TOKEN_BEDROCK: str | None = None
     AWS_BEDROCK_ENDPOINT: str = "https://bedrock-runtime.us-east-1.amazonaws.com"
 
+    # Slack OAuth
+    SLACK_CLIENT_ID: str | None = None
+    SLACK_CLIENT_SECRET: str | None = None
+    SLACK_REDIRECT_URI: str | None = None
+    SLACK_TOKEN_ENCRYPTION_KEY: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
