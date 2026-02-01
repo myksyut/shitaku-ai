@@ -62,16 +62,12 @@ class AgendaGenerationService:
 
         # 辞書情報
         if input_data.dictionary:
-            dict_info = "\n".join(
-                [f"- {e.canonical_name}" for e in input_data.dictionary]
-            )
+            dict_info = "\n".join([f"- {e.canonical_name}" for e in input_data.dictionary])
             parts.append(f"## 参考: ユビキタス言語辞書\n{dict_info}")
 
         # 前回議事録
         if input_data.latest_note:
-            parts.append(
-                f"## 前回MTGの議事録\n{input_data.latest_note.normalized_text}"
-            )
+            parts.append(f"## 前回MTGの議事録\n{input_data.latest_note.normalized_text}")
 
         # Slackメッセージ
         if input_data.slack_messages:
@@ -96,9 +92,7 @@ class AgendaGenerationService:
         elif has_slack:
             source_note = "Slack履歴のみを参照しています（前回議事録なし）。"
         else:
-            source_note = (
-                "参照できる情報がありません。一般的なアジェンダ形式で生成してください。"
-            )
+            source_note = "参照できる情報がありません。一般的なアジェンダ形式で生成してください。"
 
         return f"""あなたはMTGのアジェンダを作成するアシスタントです。
 

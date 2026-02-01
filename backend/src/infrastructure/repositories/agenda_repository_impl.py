@@ -98,13 +98,7 @@ class AgendaRepositoryImpl(AgendaRepository):
         if self._client is None:
             return False
 
-        result = (
-            self._client.table("agendas")
-            .delete()
-            .eq("id", str(agenda_id))
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._client.table("agendas").delete().eq("id", str(agenda_id)).eq("user_id", str(user_id)).execute()
         return len(result.data) > 0
 
     def _to_entity(self, data: dict[str, Any]) -> Agenda:
@@ -121,14 +115,10 @@ class AgendaRepositoryImpl(AgendaRepository):
             content=str(data["content"]),
             source_note_id=UUID(str(source_note_id_str)) if source_note_id_str else None,
             generated_at=(
-                datetime.fromisoformat(str(generated_at_str))
-                if isinstance(generated_at_str, str)
-                else datetime.now()
+                datetime.fromisoformat(str(generated_at_str)) if isinstance(generated_at_str, str) else datetime.now()
             ),
             created_at=(
-                datetime.fromisoformat(str(created_at_str))
-                if isinstance(created_at_str, str)
-                else datetime.now()
+                datetime.fromisoformat(str(created_at_str)) if isinstance(created_at_str, str) else datetime.now()
             ),
             updated_at=(
                 datetime.fromisoformat(str(updated_at_str))
