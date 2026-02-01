@@ -81,7 +81,7 @@ SLACK_TOKEN_ENCRYPTION_KEY=<下記コマンドで生成>
 
 暗号化キーの生成：
 ```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
 ## Google連携のセットアップ
@@ -132,7 +132,7 @@ GOOGLE_TOKEN_ENCRYPTION_KEY=<下記コマンドで生成>
 
 暗号化キーの生成：
 ```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
 ### 5. APIの有効化
