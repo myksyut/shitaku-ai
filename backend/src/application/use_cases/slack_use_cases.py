@@ -106,13 +106,13 @@ class HandleSlackCallbackUseCase:
         # アクセストークンを取得
         token_response = await self._exchange_code(code)
 
-        team_data = token_response.get("team", {})
+        team_data = token_response.get("team")
         if not isinstance(team_data, dict):
             raise ValueError("Invalid Slack response: team data missing")
 
-        workspace_id = str(team_data.get("id", ""))
-        workspace_name = str(team_data.get("name", ""))
-        access_token = str(token_response.get("access_token", ""))
+        workspace_id = str(team_data.get("id") or "")
+        workspace_name = str(team_data.get("name") or "")
+        access_token = str(token_response.get("access_token") or "")
 
         if not workspace_id or not access_token:
             raise ValueError("Invalid Slack response: missing required fields")

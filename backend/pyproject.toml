@@ -59,6 +59,8 @@ max-complexity = 10
 # Starlette add_middleware との互換性問題（ty が対応したら再有効化）
 # ref: https://github.com/encode/starlette/discussions/2423
 invalid-argument-type = "ignore"
+# mypyとの互換性のためtype: ignoreコメントを許可
+unused-ignore-comment = "ignore"
 
 [tool.mypy]
 python_version = "3.12"
