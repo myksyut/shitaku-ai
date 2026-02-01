@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  createAgentDictionaryEntry,
   createDictionaryEntry,
+  deleteAgentDictionaryEntry,
   deleteDictionaryEntry,
+  getAgentDictionaryEntries,
   getDictionaryEntries,
   getDictionaryEntry,
+  updateAgentDictionaryEntry,
   updateDictionaryEntry,
 } from './api'
 import type { DictionaryEntryCreate, DictionaryEntryUpdate } from './types'
@@ -61,6 +65,61 @@ export function useDeleteDictionaryEntry() {
     mutationFn: (id: string) => deleteDictionaryEntry(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: dictionaryKeys.lists() })
+    },
+  })
+}
+
+// --- Agent-specific Dictionary Hooks ---
+
+export const agentDictionaryKeys = {
+  all: ['agent-dictionary'] as const,
+  list: (agentId: string) => [...agentDictionaryKeys.all, 'list', agentId] as const,
+}
+
+export function useAgentDictionaryEntries(agentId: string) {
+  return useQuery({
+    queryKey: agentDictionaryKeys.list(agentId),
+    queryFn: () => getAgentDictionaryEntries(agentId),
+    enabled: !!agentId,
+  })
+}
+
+export function useCreateAgentDictionaryEntry(agentId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: DictionaryEntryCreate) => createAgentDictionaryEntry(agentId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: agentDictionaryKeys.list(agentId),
+      })
+    },
+  })
+}
+
+export function useUpdateAgentDictionaryEntry(agentId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ entryId, data }: { entryId: string; data: DictionaryEntryUpdate }) =>
+      updateAgentDictionaryEntry(agentId, entryId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: agentDictionaryKeys.list(agentId),
+      })
+    },
+  })
+}
+
+export function useDeleteAgentDictionaryEntry(agentId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (entryId: string) => deleteAgentDictionaryEntry(agentId, entryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: agentDictionaryKeys.list(agentId),
+      })
     },
   })
 }

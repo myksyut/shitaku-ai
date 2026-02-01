@@ -113,10 +113,10 @@ describe('Slack Integration Test', () => {
 
     // ボタンが表示されるまで待機
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Slackワークスペースを連携/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Slackと連携/i })).toBeInTheDocument()
     })
 
-    const connectButton = screen.getByRole('button', { name: /Slackワークスペースを連携/i })
+    const connectButton = screen.getByRole('button', { name: /Slackと連携/i })
     await user.click(connectButton)
 
     await waitFor(() => {

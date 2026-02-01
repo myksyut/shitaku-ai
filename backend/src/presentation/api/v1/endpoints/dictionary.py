@@ -11,18 +11,41 @@ from src.application.use_cases.dictionary_use_cases import (
     GetDictionaryEntryUseCase,
     UpdateDictionaryEntryUseCase,
 )
+from src.domain.entities.dictionary_entry import DictionaryCategory, DictionaryEntry
 from src.infrastructure.external.supabase_client import get_supabase_client
 from src.infrastructure.repositories.dictionary_repository_impl import (
     DictionaryRepositoryImpl,
 )
 from src.presentation.api.v1.dependencies import get_current_user_id
 from src.presentation.schemas.dictionary import (
+    DictionaryCategoryEnum,
     DictionaryEntryCreate,
     DictionaryEntryResponse,
     DictionaryEntryUpdate,
 )
 
 router = APIRouter(prefix="/dictionary", tags=["dictionary"])
+
+
+def _convert_category(category: DictionaryCategory | None) -> DictionaryCategoryEnum | None:
+    """Convert domain category literal to schema enum."""
+    if category is None:
+        return None
+    return DictionaryCategoryEnum(category)
+
+
+def _entry_to_response(entry: DictionaryEntry) -> DictionaryEntryResponse:
+    """Convert DictionaryEntry entity to response schema."""
+    return DictionaryEntryResponse(
+        id=entry.id,
+        agent_id=entry.agent_id,
+        canonical_name=entry.canonical_name,
+        category=_convert_category(entry.category),
+        aliases=entry.aliases,
+        description=entry.description,
+        created_at=entry.created_at,
+        updated_at=entry.updated_at,
+    )
 
 
 def get_repository() -> DictionaryRepositoryImpl:
@@ -50,13 +73,7 @@ async def create_dictionary_entry(
             canonical_name=data.canonical_name,
             description=data.description,
         )
-        return DictionaryEntryResponse(
-            id=entry.id,
-            canonical_name=entry.canonical_name,
-            description=entry.description,
-            created_at=entry.created_at,
-            updated_at=entry.updated_at,
-        )
+        return _entry_to_response(entry)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
 
@@ -69,16 +86,7 @@ async def get_dictionary_entries(
     """Get all dictionary entries for the authenticated user."""
     use_case = GetDictionaryEntriesUseCase(repository)
     entries = await use_case.execute(user_id)
-    return [
-        DictionaryEntryResponse(
-            id=e.id,
-            canonical_name=e.canonical_name,
-            description=e.description,
-            created_at=e.created_at,
-            updated_at=e.updated_at,
-        )
-        for e in entries
-    ]
+    return [_entry_to_response(e) for e in entries]
 
 
 @router.get("/{entry_id}", response_model=DictionaryEntryResponse)
@@ -92,13 +100,7 @@ async def get_dictionary_entry(
     entry = await use_case.execute(entry_id, user_id)
     if not entry:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
-    return DictionaryEntryResponse(
-        id=entry.id,
-        canonical_name=entry.canonical_name,
-        description=entry.description,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
-    )
+    return _entry_to_response(entry)
 
 
 @router.put("/{entry_id}", response_model=DictionaryEntryResponse)
@@ -119,13 +121,7 @@ async def update_dictionary_entry(
         )
         if not entry:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
-        return DictionaryEntryResponse(
-            id=entry.id,
-            canonical_name=entry.canonical_name,
-            description=entry.description,
-            created_at=entry.created_at,
-            updated_at=entry.updated_at,
-        )
+        return _entry_to_response(entry)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
 

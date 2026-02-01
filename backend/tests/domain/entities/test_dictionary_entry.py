@@ -36,13 +36,13 @@ class TestDictionaryEntry:
         entry = DictionaryEntry(
             id=uuid4(),
             user_id=uuid4(),
-            canonical_name="支度.ai",
+            canonical_name="sitaku.ai",
             description=None,
             created_at=datetime.now(),
             updated_at=None,
         )
 
-        assert entry.canonical_name == "支度.ai"
+        assert entry.canonical_name == "sitaku.ai"
         assert entry.description is None
 
     def test_dictionary_entry_equality(self) -> None:

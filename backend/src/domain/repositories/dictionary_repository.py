@@ -92,3 +92,19 @@ class DictionaryRepository(ABC):
         Returns:
             True if duplicate exists.
         """
+
+    @abstractmethod
+    async def find_by_agent_id(
+        self,
+        agent_id: UUID,
+        user_id: UUID,
+    ) -> list[DictionaryEntry]:
+        """Retrieve all dictionary entries for a specific agent.
+
+        Args:
+            agent_id: The agent ID.
+            user_id: The user ID for RLS filtering.
+
+        Returns:
+            A list of DictionaryEntry entities for the agent.
+        """

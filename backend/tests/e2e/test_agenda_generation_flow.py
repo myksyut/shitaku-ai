@@ -78,7 +78,7 @@ class TestAgendaGenerationFlowE2E:
         # - POST /api/v1/dictionary
         #   body: {canonical_name: "金沢太郎", category: "person", variants: ["かなざわ", "金澤"]}
         # - POST /api/v1/dictionary
-        #   body: {canonical_name: "Shitaku.ai", category: "project", variants: ["支度", "したく"]}
+        #   body: {canonical_name: "Shitaku.ai", category: "project", variants: ["sitaku", "したく"]}
 
         # Assert:
         # - 各エントリが201レスポンス
