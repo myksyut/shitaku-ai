@@ -207,7 +207,7 @@ export function AgentsPage({ onViewAgent }: AgentsPageProps) {
         </div>
       ) : (
         <EmptyState
-          icon="🤖"
+          icon={<img src="/favicon.png" alt="Agent" style={{ width: '120px', height: '120px' }} />}
           title="まだエージェントがいません"
           description="最初のAIエージェントを作成して、MTGの準備を自動化しましょう"
           action={

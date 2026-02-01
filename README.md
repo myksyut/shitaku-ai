@@ -81,8 +81,66 @@ SLACK_TOKEN_ENCRYPTION_KEY=<下記コマンドで生成>
 
 暗号化キーの生成：
 ```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
+
+## Google連携のセットアップ
+
+### 1. Google Cloud Projectの作成
+
+1. [Google Cloud Console](https://console.cloud.google.com/) にアクセス
+2. 新しいプロジェクトを作成、または既存のプロジェクトを選択
+
+### 2. OAuth同意画面の設定
+
+1. 「APIとサービス」→「OAuth同意画面」を選択
+2. ユーザーの種類で「外部」を選択（内部テスト用なら「内部」）
+3. アプリ情報を入力：
+   - アプリ名: Shitaku.ai
+   - ユーザーサポートメール: 自分のメールアドレス
+   - デベロッパー連絡先: 自分のメールアドレス
+4. スコープを追加：
+   - `email`
+   - `profile`
+   - `openid`
+   - `https://www.googleapis.com/auth/calendar.readonly`
+5. テストユーザーに自分のGoogleアカウントを追加
+
+### 3. OAuth 2.0クライアントの作成
+
+1. 「APIとサービス」→「認証情報」を選択
+2. 「認証情報を作成」→「OAuth クライアント ID」を選択
+3. アプリケーションの種類: 「ウェブ アプリケーション」
+4. 名前: 任意（例: Shitaku.ai Local）
+5. 承認済みのリダイレクトURI:
+   ```
+   http://localhost:8001/api/v1/google/callback
+   ```
+6. 作成後、「クライアントID」と「クライアントシークレット」をコピー
+
+### 4. 環境変数の設定
+
+`backend/.env` に以下を追加：
+
+```bash
+# Google OAuth
+GOOGLE_CLIENT_ID=<取得したクライアントID>
+GOOGLE_CLIENT_SECRET=<取得したクライアントシークレット>
+GOOGLE_REDIRECT_URI=http://localhost:8001/api/v1/google/callback
+GOOGLE_TOKEN_ENCRYPTION_KEY=<下記コマンドで生成>
+```
+
+暗号化キーの生成：
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+### 5. APIの有効化
+
+「APIとサービス」→「ライブラリ」から以下のAPIを有効化：
+- Google Calendar API
+- Google Drive API（トランスクリプト機能用、Phase 1-3で使用）
+- Google Docs API（トランスクリプト機能用、Phase 1-3で使用）
 
 ## 開発コマンド
 

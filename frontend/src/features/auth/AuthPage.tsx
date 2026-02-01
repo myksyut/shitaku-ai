@@ -64,23 +64,18 @@ export function AuthPage() {
             marginBottom: 'var(--space-8)',
           }}
         >
-          <div
+          <img
+            src="/favicon.png"
+            alt="Shitaku.ai"
             className="animate-float"
             style={{
               width: '80px',
               height: '80px',
               margin: '0 auto var(--space-4)',
-              background: 'linear-gradient(145deg, var(--color-primary-400), var(--color-primary-500))',
               borderRadius: 'var(--radius-xl)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '36px',
               boxShadow: '0 8px 32px rgba(255, 153, 102, 0.35)',
             }}
-          >
-            🤖
-          </div>
+          />
           <h1
             style={{
               fontSize: 'var(--font-size-3xl)',
