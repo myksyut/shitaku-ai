@@ -25,6 +25,7 @@ export interface DataSourcesInfo {
   has_slack_messages: boolean
   slack_message_count: number
   dictionary_entry_count: number
+  slack_error: string | null
 }
 
 export interface AgendaGenerateResponse {

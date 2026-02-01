@@ -42,6 +42,7 @@ class DataSourcesInfo(BaseModel):
     has_slack_messages: bool
     slack_message_count: int
     dictionary_entry_count: int
+    slack_error: str | None = None
 
 
 class AgendaGenerateResponse(BaseModel):

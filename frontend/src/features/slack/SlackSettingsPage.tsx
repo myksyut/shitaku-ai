@@ -1,10 +1,19 @@
-import { Button, Card } from '../../components/ui'
+import { useMemo, useState } from 'react'
+import { Button, Card, SlackIcon } from '../../components/ui'
 import { useDeleteSlackIntegration, useSlackChannels, useSlackIntegrations, useStartSlackOAuth } from './hooks'
 import type { SlackIntegration } from './types'
 
 function WorkspaceItem({ integration }: { integration: SlackIntegration }) {
   const { data: channels, isLoading: channelsLoading } = useSlackChannels(integration.id)
   const deleteIntegration = useDeleteSlackIntegration()
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filteredChannels = useMemo(() => {
+    if (!channels) return []
+    if (!searchQuery.trim()) return channels
+    const query = searchQuery.toLowerCase()
+    return channels.filter((channel) => channel.name.toLowerCase().includes(query))
+  }, [channels, searchQuery])
 
   const handleDelete = () => {
     if (window.confirm(`${integration.workspace_name}との連携を解除しますか？`)) {
@@ -27,16 +36,15 @@ function WorkspaceItem({ integration }: { integration: SlackIntegration }) {
             style={{
               width: '44px',
               height: '44px',
-              background: 'linear-gradient(145deg, #4A154B, #611f69)',
+              background: '#fff',
               borderRadius: 'var(--radius-md)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '20px',
-              boxShadow: '0 4px 12px rgba(74, 21, 75, 0.2)',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
             }}
           >
-            💬
+            <SlackIcon size={28} />
           </div>
           <div>
             <h3
@@ -60,36 +68,85 @@ function WorkspaceItem({ integration }: { integration: SlackIntegration }) {
       </div>
 
       <div style={{ marginTop: 'var(--space-4)' }}>
-        <h4
+        <div
           style={{
-            fontSize: 'var(--font-size-sm)',
-            fontWeight: 600,
-            color: 'var(--color-warm-gray-600)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
             marginBottom: 'var(--space-2)',
           }}
         >
-          チャンネル一覧
-        </h4>
+          <h4
+            style={{
+              fontSize: 'var(--font-size-sm)',
+              fontWeight: 600,
+              color: 'var(--color-warm-gray-600)',
+            }}
+          >
+            チャンネル一覧
+            {channels && channels.length > 0 && (
+              <span style={{ fontWeight: 400, marginLeft: 'var(--space-2)' }}>({channels.length}件)</span>
+            )}
+          </h4>
+        </div>
+        {channels && channels.length > 10 && (
+          <input
+            type="text"
+            placeholder="チャンネルを検索..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: 'var(--space-2) var(--space-3)',
+              marginBottom: 'var(--space-3)',
+              border: '1px solid var(--color-warm-gray-300)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: 'var(--font-size-sm)',
+              outline: 'none',
+            }}
+          />
+        )}
         {channelsLoading ? (
           <span style={{ color: 'var(--color-warm-gray-500)' }}>読み込み中...</span>
         ) : channels && channels.length > 0 ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-            {channels.map((channel) => (
-              <span
-                key={channel.id}
+          <>
+            {searchQuery && (
+              <p
                 style={{
-                  display: 'inline-block',
-                  padding: 'var(--space-1) var(--space-3)',
-                  background: 'var(--color-cream-200)',
-                  borderRadius: 'var(--radius-full)',
                   fontSize: 'var(--font-size-sm)',
-                  color: 'var(--color-warm-gray-700)',
+                  color: 'var(--color-warm-gray-500)',
+                  marginBottom: 'var(--space-2)',
                 }}
               >
-                #{channel.name}
-              </span>
-            ))}
-          </div>
+                {filteredChannels.length}件のチャンネルが見つかりました
+              </p>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 'var(--space-2)',
+                maxHeight: '200px',
+                overflowY: 'auto',
+              }}
+            >
+              {filteredChannels.map((channel) => (
+                <span
+                  key={channel.id}
+                  style={{
+                    display: 'inline-block',
+                    padding: 'var(--space-1) var(--space-3)',
+                    background: 'var(--color-cream-200)',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: 'var(--font-size-sm)',
+                    color: 'var(--color-warm-gray-700)',
+                  }}
+                >
+                  #{channel.name}
+                </span>
+              ))}
+            </div>
+          </>
         ) : (
           <span style={{ color: 'var(--color-warm-gray-500)', fontSize: 'var(--font-size-sm)' }}>
             チャンネルがありません
@@ -152,8 +209,12 @@ export function SlackSettingsPage() {
               Slackの認証画面に遷移します
             </p>
           </div>
-          <Button variant="primary" onClick={handleConnect} isLoading={startOAuth.isPending}>
-            <span style={{ marginRight: 'var(--space-2)' }}>💬</span>
+          <Button
+            variant="primary"
+            onClick={handleConnect}
+            isLoading={startOAuth.isPending}
+            leftIcon={<SlackIcon size={18} />}
+          >
             Slackと連携
           </Button>
         </div>
@@ -207,7 +268,9 @@ export function SlackSettingsPage() {
               padding: 'var(--space-4)',
             }}
           >
-            <div style={{ fontSize: '48px', marginBottom: 'var(--space-3)' }}>💬</div>
+            <div style={{ marginBottom: 'var(--space-3)' }}>
+              <SlackIcon size={48} />
+            </div>
             <p style={{ color: 'var(--color-warm-gray-600)', marginBottom: 'var(--space-2)' }}>
               連携済みのワークスペースはありません
             </p>

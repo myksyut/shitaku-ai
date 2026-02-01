@@ -214,6 +214,21 @@ export function AgendaGeneratePage({ agentId, onClose }: Props) {
                   active={dataSources.dictionary_entry_count > 0}
                 />
               </div>
+              {dataSources.slack_error && (
+                <div
+                  style={{
+                    marginTop: 'var(--space-3)',
+                    padding: 'var(--space-3)',
+                    background: 'var(--color-warning-50)',
+                    border: '1px solid var(--color-warning-200)',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: 'var(--font-size-sm)',
+                    color: 'var(--color-warning-700)',
+                  }}
+                >
+                  ⚠️ {dataSources.slack_error}
+                </div>
+              )}
             </div>
           )}
 

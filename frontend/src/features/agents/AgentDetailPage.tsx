@@ -1,8 +1,8 @@
 /**
  * Agent detail page - Shows agent info, meeting notes, and Slack integration
  */
-import { useState } from 'react'
-import { AgentAvatar, Button, Card, EmptyState, Modal } from '../../components/ui'
+import { useMemo, useState } from 'react'
+import { AgentAvatar, Button, Card, EmptyState, Modal, SlackIcon } from '../../components/ui'
 import { DictionarySection } from '../dictionary/DictionarySection'
 // Import meeting notes components
 import { useDeleteMeetingNote, useMeetingNotes, useUploadMeetingNote } from '../meeting-notes/hooks'
@@ -291,6 +291,19 @@ function SlackChannelSelector({ agent, onUpdate, isUpdating }: SlackChannelSelec
   const { data: integrations, isLoading: integrationsLoading } = useSlackIntegrations()
   const firstIntegration = integrations?.[0]
   const { data: channels, isLoading: channelsLoading } = useSlackChannels(firstIntegration?.id ?? '')
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filteredChannels = useMemo(() => {
+    if (!channels) return []
+    if (!searchQuery.trim()) return channels
+    const query = searchQuery.toLowerCase()
+    return channels.filter((channel) => channel.name.toLowerCase().includes(query))
+  }, [channels, searchQuery])
+
+  const selectedChannel = useMemo(() => {
+    if (!agent.slack_channel_id || !channels) return null
+    return channels.find((c) => c.id === agent.slack_channel_id)
+  }, [agent.slack_channel_id, channels])
 
   const isLoading = integrationsLoading || channelsLoading
 
@@ -322,20 +335,100 @@ function SlackChannelSelector({ agent, onUpdate, isUpdating }: SlackChannelSelec
 
   return (
     <div>
-      <select
-        className="input"
-        value={agent.slack_channel_id ?? ''}
-        onChange={(e) => onUpdate(e.target.value || null)}
-        disabled={isUpdating}
-        style={{ width: '100%' }}
+      {selectedChannel && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 'var(--space-3)',
+            background: 'var(--color-cream-200)',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--space-3)',
+          }}
+        >
+          <span style={{ fontWeight: 600, color: 'var(--color-warm-gray-700)' }}>#{selectedChannel.name}</span>
+          <Button
+            variant="ghost"
+            onClick={() => onUpdate(null)}
+            disabled={isUpdating}
+            style={{ padding: 'var(--space-1) var(--space-2)', fontSize: 'var(--font-size-sm)' }}
+          >
+            解除
+          </Button>
+        </div>
+      )}
+      {channels && channels.length > 10 && (
+        <input
+          type="text"
+          placeholder="チャンネルを検索..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            width: '100%',
+            padding: 'var(--space-2) var(--space-3)',
+            marginBottom: 'var(--space-2)',
+            border: '1px solid var(--color-warm-gray-300)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 'var(--font-size-sm)',
+            outline: 'none',
+          }}
+        />
+      )}
+      {searchQuery && (
+        <p
+          style={{
+            fontSize: 'var(--font-size-xs)',
+            color: 'var(--color-warm-gray-500)',
+            marginBottom: 'var(--space-2)',
+          }}
+        >
+          {filteredChannels.length}件のチャンネルが見つかりました
+        </p>
+      )}
+      <div
+        style={{
+          maxHeight: '200px',
+          overflowY: 'auto',
+          border: '1px solid var(--color-warm-gray-200)',
+          borderRadius: 'var(--radius-md)',
+        }}
       >
-        <option value="">チャンネルを選択...</option>
-        {channels?.map((channel) => (
-          <option key={channel.id} value={channel.id}>
+        {filteredChannels.map((channel) => (
+          <button
+            type="button"
+            key={channel.id}
+            onClick={() => onUpdate(channel.id)}
+            disabled={isUpdating || channel.id === agent.slack_channel_id}
+            style={{
+              display: 'block',
+              width: '100%',
+              padding: 'var(--space-2) var(--space-3)',
+              textAlign: 'left',
+              background: channel.id === agent.slack_channel_id ? 'var(--color-cream-300)' : 'transparent',
+              border: 'none',
+              borderBottom: '1px solid var(--color-warm-gray-100)',
+              cursor: channel.id === agent.slack_channel_id ? 'default' : 'pointer',
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--color-warm-gray-700)',
+            }}
+          >
             #{channel.name}
-          </option>
+          </button>
         ))}
-      </select>
+        {filteredChannels.length === 0 && (
+          <div
+            style={{
+              padding: 'var(--space-4)',
+              textAlign: 'center',
+              color: 'var(--color-warm-gray-500)',
+              fontSize: 'var(--font-size-sm)',
+            }}
+          >
+            チャンネルが見つかりません
+          </div>
+        )}
+      </div>
       {agent.slack_channel_id && (
         <p
           style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-warm-gray-500)', marginTop: 'var(--space-2)' }}
@@ -550,9 +643,12 @@ export function AgentDetailPage({ agentId, onBack, onGenerateAgenda }: AgentDeta
               fontWeight: 700,
               color: 'var(--color-warm-gray-800)',
               marginBottom: 'var(--space-4)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
             }}
           >
-            💬 Slackチャンネル連携
+            <SlackIcon size={22} /> Slackチャンネル連携
           </h2>
           <Card>
             <p

@@ -59,7 +59,7 @@ class StartSlackOAuthUseCase:
         # Slack OAuth URLを構築
         params = {
             "client_id": settings.SLACK_CLIENT_ID,
-            "scope": "channels:read,channels:history,users:read",
+            "scope": "channels:read,channels:history,groups:read,groups:history,users:read",
             "redirect_uri": settings.SLACK_REDIRECT_URI,
             "state": state,
         }

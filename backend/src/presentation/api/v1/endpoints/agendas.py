@@ -87,6 +87,7 @@ async def generate_agenda(
                 has_slack_messages=result.has_slack_messages,
                 slack_message_count=result.slack_message_count,
                 dictionary_entry_count=result.dictionary_entry_count,
+                slack_error=result.slack_error,
             ),
         )
     except ValueError as e:
