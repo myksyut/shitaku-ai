@@ -118,18 +118,10 @@ class TestMeetingNotesIntegration:
 
         # 依存関係をモック
         with (
-            patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.get_supabase_client"
-            ) as mock_supabase_client,
-            patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.AgentRepositoryImpl"
-            ) as mock_agent_repo_class,
-            patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.DictionaryRepositoryImpl"
-            ) as mock_dict_repo_class,
-            patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.MeetingNoteRepositoryImpl"
-            ) as mock_note_repo_class,
+            patch("src.presentation.api.v1.endpoints.meeting_notes.get_supabase_client") as mock_supabase_client,
+            patch("src.presentation.api.v1.endpoints.meeting_notes.AgentRepositoryImpl") as mock_agent_repo_class,
+            patch("src.presentation.api.v1.endpoints.meeting_notes.DictionaryRepositoryImpl") as mock_dict_repo_class,
+            patch("src.presentation.api.v1.endpoints.meeting_notes.MeetingNoteRepositoryImpl") as mock_note_repo_class,
             patch(
                 "src.presentation.api.v1.endpoints.meeting_notes.NormalizationServiceImpl"
             ) as mock_norm_service_class,
@@ -217,18 +209,10 @@ class TestMeetingNotesIntegration:
 
         # 依存関係をモック
         with (
-            patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.get_supabase_client"
-            ) as mock_supabase_client,
-            patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.AgentRepositoryImpl"
-            ) as mock_agent_repo_class,
-            patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.DictionaryRepositoryImpl"
-            ) as mock_dict_repo_class,
-            patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.MeetingNoteRepositoryImpl"
-            ) as mock_note_repo_class,
+            patch("src.presentation.api.v1.endpoints.meeting_notes.get_supabase_client") as mock_supabase_client,
+            patch("src.presentation.api.v1.endpoints.meeting_notes.AgentRepositoryImpl") as mock_agent_repo_class,
+            patch("src.presentation.api.v1.endpoints.meeting_notes.DictionaryRepositoryImpl") as mock_dict_repo_class,
+            patch("src.presentation.api.v1.endpoints.meeting_notes.MeetingNoteRepositoryImpl") as mock_note_repo_class,
             patch(
                 "src.presentation.api.v1.endpoints.meeting_notes.NormalizationServiceImpl"
             ) as mock_norm_service_class,

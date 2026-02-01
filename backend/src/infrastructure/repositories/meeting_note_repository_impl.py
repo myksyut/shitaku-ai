@@ -100,11 +100,7 @@ class MeetingNoteRepositoryImpl(MeetingNoteRepository):
     async def delete(self, note_id: UUID, user_id: UUID) -> bool:
         """議事録を削除する."""
         result = (
-            self.client.table("meeting_notes")
-            .delete()
-            .eq("id", str(note_id))
-            .eq("user_id", str(user_id))
-            .execute()
+            self.client.table("meeting_notes").delete().eq("id", str(note_id)).eq("user_id", str(user_id)).execute()
         )
         return len(result.data) > 0
 
