@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useCreateDictionaryEntry, useUpdateDictionaryEntry } from './hooks'
-import type { DictionaryEntry } from './types'
+import type { DictionaryCategory, DictionaryEntry } from './types'
+import { CATEGORY_LABELS, DICTIONARY_CATEGORIES } from './types'
 
 interface Props {
   entry: DictionaryEntry | null
@@ -9,6 +10,7 @@ interface Props {
 
 export function DictionaryForm({ entry, onClose }: Props) {
   const [canonicalName, setCanonicalName] = useState(entry?.canonical_name ?? '')
+  const [category, setCategory] = useState<DictionaryCategory>(entry?.category ?? 'person')
   const [description, setDescription] = useState(entry?.description ?? '')
   const [error, setError] = useState<string | null>(null)
 
@@ -33,6 +35,7 @@ export function DictionaryForm({ entry, onClose }: Props) {
       } else {
         await createMutation.mutateAsync({
           canonical_name: canonicalName,
+          category,
           description: description || null,
         })
       }
@@ -63,6 +66,25 @@ export function DictionaryForm({ entry, onClose }: Props) {
               required
               maxLength={100}
             />
+          </div>
+
+          <div>
+            <label htmlFor="category" className="block text-sm font-medium mb-1">
+              カテゴリ
+            </label>
+            <select
+              id="category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as DictionaryCategory)}
+              className="w-full border rounded px-3 py-2"
+              required
+            >
+              {DICTIONARY_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {CATEGORY_LABELS[cat]}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>

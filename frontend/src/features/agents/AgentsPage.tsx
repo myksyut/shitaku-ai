@@ -1,89 +1,222 @@
 /**
- * Agent list page component
+ * Agent list page - Dashboard with agent-centric design
  */
-
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { AgentAvatar, Button, Card, EmptyState } from '../../components/ui'
+import { useMeetingNotes } from '../meeting-notes/hooks'
 import { AgentForm } from './AgentForm'
-import { useAgents, useDeleteAgent } from './hooks'
+import { useAgents } from './hooks'
 import type { Agent } from './types'
 
-export function AgentsPage() {
-  const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
+interface AgentCardProps {
+  agent: Agent
+  onClick: () => void
+}
+
+function AgentCard({ agent, onClick }: AgentCardProps) {
+  const { data: notes } = useMeetingNotes(agent.id, 5)
+  const noteCount = notes?.length ?? 0
+
+  return (
+    <Card
+      variant="clay"
+      className="animate-fade-in card-interactive"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        cursor: 'pointer',
+      }}
+      onClick={onClick}
+    >
+      {/* Agent Header */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 'var(--space-4)',
+          marginBottom: 'var(--space-4)',
+        }}
+      >
+        <AgentAvatar name={agent.name} size="md" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3
+            style={{
+              fontSize: 'var(--font-size-lg)',
+              fontWeight: 700,
+              color: 'var(--color-warm-gray-800)',
+              margin: '0 0 var(--space-1)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {agent.name}
+          </h3>
+          {agent.slack_channel_id && (
+            <span
+              className="badge"
+              style={{
+                fontSize: 'var(--font-size-xs)',
+              }}
+            >
+              💬 Slack連携中
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Description */}
+      {agent.description && (
+        <p
+          style={{
+            fontSize: 'var(--font-size-sm)',
+            color: 'var(--color-warm-gray-600)',
+            margin: '0 0 var(--space-4)',
+            flex: 1,
+            lineHeight: 1.6,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          {agent.description}
+        </p>
+      )}
+
+      {/* Stats */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 'var(--space-4)',
+          paddingTop: 'var(--space-3)',
+          borderTop: '1px solid var(--color-cream-300)',
+          fontSize: 'var(--font-size-sm)',
+          color: 'var(--color-warm-gray-500)',
+        }}
+      >
+        <span>📝 議事録 {noteCount}件</span>
+      </div>
+    </Card>
+  )
+}
+
+interface AgentsPageProps {
+  onViewAgent: (agentId: string) => void
+}
+
+export function AgentsPage({ onViewAgent }: AgentsPageProps) {
   const [isFormOpen, setIsFormOpen] = useState(false)
 
   const { data: agents, isLoading, error } = useAgents()
-  const deleteMutation = useDeleteAgent()
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm('このエージェントを削除しますか？関連する議事録・アジェンダも削除されます。')) {
-      await deleteMutation.mutateAsync(id)
-    }
-  }
-
-  const handleEdit = (agent: Agent) => {
-    setEditingAgent(agent)
-    setIsFormOpen(true)
-  }
 
   const handleCreate = () => {
-    setEditingAgent(null)
     setIsFormOpen(true)
   }
 
   const handleFormClose = () => {
-    setEditingAgent(null)
     setIsFormOpen(false)
   }
 
-  if (isLoading) return <div className="p-4">読み込み中...</div>
-  if (error) return <div className="p-4 text-red-500">エラーが発生しました</div>
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '300px',
+          gap: 'var(--space-3)',
+          color: 'var(--color-warm-gray-500)',
+        }}
+      >
+        <span className="spinner spinner-lg" style={{ color: 'var(--color-primary-400)' }} />
+        <span style={{ fontSize: 'var(--font-size-base)', fontWeight: 500 }}>読み込み中...</span>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="alert alert-error" style={{ margin: 'var(--space-4)' }}>
+        エラーが発生しました。ページを再読み込みしてください。
+      </div>
+    )
+  }
 
   return (
-    <div className="p-4">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">MTGエージェント</h1>
-        <button
-          type="button"
-          onClick={handleCreate}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+    <div>
+      {/* Header */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 'var(--space-6)',
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              fontSize: 'var(--font-size-2xl)',
+              fontWeight: 800,
+              color: 'var(--color-warm-gray-800)',
+              margin: '0 0 var(--space-1)',
+            }}
+          >
+            あなたのAIエージェント
+          </h1>
+          <p
+            style={{
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--color-warm-gray-500)',
+              margin: 0,
+            }}
+          >
+            MTGごとに専属の秘書がお手伝いします
+          </p>
+        </div>
+        <Button variant="primary" onClick={handleCreate}>
+          <span style={{ marginRight: 'var(--space-2)' }}>+</span>
+          新しいエージェント
+        </Button>
+      </div>
+
+      {/* Agent Grid */}
+      {agents && agents.length > 0 ? (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: 'var(--space-6)',
+          }}
         >
-          新規作成
-        </button>
-      </div>
-
-      {/* エージェント一覧 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {agents?.map((agent) => (
-          <div key={agent.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-            <Link to={`/agents/${agent.id}`} className="font-bold text-lg hover:text-blue-500">
-              {agent.name}
-            </Link>
-            {agent.description && <p className="text-sm text-gray-600 mt-1">{agent.description}</p>}
-            {agent.slack_channel_id && <p className="text-xs text-gray-500 mt-2">Slack: #{agent.slack_channel_id}</p>}
-            <div className="flex gap-2 mt-4">
-              <button type="button" onClick={() => handleEdit(agent)} className="text-blue-500 hover:underline text-sm">
-                編集
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(agent.id)}
-                className="text-red-500 hover:underline text-sm"
-                disabled={deleteMutation.isPending}
-              >
-                削除
-              </button>
+          {agents.map((agent, index) => (
+            <div
+              key={agent.id}
+              className={`stagger-${Math.min(index + 1, 5)}`}
+              style={{ opacity: 0, animation: 'fadeIn 0.4s ease-out forwards' }}
+            >
+              <AgentCard agent={agent} onClick={() => onViewAgent(agent.id)} />
             </div>
-          </div>
-        ))}
-      </div>
-
-      {agents?.length === 0 && (
-        <div className="text-center text-gray-500 py-8">エージェントがありません。新規作成してください。</div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon="🤖"
+          title="まだエージェントがいません"
+          description="最初のAIエージェントを作成して、MTGの準備を自動化しましょう"
+          action={
+            <Button variant="primary" onClick={handleCreate}>
+              最初のエージェントを作成
+            </Button>
+          }
+        />
       )}
 
-      {/* フォームモーダル */}
-      {isFormOpen && <AgentForm agent={editingAgent} onClose={handleFormClose} />}
+      {/* Form Modal */}
+      {isFormOpen && <AgentForm agent={null} onClose={handleFormClose} />}
     </div>
   )
 }

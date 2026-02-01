@@ -2,7 +2,7 @@
  * Agent feature exports
  */
 
-export { AgentDetail } from './AgentDetail'
+export { AgentDetailPage } from './AgentDetailPage'
 export { AgentForm } from './AgentForm'
 export { AgentsPage } from './AgentsPage'
 export { agentKeys, useAgent, useAgents, useCreateAgent, useDeleteAgent, useUpdateAgent } from './hooks'

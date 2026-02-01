@@ -21,7 +21,8 @@ class Settings(BaseSettings):
 
     # Supabase
     SUPABASE_URL: str | None = None
-    SUPABASE_KEY: str | None = None
+    SUPABASE_KEY: str | None = None  # Publishable key (client-side)
+    SUPABASE_SERVICE_KEY: str | None = None  # Secret key (server-side, bypasses RLS)
     SUPABASE_DATABASE_URL: str | None = None
 
     # AWS Bedrock (API Key Authentication)

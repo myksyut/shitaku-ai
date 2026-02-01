@@ -1,0 +1,587 @@
+/**
+ * Agent detail page - Shows agent info, meeting notes, and Slack integration
+ */
+import { useState } from 'react'
+import { AgentAvatar, Button, Card, EmptyState, Modal } from '../../components/ui'
+import { DictionarySection } from '../dictionary/DictionarySection'
+// Import meeting notes components
+import { useDeleteMeetingNote, useMeetingNotes, useUploadMeetingNote } from '../meeting-notes/hooks'
+import type { MeetingNote } from '../meeting-notes/types'
+import { useSlackChannels, useSlackIntegrations } from '../slack/hooks'
+import { AgentForm } from './AgentForm'
+import { useAgent, useDeleteAgent, useUpdateAgent } from './hooks'
+import type { Agent } from './types'
+
+interface MeetingNoteCardProps {
+  note: MeetingNote
+  onDelete: () => void
+  onView: () => void
+  isDeleting: boolean
+}
+
+function MeetingNoteCard({ note, onDelete, onView, isDeleting }: MeetingNoteCardProps) {
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  }
+
+  return (
+    <Card style={{ marginBottom: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+              marginBottom: 'var(--space-2)',
+            }}
+          >
+            <span style={{ fontSize: '16px' }}>📝</span>
+            <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-warm-gray-700)' }}>
+              {formatDate(note.meeting_date)}
+            </span>
+            {note.is_normalized && (
+              <span
+                style={{
+                  fontSize: 'var(--font-size-xs)',
+                  background: 'var(--color-success-100)',
+                  color: 'var(--color-success-700)',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-full)',
+                }}
+              >
+                正規化済み
+              </span>
+            )}
+          </div>
+          <p
+            style={{
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--color-warm-gray-600)',
+              margin: 0,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              lineHeight: 1.5,
+            }}
+          >
+            {note.normalized_text.substring(0, 150)}
+            {note.normalized_text.length > 150 && '...'}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', marginLeft: 'var(--space-3)' }}>
+          <Button variant="ghost" onClick={onView} style={{ padding: 'var(--space-2)' }}>
+            詳細
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={onDelete}
+            disabled={isDeleting}
+            style={{ padding: 'var(--space-2)', color: 'var(--color-error)' }}
+          >
+            削除
+          </Button>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+interface MeetingNoteUploadModalProps {
+  agentId: string
+  isOpen: boolean
+  onClose: () => void
+}
+
+function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadModalProps) {
+  const [text, setText] = useState('')
+  const [meetingDate, setMeetingDate] = useState(() => {
+    const now = new Date()
+    return now.toISOString().slice(0, 16)
+  })
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  const uploadMutation = useUploadMeetingNote()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+
+    if (!text.trim()) {
+      setError('議事録テキストは必須です')
+      return
+    }
+
+    try {
+      await uploadMutation.mutateAsync({
+        agent_id: agentId,
+        text: text.trim(),
+        meeting_date: new Date(meetingDate).toISOString(),
+      })
+      setSuccess(true)
+      setTimeout(() => {
+        setText('')
+        setSuccess(false)
+        onClose()
+      }, 1500)
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message)
+      }
+    }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="議事録をアップロード" size="lg">
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <label
+            htmlFor="meeting-date"
+            style={{
+              display: 'block',
+              fontSize: 'var(--font-size-sm)',
+              fontWeight: 600,
+              color: 'var(--color-warm-gray-700)',
+              marginBottom: 'var(--space-2)',
+            }}
+          >
+            MTG開催日時
+          </label>
+          <input
+            id="meeting-date"
+            type="datetime-local"
+            value={meetingDate}
+            onChange={(e) => setMeetingDate(e.target.value)}
+            className="input"
+            required
+          />
+        </div>
+
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <label
+            htmlFor="meeting-text"
+            style={{
+              display: 'block',
+              fontSize: 'var(--font-size-sm)',
+              fontWeight: 600,
+              color: 'var(--color-warm-gray-700)',
+              marginBottom: 'var(--space-2)',
+            }}
+          >
+            議事録テキスト
+          </label>
+          <textarea
+            id="meeting-text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className="input"
+            rows={12}
+            required
+            placeholder="議事録のテキストを貼り付けてください..."
+            style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-sm)' }}
+          />
+          <p
+            style={{
+              fontSize: 'var(--font-size-xs)',
+              color: 'var(--color-warm-gray-500)',
+              marginTop: 'var(--space-1)',
+            }}
+          >
+            辞書に登録された表記揺れは自動的に正規化されます
+          </p>
+        </div>
+
+        {error && (
+          <div className="alert alert-error" style={{ marginBottom: 'var(--space-4)' }}>
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="alert alert-success" style={{ marginBottom: 'var(--space-4)' }}>
+            アップロード完了！
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+          <Button variant="ghost" onClick={onClose} disabled={uploadMutation.isPending}>
+            キャンセル
+          </Button>
+          <Button variant="primary" type="submit" isLoading={uploadMutation.isPending} disabled={success}>
+            アップロード
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+interface MeetingNoteDetailModalProps {
+  note: MeetingNote | null
+  onClose: () => void
+}
+
+function MeetingNoteDetailModal({ note, onClose }: MeetingNoteDetailModalProps) {
+  if (!note) return null
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  return (
+    <Modal isOpen={!!note} onClose={onClose} title="議事録詳細" size="lg">
+      <div style={{ marginBottom: 'var(--space-4)' }}>
+        <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-warm-gray-500)' }}>MTG日時:</span>
+        <span style={{ marginLeft: 'var(--space-2)', fontWeight: 600 }}>{formatDate(note.meeting_date)}</span>
+      </div>
+
+      <div>
+        <h4
+          style={{
+            fontSize: 'var(--font-size-sm)',
+            fontWeight: 600,
+            color: 'var(--color-warm-gray-700)',
+            marginBottom: 'var(--space-2)',
+          }}
+        >
+          正規化後のテキスト
+        </h4>
+        <div
+          style={{
+            background: 'var(--color-cream-200)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-4)',
+            fontSize: 'var(--font-size-sm)',
+            lineHeight: 1.7,
+            whiteSpace: 'pre-wrap',
+            maxHeight: '400px',
+            overflowY: 'auto',
+          }}
+        >
+          {note.normalized_text}
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+interface SlackChannelSelectorProps {
+  agent: Agent
+  onUpdate: (channelId: string | null) => void
+  isUpdating: boolean
+}
+
+function SlackChannelSelector({ agent, onUpdate, isUpdating }: SlackChannelSelectorProps) {
+  const { data: integrations, isLoading: integrationsLoading } = useSlackIntegrations()
+  const firstIntegration = integrations?.[0]
+  const { data: channels, isLoading: channelsLoading } = useSlackChannels(firstIntegration?.id ?? '')
+
+  const isLoading = integrationsLoading || channelsLoading
+
+  if (isLoading) {
+    return <div style={{ color: 'var(--color-warm-gray-500)', fontSize: 'var(--font-size-sm)' }}>読み込み中...</div>
+  }
+
+  if (!integrations || integrations.length === 0) {
+    return (
+      <div
+        style={{
+          padding: 'var(--space-4)',
+          background: 'var(--color-cream-200)',
+          borderRadius: 'var(--radius-md)',
+          textAlign: 'center',
+        }}
+      >
+        <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-warm-gray-600)', margin: 0 }}>
+          Slackワークスペースが連携されていません
+        </p>
+        <p
+          style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-warm-gray-500)', marginTop: 'var(--space-1)' }}
+        >
+          ヘッダーの「Slack連携」から設定してください
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <select
+        className="input"
+        value={agent.slack_channel_id ?? ''}
+        onChange={(e) => onUpdate(e.target.value || null)}
+        disabled={isUpdating}
+        style={{ width: '100%' }}
+      >
+        <option value="">チャンネルを選択...</option>
+        {channels?.map((channel) => (
+          <option key={channel.id} value={channel.id}>
+            #{channel.name}
+          </option>
+        ))}
+      </select>
+      {agent.slack_channel_id && (
+        <p
+          style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-warm-gray-500)', marginTop: 'var(--space-2)' }}
+        >
+          このチャンネルの会話がアジェンダ生成に使用されます
+        </p>
+      )}
+    </div>
+  )
+}
+
+interface AgentDetailPageProps {
+  agentId: string
+  onBack: () => void
+  onGenerateAgenda: () => void
+}
+
+export function AgentDetailPage({ agentId, onBack, onGenerateAgenda }: AgentDetailPageProps) {
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [isUploadOpen, setIsUploadOpen] = useState(false)
+  const [selectedNote, setSelectedNote] = useState<MeetingNote | null>(null)
+
+  const { data: agent, isLoading, error } = useAgent(agentId)
+  const { data: notes, isLoading: notesLoading } = useMeetingNotes(agentId)
+  const deleteMutation = useDeleteAgent()
+  const deleteNoteMutation = useDeleteMeetingNote()
+  const updateMutation = useUpdateAgent()
+
+  const handleDelete = async () => {
+    if (window.confirm('このエージェントを削除しますか？関連する議事録・アジェンダも削除されます。')) {
+      await deleteMutation.mutateAsync(agentId)
+      onBack()
+    }
+  }
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (window.confirm('この議事録を削除しますか？')) {
+      await deleteNoteMutation.mutateAsync(noteId)
+    }
+  }
+
+  const handleSlackChannelUpdate = async (channelId: string | null) => {
+    await updateMutation.mutateAsync({
+      id: agentId,
+      data: { slack_channel_id: channelId },
+    })
+  }
+
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '300px',
+          gap: 'var(--space-3)',
+          color: 'var(--color-warm-gray-500)',
+        }}
+      >
+        <span className="spinner spinner-lg" style={{ color: 'var(--color-primary-400)' }} />
+        <span style={{ fontSize: 'var(--font-size-base)', fontWeight: 500 }}>読み込み中...</span>
+      </div>
+    )
+  }
+
+  if (error || !agent) {
+    return (
+      <div>
+        <Button variant="ghost" onClick={onBack} style={{ marginBottom: 'var(--space-4)' }}>
+          ← 戻る
+        </Button>
+        <div className="alert alert-error">エージェントが見つかりません</div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Back Button */}
+      <Button variant="ghost" onClick={onBack} style={{ marginBottom: 'var(--space-4)' }}>
+        ← エージェント一覧に戻る
+      </Button>
+
+      {/* Agent Header */}
+      <Card variant="clay" style={{ marginBottom: 'var(--space-6)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-4)' }}>
+          <AgentAvatar name={agent.name} size="lg" />
+          <div style={{ flex: 1 }}>
+            <h1
+              style={{
+                fontSize: 'var(--font-size-2xl)',
+                fontWeight: 800,
+                color: 'var(--color-warm-gray-800)',
+                margin: '0 0 var(--space-2)',
+              }}
+            >
+              {agent.name}
+            </h1>
+            {agent.description && (
+              <p
+                style={{
+                  fontSize: 'var(--font-size-base)',
+                  color: 'var(--color-warm-gray-600)',
+                  margin: 0,
+                  lineHeight: 1.6,
+                }}
+              >
+                {agent.description}
+              </p>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <Button variant="ghost" onClick={() => setIsFormOpen(true)}>
+              編集
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+              style={{ color: 'var(--color-error)' }}
+            >
+              削除
+            </Button>
+          </div>
+        </div>
+
+        {/* Main CTA */}
+        <Button
+          variant="primary"
+          onClick={onGenerateAgenda}
+          style={{
+            width: '100%',
+            marginTop: 'var(--space-6)',
+            padding: 'var(--space-4)',
+            fontSize: 'var(--font-size-lg)',
+          }}
+        >
+          <span style={{ marginRight: 'var(--space-2)', fontSize: '20px' }}>✨</span>
+          次回のアジェンダを提案して
+        </Button>
+      </Card>
+
+      {/* Two Column Layout */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+          gap: 'var(--space-6)',
+        }}
+      >
+        {/* Meeting Notes Section */}
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 'var(--space-4)',
+            }}
+          >
+            <h2
+              style={{
+                fontSize: 'var(--font-size-lg)',
+                fontWeight: 700,
+                color: 'var(--color-warm-gray-800)',
+                margin: 0,
+              }}
+            >
+              📝 過去の議事録
+            </h2>
+            <Button variant="secondary" onClick={() => setIsUploadOpen(true)}>
+              アップロード
+            </Button>
+          </div>
+
+          {notesLoading ? (
+            <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-warm-gray-500)' }}>
+              読み込み中...
+            </div>
+          ) : notes && notes.length > 0 ? (
+            <div>
+              {notes.map((note) => (
+                <MeetingNoteCard
+                  key={note.id}
+                  note={note}
+                  onDelete={() => handleDeleteNote(note.id)}
+                  onView={() => setSelectedNote(note)}
+                  isDeleting={deleteNoteMutation.isPending}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon="📝"
+              title="議事録がありません"
+              description="過去の議事録をアップロードすると、より良いアジェンダを提案できます"
+              action={
+                <Button variant="secondary" onClick={() => setIsUploadOpen(true)}>
+                  議事録をアップロード
+                </Button>
+              }
+            />
+          )}
+        </div>
+
+        {/* Slack Channel Section */}
+        <div>
+          <h2
+            style={{
+              fontSize: 'var(--font-size-lg)',
+              fontWeight: 700,
+              color: 'var(--color-warm-gray-800)',
+              marginBottom: 'var(--space-4)',
+            }}
+          >
+            💬 Slackチャンネル連携
+          </h2>
+          <Card>
+            <p
+              style={{
+                fontSize: 'var(--font-size-sm)',
+                color: 'var(--color-warm-gray-600)',
+                marginBottom: 'var(--space-4)',
+              }}
+            >
+              Slackチャンネルを連携すると、チャンネル内の会話からアジェンダを自動生成できます
+            </p>
+            <SlackChannelSelector
+              agent={agent}
+              onUpdate={handleSlackChannelUpdate}
+              isUpdating={updateMutation.isPending}
+            />
+          </Card>
+        </div>
+      </div>
+
+      {/* Dictionary Section (full width) */}
+      <div style={{ marginTop: 'var(--space-6)' }}>
+        <DictionarySection agentId={agentId} />
+      </div>
+
+      {/* Modals */}
+      {isFormOpen && <AgentForm agent={agent} onClose={() => setIsFormOpen(false)} />}
+      <MeetingNoteUploadModal agentId={agentId} isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} />
+      <MeetingNoteDetailModal note={selectedNote} onClose={() => setSelectedNote(null)} />
+    </div>
+  )
+}

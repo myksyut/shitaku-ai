@@ -1,4 +1,8 @@
+/**
+ * Authentication page with warm, welcoming design
+ */
 import { useState } from 'react'
+import { Button, Input } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
 
 export function AuthPage() {
@@ -18,71 +22,187 @@ export function AuthPage() {
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) throw error
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
         if (error) throw error
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : 'エラーが発生しました')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">{isSignUp ? 'アカウント作成' : 'ログイン'}</h1>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'var(--space-4)',
+        background: `
+          radial-gradient(ellipse at 20% 80%, var(--color-primary-100) 0%, transparent 50%),
+          radial-gradient(ellipse at 80% 20%, var(--color-cream-400) 0%, transparent 45%),
+          var(--color-cream-100)
+        `,
+      }}
+    >
+      <div
+        className="animate-slide-up"
+        style={{
+          width: '100%',
+          maxWidth: '420px',
+        }}
+      >
+        {/* Logo & Welcome */}
+        <div
+          style={{
+            textAlign: 'center',
+            marginBottom: 'var(--space-8)',
+          }}
+        >
+          <div
+            className="animate-float"
+            style={{
+              width: '80px',
+              height: '80px',
+              margin: '0 auto var(--space-4)',
+              background: 'linear-gradient(145deg, var(--color-primary-400), var(--color-primary-500))',
+              borderRadius: 'var(--radius-xl)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '36px',
+              boxShadow: '0 8px 32px rgba(255, 153, 102, 0.35)',
+            }}
+          >
+            🤖
+          </div>
+          <h1
+            style={{
+              fontSize: 'var(--font-size-3xl)',
+              fontWeight: 800,
+              color: 'var(--color-warm-gray-800)',
+              margin: '0 0 var(--space-2)',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Shitaku.ai
+          </h1>
+          <p
+            style={{
+              fontSize: 'var(--font-size-base)',
+              color: 'var(--color-warm-gray-500)',
+              margin: 0,
+            }}
+          >
+            あなたの専属AIエージェントが
+            <br />
+            MTGの支度を整えます
+          </p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-1">
-              メールアドレス
-            </label>
-            <input
-              id="email"
+        {/* Auth Card */}
+        <div
+          className="card-clay"
+          style={{
+            padding: 'var(--space-8)',
+          }}
+        >
+          <h2
+            style={{
+              fontSize: 'var(--font-size-xl)',
+              fontWeight: 700,
+              color: 'var(--color-warm-gray-800)',
+              margin: '0 0 var(--space-6)',
+              textAlign: 'center',
+            }}
+          >
+            {isSignUp ? 'アカウントを作成' : 'おかえりなさい'}
+          </h2>
+
+          <form onSubmit={handleSubmit}>
+            <Input
+              label="メールアドレス"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full border rounded px-3 py-2"
+              placeholder="you@example.com"
               required
+              autoComplete="email"
             />
-          </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-1">
-              パスワード
-            </label>
-            <input
-              id="password"
+            <Input
+              label="パスワード"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border rounded px-3 py-2"
+              placeholder="6文字以上"
               required
               minLength={6}
+              autoComplete={isSignUp ? 'new-password' : 'current-password'}
             />
+
+            {error && (
+              <div className="alert alert-error animate-fade-in" style={{ marginBottom: 'var(--space-4)' }}>
+                {error}
+              </div>
+            )}
+
+            <Button type="submit" size="lg" isLoading={loading} style={{ width: '100%' }}>
+              {isSignUp ? 'アカウントを作成' : 'ログイン'}
+            </Button>
+          </form>
+
+          {/* Toggle auth mode */}
+          <div
+            style={{
+              marginTop: 'var(--space-6)',
+              textAlign: 'center',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setIsSignUp(!isSignUp)
+                setError(null)
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-primary-600)',
+                fontSize: 'var(--font-size-sm)',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'var(--font-family)',
+                transition: 'color var(--transition-fast)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--color-primary-700)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--color-primary-600)'
+              }}
+            >
+              {isSignUp ? 'すでにアカウントをお持ちの方はこちら' : 'アカウントをお持ちでない方はこちら'}
+            </button>
           </div>
-
-          {error && <div className="text-red-500 text-sm">{error}</div>}
-
-          <button
-            type="submit"
-            className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 disabled:opacity-50"
-            disabled={loading}
-          >
-            {loading ? '処理中...' : isSignUp ? '登録' : 'ログイン'}
-          </button>
-        </form>
-
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="text-blue-500 hover:underline text-sm"
-          >
-            {isSignUp ? 'アカウントをお持ちの方はログイン' : 'アカウントを作成'}
-          </button>
         </div>
+
+        {/* Footer */}
+        <p
+          style={{
+            textAlign: 'center',
+            marginTop: 'var(--space-6)',
+            fontSize: 'var(--font-size-xs)',
+            color: 'var(--color-warm-gray-400)',
+          }}
+        >
+          sitaku.ai - MTGの準備をもっとスマートに
+        </p>
       </div>
     </div>
   )

@@ -29,15 +29,23 @@ def _get_jwks_client() -> PyJWKClient | None:
 
 
 def get_supabase_client() -> Client | None:
-    """Initialize and return a Supabase client.
+    """Initialize and return a Supabase client with service key.
+
+    Uses the service key (secret key) which bypasses RLS.
+    Authorization is handled at the application layer.
 
     Returns:
         Supabase Client instance if credentials are configured, None otherwise.
     """
-    if settings.SUPABASE_URL is None or settings.SUPABASE_KEY is None:
+    if settings.SUPABASE_URL is None:
         return None
 
-    return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    # Prefer service key (bypasses RLS), fall back to publishable key
+    key = settings.SUPABASE_SERVICE_KEY or settings.SUPABASE_KEY
+    if key is None:
+        return None
+
+    return create_client(settings.SUPABASE_URL, key)
 
 
 def verify_supabase_jwt(token: str) -> dict[str, object] | None:

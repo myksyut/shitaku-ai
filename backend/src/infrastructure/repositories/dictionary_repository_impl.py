@@ -23,13 +23,18 @@ class DictionaryRepositoryImpl(DictionaryRepository):
 
     async def create(self, entry: DictionaryEntry) -> DictionaryEntry:
         """Create a new dictionary entry."""
-        data = {
+        data: dict[str, Any] = {
             "id": str(entry.id),
             "user_id": str(entry.user_id),
             "canonical_name": entry.canonical_name,
             "description": entry.description,
             "created_at": entry.created_at.isoformat(),
+            "aliases": entry.aliases,
         }
+        if entry.agent_id is not None:
+            data["agent_id"] = str(entry.agent_id)
+        if entry.category is not None:
+            data["category"] = entry.category
         self.client.table("dictionary_entries").insert(data).execute()
         return entry
 
@@ -63,11 +68,16 @@ class DictionaryRepositoryImpl(DictionaryRepository):
 
     async def update(self, entry: DictionaryEntry) -> DictionaryEntry:
         """Update an existing dictionary entry."""
-        data = {
+        data: dict[str, Any] = {
             "canonical_name": entry.canonical_name,
             "description": entry.description,
             "updated_at": datetime.now().isoformat(),
+            "aliases": entry.aliases,
         }
+        if entry.agent_id is not None:
+            data["agent_id"] = str(entry.agent_id)
+        if entry.category is not None:
+            data["category"] = entry.category
         self.client.table("dictionary_entries").update(data).eq("id", str(entry.id)).execute()
 
         entry.updated_at = datetime.now()
@@ -104,6 +114,23 @@ class DictionaryRepositoryImpl(DictionaryRepository):
         result = query.execute()
         return len(result.data) > 0
 
+    async def find_by_agent_id(
+        self,
+        agent_id: UUID,
+        user_id: UUID,
+    ) -> list[DictionaryEntry]:
+        """Retrieve all dictionary entries for a specific agent."""
+        result = (
+            self.client.table("dictionary_entries")
+            .select("*")
+            .eq("agent_id", str(agent_id))
+            .eq("user_id", str(user_id))
+            .order("created_at", desc=True)
+            .execute()
+        )
+
+        return [self._to_entity(cast(dict[str, Any], row)) for row in result.data]
+
     def _to_entity(self, data: dict[str, Any]) -> DictionaryEntry:
         """Convert database row to DictionaryEntry entity."""
         created_at_str = data["created_at"]
@@ -115,6 +142,14 @@ class DictionaryRepositoryImpl(DictionaryRepository):
         if updated_at_str:
             updated_at = datetime.fromisoformat(str(updated_at_str).replace("Z", "+00:00"))
 
+        # Handle optional agent_id
+        agent_id = None
+        if data.get("agent_id"):
+            agent_id = UUID(str(data["agent_id"]))
+
+        # Handle aliases (defaults to empty list if not present)
+        aliases = data.get("aliases") or []
+
         return DictionaryEntry(
             id=UUID(str(data["id"])),
             user_id=UUID(str(data["user_id"])),
@@ -122,4 +157,7 @@ class DictionaryRepositoryImpl(DictionaryRepository):
             description=str(data["description"]) if data.get("description") else None,
             created_at=created_at,
             updated_at=updated_at,
+            agent_id=agent_id,
+            category=data.get("category"),
+            aliases=aliases,
         )
