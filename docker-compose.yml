@@ -37,6 +37,17 @@ services:
     networks:
       - app-network
 
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: boilerplate-ngrok
+    command: http backend:8000 --domain=lanie-unrehearsed-worryingly.ngrok-free.dev
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
