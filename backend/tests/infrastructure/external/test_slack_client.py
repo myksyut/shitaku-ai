@@ -28,13 +28,14 @@ class TestSlackClient:
             return SlackClient("xoxb-test-token")
 
     def test_get_channels_success(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
-        """チャンネル一覧を正しく取得できる"""
+        """チャンネル一覧を正しく取得できる（ページネーション対応）"""
         mock_web_client.conversations_list.return_value = {
             "ok": True,
             "channels": [
                 {"id": "C001", "name": "general"},
                 {"id": "C002", "name": "random"},
             ],
+            "response_metadata": {"next_cursor": ""},
         }
 
         channels = slack_client.get_channels()
@@ -42,7 +43,11 @@ class TestSlackClient:
         assert len(channels) == 2
         assert channels[0] == SlackChannel(id="C001", name="general")
         assert channels[1] == SlackChannel(id="C002", name="random")
-        mock_web_client.conversations_list.assert_called_once_with(types="public_channel,private_channel")
+        mock_web_client.conversations_list.assert_called_once_with(
+            types="public_channel,private_channel",
+            limit=200,
+            cursor=None,
+        )
 
     def test_get_channels_api_error(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
         """API エラー時に例外を発生させる"""
