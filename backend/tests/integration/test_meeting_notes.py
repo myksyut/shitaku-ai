@@ -9,8 +9,72 @@
 - LLM APIエラー時のフォールバック処理
 """
 
+from collections.abc import Generator
+from datetime import datetime
+from unittest.mock import MagicMock, patch
+from uuid import UUID, uuid4
+
 import pytest
 from fastapi.testclient import TestClient
+
+from src.domain.entities.agent import Agent
+from src.domain.entities.dictionary_entry import DictionaryEntry
+from src.domain.services.normalization_service import NormalizationError, NormalizationResult, Replacement
+from src.main import app
+from src.presentation.api.v1.dependencies import get_current_user_id
+
+# テスト用の固定UUID
+TEST_USER_ID = UUID("11111111-1111-1111-1111-111111111111")
+TEST_AGENT_ID = UUID("22222222-2222-2222-2222-222222222222")
+
+
+def override_get_current_user_id() -> UUID:
+    """認証をモック化するためのオーバーライド関数."""
+    return TEST_USER_ID
+
+
+@pytest.fixture
+def authenticated_client() -> Generator[TestClient, None, None]:
+    """認証済みテストクライアントを作成."""
+    app.dependency_overrides[get_current_user_id] = override_get_current_user_id
+    with TestClient(app) as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def mock_agent() -> Agent:
+    """テスト用エージェント."""
+    return Agent(
+        id=TEST_AGENT_ID,
+        user_id=TEST_USER_ID,
+        name="テスト会議",
+        description="テスト用のMTG",
+        created_at=datetime.now(),
+    )
+
+
+@pytest.fixture
+def mock_dictionary_entries() -> list[DictionaryEntry]:
+    """テスト用辞書エントリ."""
+    return [
+        DictionaryEntry(
+            id=uuid4(),
+            user_id=TEST_USER_ID,
+            canonical_name="金沢太郎",
+            description="正式な表記",
+            created_at=datetime.now(),
+            updated_at=None,
+        ),
+        DictionaryEntry(
+            id=uuid4(),
+            user_id=TEST_USER_ID,
+            canonical_name="プロジェクトA",
+            description="プロジェクトの正式名称",
+            created_at=datetime.now(),
+            updated_at=None,
+        ),
+    ]
 
 
 class TestMeetingNotesIntegration:
@@ -31,29 +95,102 @@ class TestMeetingNotesIntegration:
     # - original_textは入力テキストと同一
     # - normalized_textは正規化処理の結果
     # - DBに議事録が永続化されている
-    @pytest.mark.skip(reason="Not implemented yet")
-    def test_upload_and_normalize_meeting_note(self, authenticated_client: TestClient) -> None:
+    def test_upload_and_normalize_meeting_note(
+        self,
+        authenticated_client: TestClient,
+        mock_agent: Agent,
+        mock_dictionary_entries: list[DictionaryEntry],
+    ) -> None:
         """AC1: 議事録アップロードで辞書参照正規化されDBに保存される"""
-        # Arrange:
-        # - 認証済みユーザーを準備
-        # - エージェントを作成
-        # - 辞書エントリを作成（表記揺れを含む）
-        #   例: canonical_name="金沢太郎", variants=["かなざわ", "金澤"]
-        # - 表記揺れを含む議事録テキストを準備
-        #   例: "かなざわさんが報告しました"
-        # - 作成前の議事録数を取得
-        # - BedrockClientをモック化（正規化結果を返す）
+        # Arrange
+        original_text = "かなざわさんが報告しました。プロジェクトAの進捗です。"
+        normalized_text = "金沢太郎さんが報告しました。プロジェクトAの進捗です。"
+        meeting_date = "2026-01-15T10:00:00"
 
-        # Act:
-        # - POST /api/v1/meeting-notes でテキストアップロード
-        #   body: {agent_id, text, meeting_date}
+        # 正規化成功結果をモック
+        normalization_result = NormalizationResult(
+            original_text=original_text,
+            normalized_text=normalized_text,
+            replacements=[
+                Replacement(original="かなざわ", canonical="金沢太郎", start_pos=0, end_pos=4),
+            ],
+        )
 
-        # Assert:
-        # - 作成レスポンスが201
-        # - レスポンスにoriginal_text, normalized_textが含まれる
-        # - normalized_textに"金沢太郎"が含まれる（正規化成功）
-        # - Property: meeting_notes.count == previous_count + 1
-        pass
+        # 依存関係をモック
+        with (
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.get_supabase_client"
+            ) as mock_supabase_client,
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.AgentRepositoryImpl"
+            ) as mock_agent_repo_class,
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.DictionaryRepositoryImpl"
+            ) as mock_dict_repo_class,
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.MeetingNoteRepositoryImpl"
+            ) as mock_note_repo_class,
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.NormalizationServiceImpl"
+            ) as mock_norm_service_class,
+        ):
+            # Supabase client mock
+            mock_supabase_client.return_value = MagicMock()
+
+            # AgentRepository mock
+            mock_agent_repo = MagicMock()
+            mock_agent_repo.get_by_id.return_value = mock_agent
+            mock_agent_repo_class.return_value = mock_agent_repo
+
+            # DictionaryRepository mock
+            mock_dict_repo = MagicMock()
+
+            async def mock_get_all(user_id: UUID) -> list[DictionaryEntry]:
+                return mock_dictionary_entries
+
+            mock_dict_repo.get_all = mock_get_all
+            mock_dict_repo_class.return_value = mock_dict_repo
+
+            # NormalizationService mock
+            mock_norm_service = MagicMock()
+            mock_norm_service.normalize.return_value = normalization_result
+            mock_norm_service_class.return_value = mock_norm_service
+
+            # MeetingNoteRepository mock - 保存されたデータを返す
+            mock_note_repo = MagicMock()
+
+            async def mock_create(note: MagicMock) -> MagicMock:
+                return note
+
+            mock_note_repo.create = mock_create
+            mock_note_repo_class.return_value = mock_note_repo
+
+            # Act
+            response = authenticated_client.post(
+                "/api/v1/meeting-notes",
+                json={
+                    "agent_id": str(TEST_AGENT_ID),
+                    "text": original_text,
+                    "meeting_date": meeting_date,
+                },
+            )
+
+            # Assert
+            assert response.status_code == 201
+            data = response.json()
+
+            # レスポンスにoriginal_text, normalized_textが含まれる
+            assert "note" in data
+            assert data["note"]["original_text"] == original_text
+            assert data["note"]["normalized_text"] == normalized_text
+
+            # 正規化が行われた
+            assert data["note"]["is_normalized"] is True
+            assert data["replacement_count"] == 1
+            assert data["normalization_warning"] is None
+
+            # NormalizationServiceが呼ばれた
+            mock_norm_service.normalize.assert_called_once()
 
     # AC: "If 正規化処理でLLM APIエラーが発生した場合、
     #      then システムは元テキストをそのまま保存し、ユーザーに警告を表示する"
@@ -67,19 +204,88 @@ class TestMeetingNotesIntegration:
     # - レスポンスに警告メッセージが含まれる
     # - original_textとnormalized_textが同一（フォールバック）
     # - DBに議事録が永続化されている（元テキストのまま）
-    @pytest.mark.skip(reason="Not implemented yet")
-    def test_upload_meeting_note_llm_error_fallback(self, authenticated_client: TestClient) -> None:
+    def test_upload_meeting_note_llm_error_fallback(
+        self,
+        authenticated_client: TestClient,
+        mock_agent: Agent,
+        mock_dictionary_entries: list[DictionaryEntry],
+    ) -> None:
         """AC3: LLM APIエラー時に元テキストが保存され警告が返却される"""
-        # Arrange:
-        # - 認証済みユーザーを準備
-        # - エージェントを作成
-        # - BedrockClientをモック化（エラーを発生させる）
+        # Arrange
+        original_text = "かなざわさんが報告しました。"
+        meeting_date = "2026-01-15T10:00:00"
 
-        # Act:
-        # - POST /api/v1/meeting-notes でテキストアップロード
+        # 依存関係をモック
+        with (
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.get_supabase_client"
+            ) as mock_supabase_client,
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.AgentRepositoryImpl"
+            ) as mock_agent_repo_class,
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.DictionaryRepositoryImpl"
+            ) as mock_dict_repo_class,
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.MeetingNoteRepositoryImpl"
+            ) as mock_note_repo_class,
+            patch(
+                "src.presentation.api.v1.endpoints.meeting_notes.NormalizationServiceImpl"
+            ) as mock_norm_service_class,
+        ):
+            # Supabase client mock
+            mock_supabase_client.return_value = MagicMock()
 
-        # Assert:
-        # - レスポンスに警告フラグまたはメッセージが含まれる
-        # - original_text == normalized_text（フォールバック）
-        # - DBに議事録が永続化されている
-        pass
+            # AgentRepository mock
+            mock_agent_repo = MagicMock()
+            mock_agent_repo.get_by_id.return_value = mock_agent
+            mock_agent_repo_class.return_value = mock_agent_repo
+
+            # DictionaryRepository mock
+            mock_dict_repo = MagicMock()
+
+            async def mock_get_all(user_id: UUID) -> list[DictionaryEntry]:
+                return mock_dictionary_entries
+
+            mock_dict_repo.get_all = mock_get_all
+            mock_dict_repo_class.return_value = mock_dict_repo
+
+            # NormalizationService mock - エラーを発生させる
+            mock_norm_service = MagicMock()
+            mock_norm_service.normalize.side_effect = NormalizationError("LLM API error")
+            mock_norm_service_class.return_value = mock_norm_service
+
+            # MeetingNoteRepository mock - 保存されたデータを返す
+            mock_note_repo = MagicMock()
+
+            async def mock_create(note: MagicMock) -> MagicMock:
+                return note
+
+            mock_note_repo.create = mock_create
+            mock_note_repo_class.return_value = mock_note_repo
+
+            # Act
+            response = authenticated_client.post(
+                "/api/v1/meeting-notes",
+                json={
+                    "agent_id": str(TEST_AGENT_ID),
+                    "text": original_text,
+                    "meeting_date": meeting_date,
+                },
+            )
+
+            # Assert
+            assert response.status_code == 201
+            data = response.json()
+
+            # レスポンスに警告が含まれる
+            assert data["normalization_warning"] is not None
+            assert "正規化処理に失敗しました" in data["normalization_warning"]
+
+            # original_text == normalized_text（フォールバック）
+            assert data["note"]["original_text"] == original_text
+            assert data["note"]["normalized_text"] == original_text
+            assert data["note"]["is_normalized"] is False
+
+            # replacement_countは0
+            assert data["replacement_count"] == 0
