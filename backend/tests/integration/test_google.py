@@ -447,24 +447,31 @@ class TestGoogleIntegration:
     def test_oauth_callback_handles_user_denial(
         self,
         authenticated_client: TestClient,
+        mock_repository: MagicMock,
     ) -> None:
         """AC6: ユーザーが認可をキャンセルした場合エラーページにリダイレクト"""
         # Arrange: エラーパラメータを含むコールバックURLを準備
         # stateは必要（FastAPIのQuery(...)で必須）
         test_state = "test_state_for_denial"
 
-        # Act: GET /api/v1/google/callback?error=access_denied&state=xxx&code=dummy
-        response = authenticated_client.get(
-            f"/api/v1/google/callback?error=access_denied&state={test_state}&code=dummy",
-            follow_redirects=False,
-        )
+        # リポジトリをモックに差し替え（CI環境でSupabase未設定対策）
+        app.dependency_overrides[get_repository] = lambda: mock_repository
 
-        # Assert: リダイレクト（302または307）
-        assert response.status_code in (302, 307)
+        try:
+            # Act: GET /api/v1/google/callback?error=access_denied&state=xxx&code=dummy
+            response = authenticated_client.get(
+                f"/api/v1/google/callback?error=access_denied&state={test_state}&code=dummy",
+                follow_redirects=False,
+            )
 
-        # Assert: リダイレクト先がエラーページ
-        location = response.headers["location"]
-        assert "/google/error" in location
+            # Assert: リダイレクト（302または307）
+            assert response.status_code in (302, 307)
 
-        # Assert: エラー内容がURLに含まれる
-        assert "access_denied" in location
+            # Assert: リダイレクト先がエラーページ
+            location = response.headers["location"]
+            assert "/google/error" in location
+
+            # Assert: エラー内容がURLに含まれる
+            assert "access_denied" in location
+        finally:
+            app.dependency_overrides.pop(get_repository, None)
