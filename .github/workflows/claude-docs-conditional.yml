@@ -31,7 +31,7 @@ jobs:
       - name: Run Claude Docs Update
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_oauth: true
           settings: |
             {
               "model": "claude-opus-4.5"
@@ -68,5 +68,3 @@ jobs:
             - `git add`, `git commit`, `git push` で変更をコミット
 
           claude_args: '--allowed-tools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git status:*),Bash(cat:*),Bash(ls:*),View,Edit"'
-        env:
-          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
