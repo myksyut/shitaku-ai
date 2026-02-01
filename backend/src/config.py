@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     SLACK_REDIRECT_URI: str | None = None
     SLACK_TOKEN_ENCRYPTION_KEY: str | None = None
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    GOOGLE_REDIRECT_URI: str | None = None
+    GOOGLE_TOKEN_ENCRYPTION_KEY: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

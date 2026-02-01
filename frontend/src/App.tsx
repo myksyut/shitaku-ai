@@ -4,13 +4,15 @@
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 import { Button, SlackIcon } from './components/ui'
+import { GoogleIcon } from './components/ui/GoogleIcon'
 import { AgendaGeneratePage } from './features/agendas'
 import { AgentDetailPage, AgentsPage } from './features/agents'
 import { AuthPage } from './features/auth'
+import { GoogleIntegrationPage } from './features/google'
 import { SlackSettingsPage } from './features/slack'
 import { supabase } from './lib/supabase'
 
-type PageView = 'agents' | 'agent-detail' | 'slack-settings'
+type PageView = 'agents' | 'agent-detail' | 'slack-settings' | 'google-settings'
 
 function LoadingScreen() {
   return (
@@ -25,22 +27,16 @@ function LoadingScreen() {
         background: 'var(--color-cream-100)',
       }}
     >
-      <div
+      <img
         className="animate-float"
+        src="/favicon.png"
+        alt="Shitaku.ai"
         style={{
           width: '64px',
           height: '64px',
-          background: 'linear-gradient(145deg, var(--color-primary-400), var(--color-primary-500))',
           borderRadius: 'var(--radius-xl)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '28px',
-          boxShadow: '0 8px 32px rgba(255, 153, 102, 0.35)',
         }}
-      >
-        🤖
-      </div>
+      />
       <span
         style={{
           fontSize: 'var(--font-size-base)',
@@ -90,21 +86,15 @@ function Header({ email, currentPage, onNavigate, onLogout }: HeaderProps) {
           padding: 0,
         }}
       >
-        <div
+        <img
+          src="/favicon.png"
+          alt="Shitaku.ai"
           style={{
             width: '40px',
             height: '40px',
-            background: 'linear-gradient(145deg, var(--color-primary-400), var(--color-primary-500))',
             borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '20px',
-            boxShadow: '0 4px 12px rgba(255, 153, 102, 0.25)',
           }}
-        >
-          🤖
-        </div>
+        />
         <span
           style={{
             fontSize: 'var(--font-size-lg)',
@@ -132,6 +122,14 @@ function Header({ email, currentPage, onNavigate, onLogout }: HeaderProps) {
         >
           <SlackIcon size={16} />
           Slack連携
+        </Button>
+        <Button
+          variant={currentPage === 'google-settings' ? 'secondary' : 'ghost'}
+          onClick={() => onNavigate('google-settings')}
+          style={{ gap: 'var(--space-2)' }}
+        >
+          <GoogleIcon size={16} />
+          Google連携
         </Button>
         <span
           style={{
@@ -232,6 +230,7 @@ function App() {
           />
         )}
         {currentPage === 'slack-settings' && <SlackSettingsPage />}
+        {currentPage === 'google-settings' && <GoogleIntegrationPage />}
       </main>
 
       {/* Agenda Generation Modal */}

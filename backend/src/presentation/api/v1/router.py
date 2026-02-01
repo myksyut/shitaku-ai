@@ -5,6 +5,7 @@ from src.presentation.api.v1.endpoints import (
     agent_dictionary,
     agents,
     dictionary,
+    google,
     health,
     meeting_notes,
     slack,
@@ -16,5 +17,6 @@ api_router.include_router(dictionary.router)
 api_router.include_router(agents.router)
 api_router.include_router(agent_dictionary.router)
 api_router.include_router(slack.router)
+api_router.include_router(google.router)
 api_router.include_router(meeting_notes.router)
 api_router.include_router(agendas.router)

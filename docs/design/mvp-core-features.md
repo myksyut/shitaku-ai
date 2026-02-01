@@ -312,20 +312,13 @@ class DictionaryCategory(str, Enum):
     ABBREVIATION = "abbreviation"  # 略語
 
 @dataclass
-class DictionaryVariant:
-    id: UUID
-    entry_id: UUID
-    variant: str
-    created_at: datetime
-
-@dataclass
 class DictionaryEntry:
     id: UUID
-    user_id: UUID
+    agent_id: UUID           # エージェント単位で辞書を管理
     canonical_name: str      # 正式名称
     category: DictionaryCategory
     description: str | None
-    variants: list[DictionaryVariant]
+    aliases: list[str]       # 別名・表記ゆれ（配列カラムで保持）
     created_at: datetime
     updated_at: datetime | None
 ```
@@ -441,17 +434,19 @@ class AgentResponse(BaseModel):
 
 # presentation/schemas/dictionary.py
 class DictionaryEntryCreate(BaseModel):
+    agent_id: UUID
     canonical_name: str = Field(..., min_length=1, max_length=100)
     category: DictionaryCategory
     description: str | None = Field(None, max_length=500)
-    variants: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
 
 class DictionaryEntryResponse(BaseModel):
     id: UUID
+    agent_id: UUID
     canonical_name: str
     category: DictionaryCategory
     description: str | None
-    variants: list[str]
+    aliases: list[str]
     created_at: datetime
     updated_at: datetime | None
 
@@ -487,15 +482,13 @@ class AgendaResponse(BaseModel):
 ```mermaid
 erDiagram
     users ||--o{ agents : creates
-    users ||--o{ dictionary_entries : creates
     users ||--o{ meeting_notes : creates
     users ||--o{ slack_integrations : has
     users ||--o{ agendas : creates
 
     agents ||--o{ meeting_notes : has
     agents ||--o{ agendas : generates
-
-    dictionary_entries ||--o{ dictionary_variants : has
+    agents ||--o{ dictionary_entries : has
 
     slack_integrations ||--o{ slack_messages : stores
 
@@ -520,19 +513,13 @@ erDiagram
 
     dictionary_entries {
         uuid id PK
-        uuid user_id FK
+        uuid agent_id FK
         string canonical_name UK
         string category
         string description
+        text_array aliases
         timestamp created_at
         timestamp updated_at
-    }
-
-    dictionary_variants {
-        uuid id PK
-        uuid entry_id FK
-        string variant
-        timestamp created_at
     }
 
     meeting_notes {
@@ -602,41 +589,27 @@ CREATE POLICY "Users can manage own agents" ON public.agents
 -- dictionary_entries テーブル
 CREATE TABLE public.dictionary_entries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    agent_id UUID NOT NULL REFERENCES public.agents(id) ON DELETE CASCADE,
     canonical_name VARCHAR(100) NOT NULL,
     category VARCHAR(20) NOT NULL CHECK (category IN ('person', 'project', 'term', 'customer', 'abbreviation')),
     description VARCHAR(500),
+    aliases TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ,
-    UNIQUE(user_id, canonical_name)
+    UNIQUE(agent_id, canonical_name)
 );
 
-CREATE INDEX idx_dictionary_entries_user_id ON public.dictionary_entries(user_id);
-CREATE INDEX idx_dictionary_entries_category ON public.dictionary_entries(user_id, category);
+CREATE INDEX idx_dictionary_entries_agent_id ON public.dictionary_entries(agent_id);
+CREATE INDEX idx_dictionary_entries_category ON public.dictionary_entries(agent_id, category);
+CREATE INDEX idx_dictionary_entries_aliases ON public.dictionary_entries USING GIN(aliases);
 
 ALTER TABLE public.dictionary_entries ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can manage own dictionary entries" ON public.dictionary_entries
-    FOR ALL USING (auth.uid() = user_id);
-
--- dictionary_variants テーブル
-CREATE TABLE public.dictionary_variants (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    entry_id UUID NOT NULL REFERENCES public.dictionary_entries(id) ON DELETE CASCADE,
-    variant VARCHAR(100) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_dictionary_variants_entry_id ON public.dictionary_variants(entry_id);
-CREATE INDEX idx_dictionary_variants_variant ON public.dictionary_variants(variant);
-
-ALTER TABLE public.dictionary_variants ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage own variants" ON public.dictionary_variants
     FOR ALL USING (
         EXISTS (
-            SELECT 1 FROM public.dictionary_entries
-            WHERE id = entry_id AND user_id = auth.uid()
+            SELECT 1 FROM public.agents
+            WHERE id = agent_id AND user_id = auth.uid()
         )
     );
 
@@ -975,7 +948,7 @@ Backend-Slack境界:
 |-----|-----|
 | 認証 | Supabase Auth + JWT検証 |
 | 認可 | RLSポリシーによるデータ分離 |
-| Slackトークン | AES-256暗号化してDB保存 |
+| Slackトークン | Fernet（AES-128-CBC with HMAC）で暗号化してDB保存 |
 | LLM入力 | ユーザー入力のサニタイズ |
 | CORS | 許可オリジンを限定 |
 
@@ -983,7 +956,7 @@ Backend-Slack境界:
 
 | 項目 | 内容 |
 |-----|-----|
-| アルゴリズム | AES-256-GCM |
+| アルゴリズム | Fernet（AES-128-CBC with HMAC） |
 | 鍵の保存場所 | 環境変数 `SLACK_TOKEN_ENCRYPTION_KEY` |
 | 鍵の生成 | `secrets.token_bytes(32)` で32バイトの暗号学的に安全なランダムキーを生成 |
 | 鍵のローテーション | P1で対応（現行トークンの再暗号化機能） |
