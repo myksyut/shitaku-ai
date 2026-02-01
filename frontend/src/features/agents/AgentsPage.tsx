@@ -2,7 +2,7 @@
  * Agent list page - Dashboard with agent-centric design
  */
 import { useState } from 'react'
-import { AgentAvatar, Button, Card, EmptyState } from '../../components/ui'
+import { AgentAvatar, Button, Card, EmptyState, SlackIcon } from '../../components/ui'
 import { useMeetingNotes } from '../meeting-notes/hooks'
 import { AgentForm } from './AgentForm'
 import { useAgents } from './hooks'
@@ -58,9 +58,12 @@ function AgentCard({ agent, onClick }: AgentCardProps) {
               className="badge"
               style={{
                 fontSize: 'var(--font-size-xs)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
               }}
             >
-              💬 Slack連携中
+              <SlackIcon size={12} /> Slack連携中
             </span>
           )}
         </div>

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from slack_sdk.errors import SlackApiError
+
 from src.domain.entities.agenda import Agenda
 from src.domain.repositories.agenda_repository import AgendaRepository
 from src.domain.repositories.agent_repository import AgentRepository
@@ -34,6 +36,7 @@ class GenerateResult:
     has_slack_messages: bool
     slack_message_count: int
     dictionary_entry_count: int
+    slack_error: str | None = None
 
 
 class GenerateAgendaUseCase:
@@ -70,6 +73,7 @@ class GenerateAgendaUseCase:
 
         # Slackメッセージ取得
         slack_messages = []
+        slack_error: str | None = None
         if agent.slack_channel_id and latest_note:
             try:
                 integrations = await self.slack_repository.get_all(user_id)
@@ -81,7 +85,19 @@ class GenerateAgendaUseCase:
                         channel_id=agent.slack_channel_id,
                         oldest=latest_note.meeting_date,
                     )
+            except SlackApiError as e:
+                error_code = e.response.get("error", "")
+                if error_code == "not_in_channel":
+                    slack_error = (
+                        "アプリがチャンネルに追加されていません。Slackでチャンネルにアプリを招待してください。"
+                    )
+                elif error_code == "ratelimited":
+                    slack_error = "Slack APIのレート制限に達しました。しばらく待ってから再試行してください。"
+                else:
+                    slack_error = f"Slackからメッセージを取得できませんでした: {error_code}"
+                logger.warning("Failed to get Slack messages: %s", e)
             except Exception as e:
+                slack_error = "Slackからメッセージを取得できませんでした"
                 logger.warning("Failed to get Slack messages: %s", e)
 
         # アジェンダ生成（タイムアウト付き）
@@ -118,6 +134,7 @@ class GenerateAgendaUseCase:
             has_slack_messages=len(slack_messages) > 0,
             slack_message_count=len(slack_messages),
             dictionary_entry_count=len(dictionary),
+            slack_error=slack_error,
         )
 
 

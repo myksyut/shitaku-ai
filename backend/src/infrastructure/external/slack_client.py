@@ -47,7 +47,7 @@ class SlackClient:
         self.client = WebClient(token=access_token)
 
     def get_channels(self) -> list[SlackChannel]:
-        """チャンネル一覧を取得する.
+        """チャンネル一覧を取得する（ページネーション対応）.
 
         Returns:
             List of SlackChannel objects.
@@ -56,9 +56,25 @@ class SlackClient:
             SlackApiError: If API call fails.
         """
         try:
-            result = self.client.conversations_list(types="public_channel,private_channel")
-            channels: list[dict[str, str]] = result.get("channels", [])
-            return [SlackChannel(id=c["id"], name=c["name"]) for c in channels]
+            all_channels: list[SlackChannel] = []
+            cursor: str | None = None
+
+            while True:
+                result = self.client.conversations_list(
+                    types="public_channel,private_channel",
+                    limit=200,
+                    cursor=cursor,
+                )
+                channels: list[dict[str, str]] = result.get("channels", [])
+                all_channels.extend(SlackChannel(id=c["id"], name=c["name"]) for c in channels)
+
+                # 次ページのcursorを取得
+                response_metadata: dict[str, str] = result.get("response_metadata", {})
+                cursor = response_metadata.get("next_cursor")
+                if not cursor:
+                    break
+
+            return all_channels
         except SlackApiError as e:
             logger.error("Failed to get channels: %s", e)
             raise

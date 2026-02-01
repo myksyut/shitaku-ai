@@ -3,7 +3,7 @@
  */
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
-import { Button } from './components/ui'
+import { Button, SlackIcon } from './components/ui'
 import { AgendaGeneratePage } from './features/agendas'
 import { AgentDetailPage, AgentsPage } from './features/agents'
 import { AuthPage } from './features/auth'
@@ -130,7 +130,7 @@ function Header({ email, currentPage, onNavigate, onLogout }: HeaderProps) {
           onClick={() => onNavigate('slack-settings')}
           style={{ gap: 'var(--space-2)' }}
         >
-          <span style={{ fontSize: '16px' }}>💬</span>
+          <SlackIcon size={16} />
           Slack連携
         </Button>
         <span
