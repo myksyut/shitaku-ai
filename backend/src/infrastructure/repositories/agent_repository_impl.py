@@ -8,17 +8,22 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from supabase import Client
+
 from src.domain.entities.agent import Agent
 from src.domain.repositories.agent_repository import AgentRepository
-from src.infrastructure.external.supabase_client import get_supabase_client
 
 
 class AgentRepositoryImpl(AgentRepository):
     """エージェントリポジトリのSupabase実装."""
 
-    def __init__(self) -> None:
-        """リポジトリを初期化する."""
-        self._client = get_supabase_client()
+    def __init__(self, client: Client) -> None:
+        """リポジトリを初期化する.
+
+        Args:
+            client: Supabaseクライアントインスタンス.
+        """
+        self._client = client
 
     def get_by_id(self, agent_id: UUID, user_id: UUID) -> Agent | None:
         """IDでエージェントを取得する."""
@@ -82,7 +87,7 @@ class AgentRepositoryImpl(AgentRepository):
             "slack_channel_id": agent.slack_channel_id,
             "updated_at": datetime.now().isoformat(),
         }
-        self._client.table("agents").update(data).eq("id", str(agent.id)).execute()
+        self._client.table("agents").update(data).eq("id", str(agent.id)).eq("user_id", str(agent.user_id)).execute()
         return agent
 
     def delete(self, agent_id: UUID, user_id: UUID) -> bool:

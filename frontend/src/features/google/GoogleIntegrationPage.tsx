@@ -1,6 +1,11 @@
 import { Button, Card } from '../../components/ui'
 import { GoogleIcon } from '../../components/ui/GoogleIcon'
-import { useDeleteGoogleIntegration, useGoogleIntegrations, useStartGoogleOAuth } from './hooks'
+import {
+  useDeleteGoogleIntegration,
+  useGoogleIntegrations,
+  useStartAdditionalScopes,
+  useStartGoogleOAuth,
+} from './hooks'
 import type { GoogleIntegration } from './types'
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -18,14 +23,30 @@ function getScopeLabel(scope: string): string {
   return SCOPE_LABELS[scope] || scope.split('/').pop() || scope
 }
 
+const TRANSCRIPT_SCOPES = [
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/documents.readonly',
+]
+
+function hasTranscriptScopes(grantedScopes: string[]): boolean {
+  return TRANSCRIPT_SCOPES.every((scope) => grantedScopes.includes(scope))
+}
+
 function IntegrationItem({ integration }: { integration: GoogleIntegration }) {
   const deleteIntegration = useDeleteGoogleIntegration()
+  const startAdditionalScopes = useStartAdditionalScopes()
 
   const handleDelete = () => {
     if (window.confirm(`${integration.email}との連携を解除しますか？`)) {
       deleteIntegration.mutate(integration.id)
     }
   }
+
+  const handleRequestAdditionalScopes = () => {
+    startAdditionalScopes.mutate(integration.id)
+  }
+
+  const needsTranscriptScopes = !hasTranscriptScopes(integration.granted_scopes)
 
   return (
     <Card style={{ marginBottom: 'var(--space-4)' }}>
@@ -119,6 +140,60 @@ function IntegrationItem({ integration }: { integration: GoogleIntegration }) {
           </span>
         )}
       </div>
+
+      {needsTranscriptScopes && (
+        <div
+          style={{
+            marginTop: 'var(--space-4)',
+            padding: 'var(--space-3)',
+            background: 'var(--color-cream-100)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+          }}
+        >
+          <div>
+            <p
+              style={{
+                fontSize: 'var(--font-size-sm)',
+                fontWeight: 600,
+                color: 'var(--color-warm-gray-700)',
+                marginBottom: 'var(--space-1)',
+              }}
+            >
+              トランスクリプト機能を有効にする
+            </p>
+            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-warm-gray-500)' }}>
+              Google Drive・ドキュメントへのアクセス許可が必要です
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleRequestAdditionalScopes}
+            isLoading={startAdditionalScopes.isPending}
+          >
+            {startAdditionalScopes.isPending ? '処理中...' : '権限を追加'}
+          </Button>
+        </div>
+      )}
+
+      {startAdditionalScopes.isError && (
+        <div
+          style={{
+            marginTop: 'var(--space-3)',
+            padding: 'var(--space-3)',
+            background: 'var(--color-error-50)',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--color-error-600)',
+            fontSize: 'var(--font-size-sm)',
+          }}
+        >
+          追加権限の取得に失敗しました。再度お試しください。
+        </div>
+      )}
     </Card>
   )
 }

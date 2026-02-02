@@ -85,11 +85,23 @@ frontend-lint:
 	cd frontend && npm run check
 
 # データベースマイグレーション（Supabase CLI）
+# ⚠️ 注意: migrate-reset は全データを削除します。本番では絶対に使用しないこと！
+
 migrate:
 	supabase db push
 
-migrate-local:
-	supabase db reset
+migrate-up:
+	supabase migration up
+
+migrate-reset:
+	@echo "⚠️  警告: このコマンドは全データを削除します！"
+	@echo "本番環境では絶対に実行しないでください。"
+	@read -p "本当に実行しますか？ (yes/no): " confirm; \
+	if [ "$$confirm" = "yes" ]; then \
+		supabase db reset; \
+	else \
+		echo "キャンセルしました"; \
+	fi
 
 migrate-new:
 	@read -p "Migration name: " name; \
@@ -124,8 +136,9 @@ help:
 	@echo "  make format         - Format"
 	@echo ""
 	@echo "マイグレーション:"
-	@echo "  make migrate        - 本番にマイグレーション適用"
-	@echo "  make migrate-local  - ローカルDBリセット＆マイグレーション"
+	@echo "  make migrate        - 本番にマイグレーション適用（差分のみ）"
+	@echo "  make migrate-up     - ローカルに差分マイグレーション適用（推奨）"
+	@echo "  make migrate-reset  - ローカルDBリセット（⚠️ 全データ削除）"
 	@echo "  make migrate-new    - 新規マイグレーション作成"
 	@echo "  make migrate-status - マイグレーション状態確認"
 	@echo ""

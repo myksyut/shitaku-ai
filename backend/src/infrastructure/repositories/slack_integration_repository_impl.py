@@ -8,19 +8,24 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from supabase import Client
+
 from src.domain.entities.slack_integration import SlackIntegration, SlackMessage
 from src.domain.repositories.slack_integration_repository import (
     SlackIntegrationRepository,
 )
-from src.infrastructure.external.supabase_client import get_supabase_client
 
 
 class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
     """Slack連携リポジトリのSupabase実装."""
 
-    def __init__(self) -> None:
-        """リポジトリを初期化する."""
-        self._client = get_supabase_client()
+    def __init__(self, client: Client) -> None:
+        """リポジトリを初期化する.
+
+        Args:
+            client: Supabaseクライアントインスタンス.
+        """
+        self._client = client
 
     async def create(self, integration: SlackIntegration) -> SlackIntegration:
         """Slack連携を作成する."""
@@ -107,7 +112,13 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
             "encrypted_access_token": integration.encrypted_access_token,
             "updated_at": datetime.now().isoformat(),
         }
-        self._client.table("slack_integrations").update(data).eq("id", str(integration.id)).execute()
+        (
+            self._client.table("slack_integrations")
+            .update(data)
+            .eq("id", str(integration.id))
+            .eq("user_id", str(integration.user_id))
+            .execute()
+        )
         return integration
 
     async def delete(self, integration_id: UUID, user_id: UUID) -> bool:

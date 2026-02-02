@@ -1,18 +1,17 @@
 /**
  * Main App component with warm, agent-centric design
+ * Using react-router-dom for navigation
  */
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
+import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import { Button, SlackIcon } from './components/ui'
 import { GoogleIcon } from './components/ui/GoogleIcon'
-import { AgendaGeneratePage } from './features/agendas'
 import { AgentDetailPage, AgentsPage } from './features/agents'
 import { AuthPage } from './features/auth'
-import { GoogleIntegrationPage } from './features/google'
+import { GoogleIntegrationPage, TranscriptViewer } from './features/google'
 import { SlackSettingsPage } from './features/slack'
 import { supabase } from './lib/supabase'
-
-type PageView = 'agents' | 'agent-detail' | 'slack-settings' | 'google-settings'
 
 function LoadingScreen() {
   return (
@@ -52,12 +51,16 @@ function LoadingScreen() {
 
 interface HeaderProps {
   email: string
-  currentPage: PageView
-  onNavigate: (page: PageView) => void
   onLogout: () => void
 }
 
-function Header({ email, currentPage, onNavigate, onLogout }: HeaderProps) {
+function Header({ email, onLogout }: HeaderProps) {
+  const location = useLocation()
+  const currentPath = location.pathname
+
+  const isSlackSettings = currentPath === '/settings/slack'
+  const isGoogleSettings = currentPath.startsWith('/settings/google')
+
   return (
     <header
       className="glass"
@@ -73,17 +76,13 @@ function Header({ email, currentPage, onNavigate, onLogout }: HeaderProps) {
       }}
     >
       {/* Logo */}
-      <button
-        type="button"
-        onClick={() => onNavigate('agents')}
+      <Link
+        to="/"
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--space-3)',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: 0,
+          textDecoration: 'none',
         }}
       >
         <img
@@ -105,7 +104,7 @@ function Header({ email, currentPage, onNavigate, onLogout }: HeaderProps) {
         >
           Shitaku.ai
         </span>
-      </button>
+      </Link>
 
       {/* Navigation & User Menu */}
       <div
@@ -115,22 +114,18 @@ function Header({ email, currentPage, onNavigate, onLogout }: HeaderProps) {
           gap: 'var(--space-2)',
         }}
       >
-        <Button
-          variant={currentPage === 'slack-settings' ? 'secondary' : 'ghost'}
-          onClick={() => onNavigate('slack-settings')}
-          style={{ gap: 'var(--space-2)' }}
-        >
-          <SlackIcon size={16} />
-          Slack連携
-        </Button>
-        <Button
-          variant={currentPage === 'google-settings' ? 'secondary' : 'ghost'}
-          onClick={() => onNavigate('google-settings')}
-          style={{ gap: 'var(--space-2)' }}
-        >
-          <GoogleIcon size={16} />
-          Google連携
-        </Button>
+        <Link to="/settings/slack" style={{ textDecoration: 'none' }}>
+          <Button variant={isSlackSettings ? 'secondary' : 'ghost'} style={{ gap: 'var(--space-2)' }}>
+            <SlackIcon size={16} />
+            Slack連携
+          </Button>
+        </Link>
+        <Link to="/settings/google" style={{ textDecoration: 'none' }}>
+          <Button variant={isGoogleSettings ? 'secondary' : 'ghost'} style={{ gap: 'var(--space-2)' }}>
+            <GoogleIcon size={16} />
+            Google連携
+          </Button>
+        </Link>
         <span
           style={{
             fontSize: 'var(--font-size-sm)',
@@ -151,9 +146,6 @@ function Header({ email, currentPage, onNavigate, onLogout }: HeaderProps) {
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [currentPage, setCurrentPage] = useState<PageView>('agents')
-  const [viewingAgentId, setViewingAgentId] = useState<string | null>(null)
-  const [generatingAgendaForAgentId, setGeneratingAgendaForAgentId] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -169,23 +161,6 @@ function App() {
 
     return () => subscription.unsubscribe()
   }, [])
-
-  const handleViewAgent = (agentId: string) => {
-    setViewingAgentId(agentId)
-    setCurrentPage('agent-detail')
-  }
-
-  const handleBackToAgents = () => {
-    setViewingAgentId(null)
-    setCurrentPage('agents')
-  }
-
-  const handleNavigate = (page: PageView) => {
-    if (page === 'agents') {
-      setViewingAgentId(null)
-    }
-    setCurrentPage(page)
-  }
 
   if (loading) {
     return <LoadingScreen />
@@ -206,12 +181,7 @@ function App() {
         `,
       }}
     >
-      <Header
-        email={session.user.email ?? ''}
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        onLogout={() => supabase.auth.signOut()}
-      />
+      <Header email={session.user.email ?? ''} onLogout={() => supabase.auth.signOut()} />
 
       {/* Main Content */}
       <main
@@ -221,22 +191,14 @@ function App() {
           padding: 'var(--space-8) var(--space-6)',
         }}
       >
-        {currentPage === 'agents' && <AgentsPage onViewAgent={handleViewAgent} />}
-        {currentPage === 'agent-detail' && viewingAgentId && (
-          <AgentDetailPage
-            agentId={viewingAgentId}
-            onBack={handleBackToAgents}
-            onGenerateAgenda={() => setGeneratingAgendaForAgentId(viewingAgentId)}
-          />
-        )}
-        {currentPage === 'slack-settings' && <SlackSettingsPage />}
-        {currentPage === 'google-settings' && <GoogleIntegrationPage />}
+        <Routes>
+          <Route path="/" element={<AgentsPage />} />
+          <Route path="/agents/:agentId" element={<AgentDetailPage />} />
+          <Route path="/settings/slack" element={<SlackSettingsPage />} />
+          <Route path="/settings/google" element={<GoogleIntegrationPage />} />
+          <Route path="/meetings/:meetingId/transcripts" element={<TranscriptViewer />} />
+        </Routes>
       </main>
-
-      {/* Agenda Generation Modal */}
-      {generatingAgendaForAgentId && (
-        <AgendaGeneratePage agentId={generatingAgendaForAgentId} onClose={() => setGeneratingAgendaForAgentId(null)} />
-      )}
     </div>
   )
 }

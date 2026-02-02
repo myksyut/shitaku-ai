@@ -101,6 +101,159 @@ AI実行精度最大化のための中核ルール。全ての指示はこのフ
 ### 一時ファイル作成ルール
 作業中ファイルは`tmp/`ディレクトリ使用。完了時削除。
 
+## 🔐 RLS（Row Level Security）実装方針
+
+### 基本原則: Defense in Depth（多層防御）
+
+```
+認可は必ず2層で実施する:
+1. アプリケーション層: user_idフィルタ（明示的）
+2. データベース層: RLSポリシー（暗黙的・最終防衛線）
+```
+
+**理由**: 片方に実装漏れがあっても、もう片方で防御できる
+
+---
+
+### 必須実装パターン
+
+#### 1. Supabaseクライアントの使い分け
+
+| 用途 | クライアント | RLS | 使用場面 |
+|------|-------------|-----|---------|
+| 通常API | `get_user_supabase_client` | ✅ 適用 | 認証済みユーザーの操作 |
+| OAuth callback | `get_supabase_client` | ❌ バイパス | 外部サービスからのコールバック |
+| バッチ処理 | `get_supabase_client` | ❌ バイパス | 管理タスク、マイグレーション |
+
+```python
+# ✅ 正しい: 認証済みAPIではユーザーコンテキスト付きクライアント
+def get_repository(
+    client: Client = Depends(get_user_supabase_client),
+) -> AgentRepositoryImpl:
+    return AgentRepositoryImpl(client)
+
+# ✅ 正しい: OAuth callbackはservice_roleクライアント
+def get_callback_repository() -> SlackIntegrationRepositoryImpl:
+    client = get_supabase_client()  # service_role
+    return SlackIntegrationRepositoryImpl(client)
+```
+
+#### 2. 全CRUD操作でのuser_idフィルタ（必須）
+
+```python
+# ✅ 正しい: 全操作でuser_idフィルタを明示
+def get_by_id(self, id: UUID, user_id: UUID):
+    return self.client.table("items").select("*").eq("id", str(id)).eq("user_id", str(user_id)).execute()
+
+def update(self, item: Item):
+    return self.client.table("items").update(data).eq("id", str(item.id)).eq("user_id", str(item.user_id)).execute()
+
+def delete(self, id: UUID, user_id: UUID):
+    return self.client.table("items").delete().eq("id", str(id)).eq("user_id", str(user_id)).execute()
+```
+
+#### 3. リポジトリのDIパターン
+
+```python
+# ✅ 正しい: コンストラクタでClientを受け取る
+class MyRepositoryImpl:
+    def __init__(self, client: Client) -> None:
+        self._client = client
+
+# ❌ 禁止: 内部でグローバル関数を呼び出す
+class MyRepositoryImpl:
+    def __init__(self) -> None:
+        self._client = get_supabase_client()  # RLSバイパスのリスク
+```
+
+---
+
+### 禁止パターン（アンチパターン）
+
+#### ❌ 1. UPDATE/DELETEでuser_idフィルタなし
+
+```python
+# ❌ 危険: 他ユーザーのデータを更新可能
+self.client.table("items").update(data).eq("id", str(id)).execute()
+
+# ✅ 安全: user_idでフィルタ
+self.client.table("items").update(data).eq("id", str(id)).eq("user_id", str(user_id)).execute()
+```
+
+#### ❌ 2. service_roleクライアントを認証済みAPIで使用
+
+```python
+# ❌ 危険: RLSがバイパスされる
+def get_repository() -> MyRepositoryImpl:
+    return MyRepositoryImpl(get_supabase_client())  # service_role
+
+# ✅ 安全: ユーザーコンテキスト付きクライアント
+def get_repository(client: Client = Depends(get_user_supabase_client)) -> MyRepositoryImpl:
+    return MyRepositoryImpl(client)
+```
+
+#### ❌ 3. エンティティのuser_idを信頼する
+
+```python
+# ❌ 危険: クライアントから渡されたuser_idを信頼
+def create(self, item: Item):
+    # item.user_idが改ざんされている可能性
+    self.client.table("items").insert({"user_id": str(item.user_id), ...}).execute()
+
+# ✅ 安全: 認証済みuser_idを使用
+def create(self, item: Item, authenticated_user_id: UUID):
+    self.client.table("items").insert({"user_id": str(authenticated_user_id), ...}).execute()
+```
+
+---
+
+### レビューチェックリスト
+
+新規リポジトリ/エンドポイント作成時に必ず確認:
+
+- [ ] リポジトリはコンストラクタで`Client`を受け取っているか
+- [ ] エンドポイントは`get_user_supabase_client`を使用しているか
+- [ ] SELECT操作に`user_id`フィルタがあるか
+- [ ] UPDATE操作に`user_id`フィルタがあるか
+- [ ] DELETE操作に`user_id`フィルタがあるか
+- [ ] INSERT操作で認証済み`user_id`を使用しているか
+- [ ] OAuth callbackは`get_callback_repository`を使用しているか
+
+---
+
+### テスト要件
+
+#### 必須テストケース
+
+```python
+# 1. 他ユーザーのデータにアクセスできないこと
+async def test_cannot_access_other_user_data():
+    # user_aのデータを作成
+    # user_bでアクセス試行
+    # 結果が空またはエラーであることを確認
+
+# 2. 他ユーザーのデータを更新できないこと
+async def test_cannot_update_other_user_data():
+    # user_aのデータを作成
+    # user_bで更新試行
+    # 影響行数が0であることを確認
+
+# 3. 他ユーザーのデータを削除できないこと
+async def test_cannot_delete_other_user_data():
+    # user_aのデータを作成
+    # user_bで削除試行
+    # データが残っていることを確認
+```
+
+---
+
+### 関連ドキュメント
+
+- [ADR-0004: RLSベースの認可アーキテクチャ](docs/adr/ADR-0004-rls-based-authorization.md)
+- [Design Doc: RLS認可アーキテクチャ](docs/design/rls-authorization-architecture.md)
+
+---
+
 ## 技術スタック
 
 ### バックエンド（backend/）
@@ -130,10 +283,13 @@ AI実行精度最大化のための中核ルール。全ての指示はこのフ
 cd backend
 uv run ruff check .       # Lint
 uv run ruff format .      # Format
-uv run mypy .             # 型チェック
+uv run mypy .             # 型チェック（静的解析）
+uv run ty check .         # 型チェック（Ruff Type Checker - CI必須）
 uv run pytest             # テスト
 uv run pytest --cov       # カバレッジ
 ```
+
+**注意**: CIでは`ty`を使用するため、`mypy`だけでなく`ty check`も必ず実行すること。
 
 ### フロントエンド（frontend/）
 ```bash
@@ -155,8 +311,9 @@ make supabase-status  # Supabaseステータス
 
 ### データベースマイグレーション (Supabase CLI)
 ```bash
-make migrate          # 本番にマイグレーション適用
-make migrate-local    # ローカルDBリセット＆適用
+make migrate          # 本番にマイグレーション適用（差分のみ）
+make migrate-up       # ローカルに差分マイグレーション適用（推奨）
+make migrate-reset    # ローカルDBリセット（⚠️ 全データ削除）
 make migrate-new      # 新規マイグレーション作成
 make migrate-status   # マイグレーション状態確認
 ```
@@ -164,6 +321,22 @@ make migrate-status   # マイグレーション状態確認
 マイグレーションファイルは `supabase/migrations/` に配置:
 - ローカル: `supabase start` で自動適用
 - 本番: `supabase db push` で適用
+
+### 🚨 マイグレーション実行ルール（必須）
+
+**通常のマイグレーション適用時:**
+- ✅ `make migrate-up` を使用（差分のみ適用、データ保持）
+- ❌ `make migrate-reset` は使用禁止（全データ削除される）
+
+**migrate-resetを使用してよい場合（限定的）:**
+- 初期セットアップ時
+- スキーマを一から作り直す必要がある時
+- ユーザーから明示的に指示された時
+
+**本番環境での禁止事項:**
+- ❌ `supabase db reset` の実行は絶対禁止
+- ❌ `make migrate-reset` の実行は絶対禁止
+- ✅ `make migrate`（= `supabase db push`）のみ使用可
 
 ### Supabase MCP（補助ツール）
 - `mcp__supabase__list_tables` - テーブル一覧

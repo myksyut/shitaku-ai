@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
+from supabase import Client
 
 from src.application.use_cases.google_auth_use_cases import (
     DeleteGoogleIntegrationUseCase,
@@ -17,7 +18,10 @@ from src.infrastructure.external.supabase_client import get_supabase_client
 from src.infrastructure.repositories.google_integration_repository_impl import (
     GoogleIntegrationRepositoryImpl,
 )
-from src.presentation.api.v1.dependencies import get_current_user_id
+from src.presentation.api.v1.dependencies import (
+    get_current_user_id,
+    get_user_supabase_client,
+)
 from src.presentation.schemas.google import (
     GoogleIntegrationResponse,
     GoogleOAuthStartResponse,
@@ -26,15 +30,25 @@ from src.presentation.schemas.google import (
 router = APIRouter(prefix="/google", tags=["google"])
 
 
-def get_repository() -> GoogleIntegrationRepositoryImpl:
-    """Get Google integration repository instance."""
+def get_repository(
+    client: Client = Depends(get_user_supabase_client),
+) -> GoogleIntegrationRepositoryImpl:
+    """Get Google integration repository instance with user context."""
+    return GoogleIntegrationRepositoryImpl(client)
+
+
+def get_callback_repository() -> GoogleIntegrationRepositoryImpl:
+    """Get repository for OAuth callback (uses service role, no user context).
+
+    OAuth callback is called by Google, not authenticated user.
+    """
     client = get_supabase_client()
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database service unavailable",
         )
-    return GoogleIntegrationRepositoryImpl()
+    return GoogleIntegrationRepositoryImpl(client)
 
 
 @router.get("/auth", response_model=GoogleOAuthStartResponse)
@@ -62,7 +76,7 @@ async def google_oauth_callback(
     code: str = Query(...),
     state: str = Query(...),
     error: str | None = Query(None),
-    repository: GoogleIntegrationRepositoryImpl = Depends(get_repository),
+    repository: GoogleIntegrationRepositoryImpl = Depends(get_callback_repository),
 ) -> RedirectResponse:
     """Google OAuthコールバックを処理する.
 

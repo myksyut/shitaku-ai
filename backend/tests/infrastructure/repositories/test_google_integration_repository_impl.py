@@ -1,7 +1,7 @@
 """GoogleIntegrationRepositoryImpl tests with mocked Supabase client."""
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -23,11 +23,7 @@ class TestGoogleIntegrationRepositoryImpl:
     @pytest.fixture
     def repository(self, mock_supabase_client: MagicMock) -> GoogleIntegrationRepositoryImpl:
         """リポジトリインスタンスを返す"""
-        with patch(
-            "src.infrastructure.repositories.google_integration_repository_impl.get_supabase_client",
-            return_value=mock_supabase_client,
-        ):
-            return GoogleIntegrationRepositoryImpl()
+        return GoogleIntegrationRepositoryImpl(mock_supabase_client)
 
     @pytest.fixture
     def sample_integration(self) -> GoogleIntegration:
@@ -73,12 +69,8 @@ class TestGoogleIntegrationRepositoryImpl:
         sample_integration: GoogleIntegration,
     ) -> None:
         """Supabaseクライアントがnullの場合、integrationをそのまま返す"""
-        # Arrange
-        with patch(
-            "src.infrastructure.repositories.google_integration_repository_impl.get_supabase_client",
-            return_value=None,
-        ):
-            repository = GoogleIntegrationRepositoryImpl()
+        # Arrange - client is None (型無視でテスト)
+        repository = GoogleIntegrationRepositoryImpl(None)  # type: ignore[arg-type]
 
         # Act
         result = await repository.create(sample_integration)
@@ -312,13 +304,14 @@ class TestToEntity:
     """_to_entityメソッドのテスト"""
 
     @pytest.fixture
-    def repository(self) -> GoogleIntegrationRepositoryImpl:
+    def mock_supabase_client(self) -> MagicMock:
+        """モック化されたSupabaseクライアントを返す"""
+        return MagicMock()
+
+    @pytest.fixture
+    def repository(self, mock_supabase_client: MagicMock) -> GoogleIntegrationRepositoryImpl:
         """リポジトリインスタンスを返す"""
-        with patch(
-            "src.infrastructure.repositories.google_integration_repository_impl.get_supabase_client",
-            return_value=None,
-        ):
-            return GoogleIntegrationRepositoryImpl()
+        return GoogleIntegrationRepositoryImpl(mock_supabase_client)
 
     def test_to_entity_with_all_fields(self, repository: GoogleIntegrationRepositoryImpl) -> None:
         """全フィールドが正しく変換される"""
