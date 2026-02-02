@@ -28,3 +28,46 @@ class AdditionalScopesRequest(BaseModel):
     """追加スコープリクエスト."""
 
     scopes: list[str] | None = None
+
+
+class AttendeeResponse(BaseModel):
+    """参加者レスポンス."""
+
+    email: str
+    name: str | None
+
+
+class RecurringMeetingResponse(BaseModel):
+    """定例MTGレスポンス."""
+
+    id: UUID
+    google_event_id: str
+    title: str
+    rrule: str
+    frequency: str
+    attendees: list[AttendeeResponse]
+    next_occurrence: datetime
+    agent_id: UUID | None
+    created_at: datetime
+    updated_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class LinkRecurringMeetingRequest(BaseModel):
+    """定例MTG紐付けリクエスト."""
+
+    recurring_meeting_id: UUID
+
+
+class LinkRecurringMeetingResponse(BaseModel):
+    """定例MTG紐付けレスポンス."""
+
+    message: str
+    recurring_meeting: RecurringMeetingResponse
+
+
+class UnlinkRecurringMeetingResponse(BaseModel):
+    """定例MTG紐付け解除レスポンス."""
+
+    message: str

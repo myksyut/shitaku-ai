@@ -1,8 +1,35 @@
 export { GoogleIntegrationPage } from './GoogleIntegrationPage'
 export {
   googleKeys,
+  useAgentRecurringMeetings,
   useDeleteGoogleIntegration,
+  useDriveScopes,
   useGoogleIntegrations,
+  useLinkRecurringMeeting,
+  useLinkTranscript,
+  useRecurringMeetings,
+  useStartAdditionalScopes,
   useStartGoogleOAuth,
+  useSyncRecurringMeetings,
+  useSyncTranscripts,
+  useTranscripts,
+  useUnlinkedMeetings,
+  useUnlinkRecurringMeeting,
 } from './hooks'
-export type { GoogleIntegration, GoogleOAuthStartResponse } from './types'
+export { TranscriptViewer } from './TranscriptViewer'
+export type {
+  AgentRecurringMeetingsResponse,
+  Attendee,
+  DriveScopesResponse,
+  GoogleIntegration,
+  GoogleOAuthStartResponse,
+  LinkRecurringMeetingRequest,
+  LinkRecurringMeetingResponse,
+  MeetingFrequency,
+  MeetingTranscript,
+  RecurringMeeting,
+  TranscriptEntry,
+  TranscriptStructuredData,
+  TranscriptsResponse,
+  UnlinkRecurringMeetingResponse,
+} from './types'

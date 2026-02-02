@@ -2,6 +2,7 @@
  * Agent list page - Dashboard with agent-centric design
  */
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AgentAvatar, Button, Card, EmptyState, SlackIcon } from '../../components/ui'
 import { useMeetingNotes } from '../meeting-notes/hooks'
 import { AgentForm } from './AgentForm'
@@ -105,14 +106,15 @@ function AgentCard({ agent, onClick }: AgentCardProps) {
   )
 }
 
-interface AgentsPageProps {
-  onViewAgent: (agentId: string) => void
-}
-
-export function AgentsPage({ onViewAgent }: AgentsPageProps) {
+export function AgentsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false)
+  const navigate = useNavigate()
 
   const { data: agents, isLoading, error } = useAgents()
+
+  const handleViewAgent = (agentId: string) => {
+    navigate(`/agents/${agentId}`)
+  }
 
   const handleCreate = () => {
     setIsFormOpen(true)
@@ -201,7 +203,7 @@ export function AgentsPage({ onViewAgent }: AgentsPageProps) {
               className={`stagger-${Math.min(index + 1, 5)}`}
               style={{ opacity: 0, animation: 'fadeIn 0.4s ease-out forwards' }}
             >
-              <AgentCard agent={agent} onClick={() => onViewAgent(agent.id)} />
+              <AgentCard agent={agent} onClick={() => handleViewAgent(agent.id)} />
             </div>
           ))}
         </div>

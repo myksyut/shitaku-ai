@@ -2,14 +2,18 @@
  * Agent detail page - Shows agent info, meeting notes, and Slack integration
  */
 import { useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatar, Button, Card, EmptyState, Modal, SlackIcon } from '../../components/ui'
+import { AgendaGeneratePage } from '../agendas'
 import { DictionarySection } from '../dictionary/DictionarySection'
+import { useAgentRecurringMeetings, useUnlinkRecurringMeeting } from '../google/hooks'
 // Import meeting notes components
 import { useDeleteMeetingNote, useMeetingNotes, useUploadMeetingNote } from '../meeting-notes/hooks'
 import type { MeetingNote } from '../meeting-notes/types'
 import { useSlackChannels, useSlackIntegrations } from '../slack/hooks'
 import { AgentForm } from './AgentForm'
 import { useAgent, useDeleteAgent, useUpdateAgent } from './hooks'
+import { RecurringMeetingSelector } from './RecurringMeetingSelector'
 import type { Agent } from './types'
 
 interface MeetingNoteCardProps {
@@ -440,27 +444,36 @@ function SlackChannelSelector({ agent, onUpdate, isUpdating }: SlackChannelSelec
   )
 }
 
-interface AgentDetailPageProps {
-  agentId: string
-  onBack: () => void
-  onGenerateAgenda: () => void
-}
-
-export function AgentDetailPage({ agentId, onBack, onGenerateAgenda }: AgentDetailPageProps) {
+export function AgentDetailPage() {
+  const { agentId } = useParams<{ agentId: string }>()
+  const navigate = useNavigate()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [selectedNote, setSelectedNote] = useState<MeetingNote | null>(null)
+  const [isAgendaModalOpen, setIsAgendaModalOpen] = useState(false)
+  const [isMeetingSelectorOpen, setIsMeetingSelectorOpen] = useState(false)
 
-  const { data: agent, isLoading, error } = useAgent(agentId)
-  const { data: notes, isLoading: notesLoading } = useMeetingNotes(agentId)
+  const { data: agent, isLoading, error } = useAgent(agentId ?? '')
+  const { data: recurringMeetings, isLoading: meetingsLoading } = useAgentRecurringMeetings(agentId ?? null)
+  const unlinkMeetingMutation = useUnlinkRecurringMeeting()
+
+  const handleBack = () => {
+    navigate('/')
+  }
+
+  const handleGenerateAgenda = () => {
+    setIsAgendaModalOpen(true)
+  }
+  const { data: notes, isLoading: notesLoading } = useMeetingNotes(agentId ?? '')
   const deleteMutation = useDeleteAgent()
   const deleteNoteMutation = useDeleteMeetingNote()
   const updateMutation = useUpdateAgent()
 
   const handleDelete = async () => {
+    if (!agentId) return
     if (window.confirm('このエージェントを削除しますか？関連する議事録・アジェンダも削除されます。')) {
       await deleteMutation.mutateAsync(agentId)
-      onBack()
+      handleBack()
     }
   }
 
@@ -471,10 +484,22 @@ export function AgentDetailPage({ agentId, onBack, onGenerateAgenda }: AgentDeta
   }
 
   const handleSlackChannelUpdate = async (channelId: string | null) => {
+    if (!agentId) return
     await updateMutation.mutateAsync({
       id: agentId,
       data: { slack_channel_id: channelId },
     })
+  }
+
+  const handleUnlinkMeeting = async (meetingId: string) => {
+    if (!agentId) return
+    if (window.confirm('定例MTGの紐付けを解除しますか？')) {
+      await unlinkMeetingMutation.mutateAsync({ agentId, meetingId })
+    }
+  }
+
+  if (!agentId) {
+    return <div className="alert alert-error">エージェントIDが指定されていません</div>
   }
 
   if (isLoading) {
@@ -498,7 +523,7 @@ export function AgentDetailPage({ agentId, onBack, onGenerateAgenda }: AgentDeta
   if (error || !agent) {
     return (
       <div>
-        <Button variant="ghost" onClick={onBack} style={{ marginBottom: 'var(--space-4)' }}>
+        <Button variant="ghost" onClick={handleBack} style={{ marginBottom: 'var(--space-4)' }}>
           ← 戻る
         </Button>
         <div className="alert alert-error">エージェントが見つかりません</div>
@@ -509,7 +534,7 @@ export function AgentDetailPage({ agentId, onBack, onGenerateAgenda }: AgentDeta
   return (
     <div>
       {/* Back Button */}
-      <Button variant="ghost" onClick={onBack} style={{ marginBottom: 'var(--space-4)' }}>
+      <Button variant="ghost" onClick={handleBack} style={{ marginBottom: 'var(--space-4)' }}>
         ← エージェント一覧に戻る
       </Button>
 
@@ -559,7 +584,7 @@ export function AgentDetailPage({ agentId, onBack, onGenerateAgenda }: AgentDeta
         {/* Main CTA */}
         <Button
           variant="primary"
-          onClick={onGenerateAgenda}
+          onClick={handleGenerateAgenda}
           style={{
             width: '100%',
             marginTop: 'var(--space-6)',
@@ -669,6 +694,90 @@ export function AgentDetailPage({ agentId, onBack, onGenerateAgenda }: AgentDeta
         </div>
       </div>
 
+      {/* Recurring Meeting Section */}
+      <div style={{ marginTop: 'var(--space-6)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 'var(--space-4)',
+          }}
+        >
+          <h2
+            style={{
+              fontSize: 'var(--font-size-lg)',
+              fontWeight: 700,
+              color: 'var(--color-warm-gray-800)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+              margin: 0,
+            }}
+          >
+            <span style={{ fontSize: '20px' }}>📅</span> 定例MTG連携
+          </h2>
+          <Button variant="secondary" onClick={() => setIsMeetingSelectorOpen(true)}>
+            定例を追加
+          </Button>
+        </div>
+        <Card>
+          <p
+            style={{
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--color-warm-gray-600)',
+              marginBottom: 'var(--space-4)',
+            }}
+          >
+            定例MTGを紐付けると、Google Meetの議事録から自動でアジェンダを生成できます
+          </p>
+          {meetingsLoading ? (
+            <div style={{ color: 'var(--color-warm-gray-500)', fontSize: 'var(--font-size-sm)' }}>読み込み中...</div>
+          ) : recurringMeetings && recurringMeetings.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {recurringMeetings.map((meeting) => (
+                <div
+                  key={meeting.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: 'var(--space-3)',
+                    background: 'var(--color-cream-200)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-warm-gray-700)' }}>{meeting.title}</div>
+                    <div
+                      style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-warm-gray-500)', marginTop: '2px' }}
+                    >
+                      {meeting.frequency === 'weekly' && '毎週'}
+                      {meeting.frequency === 'biweekly' && '隔週'}
+                      {meeting.frequency === 'monthly' && '毎月'}
+                      {' • '}
+                      {meeting.attendees.length}名参加
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleUnlinkMeeting(meeting.id)}
+                    disabled={unlinkMeetingMutation.isPending}
+                    style={{ padding: 'var(--space-1) var(--space-2)', fontSize: 'var(--font-size-sm)' }}
+                  >
+                    {unlinkMeetingMutation.isPending ? '解除中...' : '解除'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: 'var(--color-warm-gray-500)', fontSize: 'var(--font-size-sm)' }}>
+              紐付けられた定例MTGはありません
+            </div>
+          )}
+        </Card>
+      </div>
+
       {/* Dictionary Section (full width) */}
       <div style={{ marginTop: 'var(--space-6)' }}>
         <DictionarySection agentId={agentId} />
@@ -678,6 +787,13 @@ export function AgentDetailPage({ agentId, onBack, onGenerateAgenda }: AgentDeta
       {isFormOpen && <AgentForm agent={agent} onClose={() => setIsFormOpen(false)} />}
       <MeetingNoteUploadModal agentId={agentId} isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} />
       <MeetingNoteDetailModal note={selectedNote} onClose={() => setSelectedNote(null)} />
+      {isAgendaModalOpen && <AgendaGeneratePage agentId={agentId} onClose={() => setIsAgendaModalOpen(false)} />}
+      <RecurringMeetingSelector
+        agentId={agentId}
+        isOpen={isMeetingSelectorOpen}
+        onClose={() => setIsMeetingSelectorOpen(false)}
+        excludeMeetingIds={recurringMeetings?.map((m) => m.id) ?? []}
+      />
     </div>
   )
 }
