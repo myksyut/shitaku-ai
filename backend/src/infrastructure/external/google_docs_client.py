@@ -122,7 +122,7 @@ class GoogleDocsClient:
             return ""
 
         text_parts: list[str] = []
-        content = body.get("content", [])
+        content = body.get("content") or []
 
         if not isinstance(content, list):
             return ""
@@ -161,7 +161,7 @@ class GoogleDocsClient:
             return []
 
         text_parts: list[str] = []
-        elements = paragraph.get("elements", [])
+        elements = paragraph.get("elements") or []
         if not isinstance(elements, list):
             return []
 
@@ -182,7 +182,7 @@ class GoogleDocsClient:
             return []
 
         text_parts: list[str] = []
-        table_rows = table.get("tableRows", [])
+        table_rows = table.get("tableRows") or []
         if not isinstance(table_rows, list):
             return []
 
@@ -203,7 +203,7 @@ class GoogleDocsClient:
         for cell in cells:
             if not isinstance(cell, dict):
                 continue
-            cell_content = cell.get("content", [])
+            cell_content = cell.get("content") or []
             if isinstance(cell_content, list):
                 text_parts.extend(
                     self._extract_text_from_element(cell_element)

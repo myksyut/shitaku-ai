@@ -283,10 +283,13 @@ async def test_cannot_delete_other_user_data():
 cd backend
 uv run ruff check .       # Lint
 uv run ruff format .      # Format
-uv run mypy .             # 型チェック
+uv run mypy .             # 型チェック（静的解析）
+uv run ty check .         # 型チェック（Ruff Type Checker - CI必須）
 uv run pytest             # テスト
 uv run pytest --cov       # カバレッジ
 ```
+
+**注意**: CIでは`ty`を使用するため、`mypy`だけでなく`ty check`も必ず実行すること。
 
 ### フロントエンド（frontend/）
 ```bash
