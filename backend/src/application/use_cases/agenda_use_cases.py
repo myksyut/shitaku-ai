@@ -6,16 +6,21 @@ Application layer use cases following clean architecture principles.
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from slack_sdk.errors import SlackApiError
 
 from src.domain.entities.agenda import Agenda
+from src.domain.entities.agent import Agent
+from src.domain.entities.meeting_note import MeetingNote
+from src.domain.entities.meeting_transcript import MeetingTranscript
 from src.domain.repositories.agenda_repository import AgendaRepository
 from src.domain.repositories.agent_repository import AgentRepository
 from src.domain.repositories.dictionary_repository import DictionaryRepository
 from src.domain.repositories.meeting_note_repository import MeetingNoteRepository
+from src.domain.repositories.meeting_transcript_repository import MeetingTranscriptRepository
+from src.domain.repositories.recurring_meeting_repository import RecurringMeetingRepository
 from src.domain.repositories.slack_integration_repository import SlackIntegrationRepository
 from src.infrastructure.external.encryption import decrypt_token
 from src.infrastructure.external.slack_client import SlackClient
@@ -36,6 +41,8 @@ class GenerateResult:
     has_slack_messages: bool
     slack_message_count: int
     dictionary_entry_count: int
+    has_transcripts: bool = False
+    transcript_count: int = 0
     slack_error: str | None = None
 
 
@@ -52,6 +59,8 @@ class GenerateAgendaUseCase:
         dictionary_repository: DictionaryRepository,
         slack_repository: SlackIntegrationRepository,
         generation_service: AgendaGenerationService,
+        recurring_meeting_repository: RecurringMeetingRepository | None = None,
+        meeting_transcript_repository: MeetingTranscriptRepository | None = None,
     ) -> None:
         self.agenda_repository = agenda_repository
         self.agent_repository = agent_repository
@@ -59,6 +68,8 @@ class GenerateAgendaUseCase:
         self.dictionary_repository = dictionary_repository
         self.slack_repository = slack_repository
         self.generation_service = generation_service
+        self.recurring_meeting_repository = recurring_meeting_repository
+        self.meeting_transcript_repository = meeting_transcript_repository
 
     async def execute(self, user_id: UUID, agent_id: UUID) -> GenerateResult:
         """アジェンダを生成する."""
@@ -71,10 +82,17 @@ class GenerateAgendaUseCase:
         latest_note = await self.note_repository.get_latest_by_agent(agent_id, user_id)
         dictionary = await self.dictionary_repository.get_all(user_id)
 
+        # 複数定例からトランスクリプトを収集
+        transcripts = await self._collect_transcripts(agent)
+        logger.info("Collected %d transcripts total", len(transcripts))
+
+        # Slack取得範囲を計算
+        slack_oldest = self._calculate_slack_oldest(agent, transcripts, latest_note)
+
         # Slackメッセージ取得
         slack_messages = []
         slack_error: str | None = None
-        if agent.slack_channel_id and latest_note:
+        if agent.slack_channel_id and slack_oldest:
             try:
                 integrations = await self.slack_repository.get_all(user_id)
                 if integrations:
@@ -83,7 +101,7 @@ class GenerateAgendaUseCase:
                     client = SlackClient(token)
                     slack_messages = client.get_messages(
                         channel_id=agent.slack_channel_id,
-                        oldest=latest_note.meeting_date,
+                        oldest=slack_oldest,
                     )
             except SlackApiError as e:
                 error_code = e.response.get("error", "")
@@ -105,6 +123,7 @@ class GenerateAgendaUseCase:
             latest_note=latest_note,
             slack_messages=slack_messages,
             dictionary=dictionary,
+            transcripts=transcripts,
         )
 
         try:
@@ -134,8 +153,74 @@ class GenerateAgendaUseCase:
             has_slack_messages=len(slack_messages) > 0,
             slack_message_count=len(slack_messages),
             dictionary_entry_count=len(dictionary),
+            has_transcripts=len(transcripts) > 0,
+            transcript_count=len(transcripts),
             slack_error=slack_error,
         )
+
+    async def _collect_transcripts(self, agent: Agent) -> list[MeetingTranscript]:
+        """複数定例からトランスクリプトを収集する.
+
+        Args:
+            agent: エージェントエンティティ
+
+        Returns:
+            収集したトランスクリプトのリスト（日付降順）
+        """
+        if not self.recurring_meeting_repository or not self.meeting_transcript_repository:
+            return []
+
+        recurring_meetings = await self.recurring_meeting_repository.get_list_by_agent_id(agent.id, agent.user_id)
+        logger.info(
+            "Collecting transcripts from %d recurring meetings",
+            len(recurring_meetings),
+        )
+
+        all_transcripts: list[MeetingTranscript] = []
+        for meeting in recurring_meetings:
+            try:
+                transcripts = await self.meeting_transcript_repository.get_by_recurring_meeting(
+                    meeting.id, limit=agent.transcript_count
+                )
+                all_transcripts.extend(transcripts)
+            except Exception as e:
+                logger.warning(
+                    "Failed to collect transcripts for meeting %s: %s",
+                    meeting.id,
+                    e,
+                )
+                continue
+
+        # 日付降順でソート
+        all_transcripts.sort(key=lambda t: t.meeting_date, reverse=True)
+        return all_transcripts
+
+    def _calculate_slack_oldest(
+        self,
+        agent: Agent,
+        transcripts: list[MeetingTranscript],
+        latest_note: MeetingNote | None,
+    ) -> datetime | None:
+        """Slack取得範囲の開始日時を計算する.
+
+        Args:
+            agent: エージェントエンティティ
+            transcripts: 収集したトランスクリプト
+            latest_note: 最新の議事録
+
+        Returns:
+            Slack取得開始日時。取得不要な場合はNone。
+        """
+        # 最新トランスクリプトの日付があればそれを使用
+        if transcripts:
+            return transcripts[0].meeting_date
+
+        # 議事録があればその日付を使用
+        if latest_note:
+            return latest_note.meeting_date
+
+        # なければslack_message_days前から
+        return datetime.now() - timedelta(days=agent.slack_message_days)
 
 
 class GetAgendasUseCase:
