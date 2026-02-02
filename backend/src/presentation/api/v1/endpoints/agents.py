@@ -63,6 +63,8 @@ def _to_response(agent: Agent) -> AgentResponse:
         name=agent.name,
         description=agent.description,
         slack_channel_id=agent.slack_channel_id,
+        transcript_count=agent.transcript_count,
+        slack_message_days=agent.slack_message_days,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
     )
