@@ -107,7 +107,13 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
             "encrypted_access_token": integration.encrypted_access_token,
             "updated_at": datetime.now().isoformat(),
         }
-        self._client.table("slack_integrations").update(data).eq("id", str(integration.id)).execute()
+        (
+            self._client.table("slack_integrations")
+            .update(data)
+            .eq("id", str(integration.id))
+            .eq("user_id", str(integration.user_id))
+            .execute()
+        )
         return integration
 
     async def delete(self, integration_id: UUID, user_id: UUID) -> bool:

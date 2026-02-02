@@ -82,7 +82,7 @@ class AgentRepositoryImpl(AgentRepository):
             "slack_channel_id": agent.slack_channel_id,
             "updated_at": datetime.now().isoformat(),
         }
-        self._client.table("agents").update(data).eq("id", str(agent.id)).execute()
+        self._client.table("agents").update(data).eq("id", str(agent.id)).eq("user_id", str(agent.user_id)).execute()
         return agent
 
     def delete(self, agent_id: UUID, user_id: UUID) -> bool:

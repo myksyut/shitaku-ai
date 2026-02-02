@@ -78,7 +78,13 @@ class DictionaryRepositoryImpl(DictionaryRepository):
             data["agent_id"] = str(entry.agent_id)
         if entry.category is not None:
             data["category"] = entry.category
-        self.client.table("dictionary_entries").update(data).eq("id", str(entry.id)).execute()
+        (
+            self.client.table("dictionary_entries")
+            .update(data)
+            .eq("id", str(entry.id))
+            .eq("user_id", str(entry.user_id))
+            .execute()
+        )
 
         entry.updated_at = datetime.now()
         return entry
