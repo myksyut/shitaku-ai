@@ -290,7 +290,7 @@ class GoogleCalendarClient:
 
             display_name = attendee.get("displayName")
             response_status = attendee.get("responseStatus")
-            is_organizer = attendee.get("organizer", False)
+            is_organizer = attendee.get("organizer")
 
             result.append(
                 CalendarAttendee(
@@ -320,7 +320,7 @@ class GoogleCalendarClient:
             return None
 
         display_name = organizer_data.get("displayName")
-        is_self = organizer_data.get("self", False)
+        is_self = organizer_data.get("self")
 
         return CalendarOrganizer(
             email=email,
