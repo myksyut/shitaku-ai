@@ -30,6 +30,8 @@ class Agent:
     description: str | None = None
     slack_channel_id: str | None = None
     updated_at: datetime | None = None
+    transcript_count: int = 3
+    slack_message_days: int = 7
 
     def update_slack_channel(self, channel_id: str | None) -> None:
         """Slackチャンネルを紐付け/解除する.
@@ -51,4 +53,28 @@ class Agent:
             self.name = name
         if description is not None:
             self.description = description
+        self.updated_at = datetime.now()
+
+    def update_reference_settings(
+        self,
+        transcript_count: int | None = None,
+        slack_message_days: int | None = None,
+    ) -> None:
+        """参照設定を更新する.
+
+        Args:
+            transcript_count: トランスクリプト参照件数（0-10）
+            slack_message_days: Slackメッセージ取得日数（1-30）
+
+        Raises:
+            ValueError: 範囲外の値が指定された場合
+        """
+        if transcript_count is not None:
+            if not 0 <= transcript_count <= 10:
+                raise ValueError("transcript_count must be between 0 and 10")
+            self.transcript_count = transcript_count
+        if slack_message_days is not None:
+            if not 1 <= slack_message_days <= 30:
+                raise ValueError("slack_message_days must be between 1 and 30")
+            self.slack_message_days = slack_message_days
         self.updated_at = datetime.now()
