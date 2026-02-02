@@ -72,6 +72,8 @@ class AgentRepositoryImpl(AgentRepository):
             "description": agent.description,
             "slack_channel_id": agent.slack_channel_id,
             "created_at": agent.created_at.isoformat(),
+            "transcript_count": agent.transcript_count,
+            "slack_message_days": agent.slack_message_days,
         }
         self._client.table("agents").insert(data).execute()
         return agent
@@ -85,6 +87,8 @@ class AgentRepositoryImpl(AgentRepository):
             "name": agent.name,
             "description": agent.description,
             "slack_channel_id": agent.slack_channel_id,
+            "transcript_count": agent.transcript_count,
+            "slack_message_days": agent.slack_message_days,
             "updated_at": datetime.now().isoformat(),
         }
         self._client.table("agents").update(data).eq("id", str(agent.id)).eq("user_id", str(agent.user_id)).execute()
@@ -111,6 +115,10 @@ class AgentRepositoryImpl(AgentRepository):
         created_at_str = data["created_at"]
         updated_at_str = data.get("updated_at")
 
+        # NULL安全な処理: DBからNULLまたはキーがない場合はデフォルト値を使用
+        transcript_count_raw = data.get("transcript_count")
+        slack_message_days_raw = data.get("slack_message_days")
+
         return Agent(
             id=UUID(str(data["id"])),
             user_id=UUID(str(data["user_id"])),
@@ -125,4 +133,6 @@ class AgentRepositoryImpl(AgentRepository):
                 if updated_at_str and isinstance(updated_at_str, str)
                 else None
             ),
+            transcript_count=int(transcript_count_raw) if transcript_count_raw is not None else 3,
+            slack_message_days=int(slack_message_days_raw) if slack_message_days_raw is not None else 7,
         )
