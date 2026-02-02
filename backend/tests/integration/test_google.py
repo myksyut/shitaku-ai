@@ -19,13 +19,14 @@ from fastapi.testclient import TestClient
 
 from src.application.use_cases import google_auth_use_cases
 from src.domain.entities.google_integration import GoogleIntegration
+from src.domain.entities.recurring_meeting import RecurringMeeting
 from src.infrastructure.external.google_oauth_client import (
     GoogleTokenResponse,
     GoogleUserInfo,
 )
 from src.main import app
 from src.presentation.api.v1.dependencies import get_current_user_id
-from src.presentation.api.v1.endpoints.google import get_repository
+from src.presentation.api.v1.endpoints.google import get_meeting_repository, get_repository
 
 # テスト用の固定UUID
 TEST_USER_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -475,3 +476,113 @@ class TestGoogleIntegration:
             assert "access_denied" in location
         finally:
             app.dependency_overrides.pop(get_repository, None)
+
+
+class TestCalendarRecurringMeetings:
+    """Calendar API - 定例MTG取得の統合テスト.
+
+    対象AC:
+    - AC5: 定例MTG一覧表示
+    """
+
+    # AC: "定例MTG一覧がDBから取得・表示される"
+    # ROI: 40/10 = 4.0 | ビジネス価値: 7 | 頻度: 5
+    # 振る舞い: GET要求 → DB検索 → 定例MTGリスト返却
+    # @category: core-functionality
+    # @dependency: RecurringMeetingRepository
+    # @complexity: low
+    #
+    # 検証項目:
+    # - 認証済みユーザーの定例MTGのみが返却される
+    # - 各定例MTGにid, title, frequency, attendees, next_occurrenceが含まれる
+    def test_calendar_recurring_meetings_list(
+        self,
+        authenticated_client: TestClient,
+    ) -> None:
+        """AC5: 定例MTG一覧がDBから取得される."""
+        # Arrange: 定例MTGをモック
+        from datetime import timedelta
+
+        mock_meeting_repo = MagicMock()
+        mock_meetings = [
+            RecurringMeeting(
+                id=uuid4(),
+                user_id=TEST_USER_ID,
+                google_event_id="event_weekly_1",
+                title="Weekly Standup",
+                rrule="RRULE:FREQ=WEEKLY;BYDAY=MO",
+                frequency="weekly",
+                attendees=["user1@example.com", "user2@example.com"],
+                next_occurrence=datetime.now() + timedelta(days=7),
+                created_at=datetime.now(),
+            ),
+            RecurringMeeting(
+                id=uuid4(),
+                user_id=TEST_USER_ID,
+                google_event_id="event_monthly_1",
+                title="Monthly Review",
+                rrule="RRULE:FREQ=MONTHLY;BYMONTHDAY=1",
+                frequency="monthly",
+                attendees=["manager@example.com"],
+                next_occurrence=datetime.now() + timedelta(days=30),
+                created_at=datetime.now(),
+            ),
+        ]
+        mock_meeting_repo.get_all = MagicMock(return_value=mock_meetings)
+        app.dependency_overrides[get_meeting_repository] = lambda: mock_meeting_repo
+
+        try:
+            # Act: GET /api/v1/google/calendar/recurring
+            response = authenticated_client.get("/api/v1/google/calendar/recurring")
+
+            # Assert: 200レスポンス
+            assert response.status_code == 200
+
+            # Assert: 定例MTG一覧が返される
+            data = response.json()
+            assert "meetings" in data
+            assert len(data["meetings"]) == 2
+
+            # Assert: 各定例MTGに必要なフィールドが含まれる
+            meeting1 = data["meetings"][0]
+            assert "id" in meeting1
+            assert meeting1["title"] == "Weekly Standup"
+            assert meeting1["frequency"] == "weekly"
+            assert len(meeting1["attendees"]) == 2
+            assert "next_occurrence" in meeting1
+
+            meeting2 = data["meetings"][1]
+            assert meeting2["title"] == "Monthly Review"
+            assert meeting2["frequency"] == "monthly"
+
+            # Assert: リポジトリがユーザーIDで呼び出されている
+            mock_meeting_repo.get_all.assert_called_once_with(TEST_USER_ID)
+        finally:
+            app.dependency_overrides.pop(get_meeting_repository, None)
+
+    # 検証項目:
+    # - 定例MTGがない場合は空配列が返却される
+    def test_calendar_recurring_meetings_returns_empty_when_no_meetings(
+        self,
+        authenticated_client: TestClient,
+    ) -> None:
+        """定例MTGがない場合は空リストが返される."""
+        # Arrange: 空のリポジトリをモック
+        mock_meeting_repo = MagicMock()
+        mock_meeting_repo.get_all = MagicMock(return_value=[])
+        app.dependency_overrides[get_meeting_repository] = lambda: mock_meeting_repo
+
+        try:
+            # Act: GET /api/v1/google/calendar/recurring
+            response = authenticated_client.get("/api/v1/google/calendar/recurring")
+
+            # Assert: 200レスポンスで空のmeetingsリスト
+            assert response.status_code == 200
+            data = response.json()
+            assert "meetings" in data
+            assert data["meetings"] == []
+
+            # Assert: リポジトリがユーザーIDで呼び出されている
+            mock_meeting_repo.get_all.assert_called_once_with(TEST_USER_ID)
+        finally:
+            app.dependency_overrides.pop(get_meeting_repository, None)

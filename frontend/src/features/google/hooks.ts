@@ -1,9 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { deleteGoogleIntegration, getGoogleIntegrations, startGoogleOAuth } from './api'
+import {
+  deleteGoogleIntegration,
+  getGoogleIntegrations,
+  getRecurringMeetings,
+  startGoogleOAuth,
+  syncRecurringMeetings,
+} from './api'
 
 export const googleKeys = {
   all: ['google'] as const,
   integrations: () => [...googleKeys.all, 'integrations'] as const,
+  recurringMeetings: () => [...googleKeys.all, 'recurringMeetings'] as const,
 }
 
 export function useGoogleIntegrations() {
@@ -29,6 +36,25 @@ export function useDeleteGoogleIntegration() {
     mutationFn: (integrationId: string) => deleteGoogleIntegration(integrationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: googleKeys.integrations() })
+    },
+  })
+}
+
+export function useRecurringMeetings() {
+  return useQuery({
+    queryKey: googleKeys.recurringMeetings(),
+    queryFn: getRecurringMeetings,
+    select: (data) => data.meetings,
+  })
+}
+
+export function useSyncRecurringMeetings() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (integrationId: string) => syncRecurringMeetings(integrationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: googleKeys.recurringMeetings() })
     },
   })
 }

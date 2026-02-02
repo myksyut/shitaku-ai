@@ -8,11 +8,11 @@ import { GoogleIcon } from './components/ui/GoogleIcon'
 import { AgendaGeneratePage } from './features/agendas'
 import { AgentDetailPage, AgentsPage } from './features/agents'
 import { AuthPage } from './features/auth'
-import { GoogleIntegrationPage } from './features/google'
+import { GoogleIntegrationPage, RecurringMeetingList } from './features/google'
 import { SlackSettingsPage } from './features/slack'
 import { supabase } from './lib/supabase'
 
-type PageView = 'agents' | 'agent-detail' | 'slack-settings' | 'google-settings'
+type PageView = 'agents' | 'agent-detail' | 'slack-settings' | 'google-settings' | 'google-meetings'
 
 function LoadingScreen() {
   return (
@@ -131,6 +131,12 @@ function Header({ email, currentPage, onNavigate, onLogout }: HeaderProps) {
           <GoogleIcon size={16} />
           Google連携
         </Button>
+        <Button
+          variant={currentPage === 'google-meetings' ? 'secondary' : 'ghost'}
+          onClick={() => onNavigate('google-meetings')}
+        >
+          定例MTG
+        </Button>
         <span
           style={{
             fontSize: 'var(--font-size-sm)',
@@ -231,6 +237,15 @@ function App() {
         )}
         {currentPage === 'slack-settings' && <SlackSettingsPage />}
         {currentPage === 'google-settings' && <GoogleIntegrationPage />}
+        {currentPage === 'google-meetings' && (
+          <RecurringMeetingList
+            onCreateAgent={(meetingId, title, attendees) => {
+              // TODO: エージェント作成画面にプリセット情報を渡す
+              console.log('Create agent for meeting:', meetingId, title, attendees)
+              setCurrentPage('agents')
+            }}
+          />
+        )}
       </main>
 
       {/* Agenda Generation Modal */}

@@ -5,10 +5,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
+from src.application.use_cases.calendar_use_cases import (
+    GetRecurringMeetingsUseCase,
+    LinkAgentToMeetingUseCase,
+    SyncRecurringMeetingsUseCase,
+)
 from src.application.use_cases.google_auth_use_cases import (
     DeleteGoogleIntegrationUseCase,
     GetGoogleIntegrationsUseCase,
     HandleGoogleCallbackUseCase,
+    RefreshGoogleTokenUseCase,
     StartAdditionalScopesUseCase,
     StartGoogleOAuthUseCase,
 )
@@ -17,10 +23,17 @@ from src.infrastructure.external.supabase_client import get_supabase_client
 from src.infrastructure.repositories.google_integration_repository_impl import (
     GoogleIntegrationRepositoryImpl,
 )
+from src.infrastructure.repositories.recurring_meeting_repository_impl import (
+    RecurringMeetingRepositoryImpl,
+)
 from src.presentation.api.v1.dependencies import get_current_user_id
 from src.presentation.schemas.google import (
     GoogleIntegrationResponse,
     GoogleOAuthStartResponse,
+    LinkAgentRequest,
+    RecurringMeetingResponse,
+    RecurringMeetingsResponse,
+    SyncResultResponse,
 )
 
 router = APIRouter(prefix="/google", tags=["google"])
@@ -35,6 +48,17 @@ def get_repository() -> GoogleIntegrationRepositoryImpl:
             detail="Database service unavailable",
         )
     return GoogleIntegrationRepositoryImpl()
+
+
+def get_meeting_repository() -> RecurringMeetingRepositoryImpl:
+    """Get recurring meeting repository instance."""
+    client = get_supabase_client()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service unavailable",
+        )
+    return RecurringMeetingRepositoryImpl()
 
 
 @router.get("/auth", response_model=GoogleOAuthStartResponse)
@@ -165,5 +189,89 @@ async def start_additional_scopes_oauth(
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+
+# Calendar endpoints
+
+
+@router.get("/calendar/recurring", response_model=RecurringMeetingsResponse)
+async def get_recurring_meetings(
+    user_id: UUID = Depends(get_current_user_id),
+    meeting_repository: RecurringMeetingRepositoryImpl = Depends(get_meeting_repository),
+) -> RecurringMeetingsResponse:
+    """定例MTG一覧を取得する.
+
+    AC5: 定例MTG一覧表示
+
+    Returns:
+        RecurringMeetingsResponse with list of meetings.
+    """
+    use_case = GetRecurringMeetingsUseCase(meeting_repository)
+    meetings = use_case.execute(user_id)
+    return RecurringMeetingsResponse(
+        meetings=[
+            RecurringMeetingResponse(
+                id=m.id,
+                google_event_id=m.google_event_id,
+                title=m.title,
+                frequency=m.frequency,
+                attendees=m.attendees,
+                next_occurrence=m.next_occurrence,
+                agent_id=m.agent_id,
+            )
+            for m in meetings
+        ]
+    )
+
+
+@router.post("/calendar/recurring/sync", response_model=SyncResultResponse)
+async def sync_recurring_meetings(
+    integration_id: UUID = Query(..., description="Google連携ID"),
+    user_id: UUID = Depends(get_current_user_id),
+    repository: GoogleIntegrationRepositoryImpl = Depends(get_repository),
+    meeting_repository: RecurringMeetingRepositoryImpl = Depends(get_meeting_repository),
+) -> SyncResultResponse:
+    """Calendar APIから定例MTGを同期する.
+
+    Returns:
+        SyncResultResponse with created and updated counts.
+    """
+    refresh_use_case = RefreshGoogleTokenUseCase(repository)
+    use_case = SyncRecurringMeetingsUseCase(repository, meeting_repository, refresh_use_case)
+
+    try:
+        result = await use_case.execute(user_id, integration_id)
+        return SyncResultResponse(created=result.created, updated=result.updated)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+
+@router.post("/calendar/recurring/{meeting_id}/link-agent")
+async def link_agent_to_meeting(
+    meeting_id: UUID,
+    request: LinkAgentRequest,
+    user_id: UUID = Depends(get_current_user_id),
+    meeting_repository: RecurringMeetingRepositoryImpl = Depends(get_meeting_repository),
+) -> dict[str, bool]:
+    """定例MTGにエージェントを紐付ける.
+
+    AC9: エージェント作成画面遷移のための紐付け
+
+    Returns:
+        Success status.
+    """
+    use_case = LinkAgentToMeetingUseCase(meeting_repository)
+
+    try:
+        use_case.execute(meeting_id, user_id, request.agent_id)
+        return {"linked": True}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         ) from e
