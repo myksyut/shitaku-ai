@@ -8,17 +8,22 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from supabase import Client
+
 from src.domain.entities.agenda import Agenda
 from src.domain.repositories.agenda_repository import AgendaRepository
-from src.infrastructure.external.supabase_client import get_supabase_client
 
 
 class AgendaRepositoryImpl(AgendaRepository):
     """アジェンダリポジトリのSupabase実装."""
 
-    def __init__(self) -> None:
-        """リポジトリを初期化する."""
-        self._client = get_supabase_client()
+    def __init__(self, client: Client) -> None:
+        """リポジトリを初期化する.
+
+        Args:
+            client: Supabaseクライアントインスタンス.
+        """
+        self._client = client
 
     async def create(self, agenda: Agenda) -> Agenda:
         """アジェンダを作成する."""

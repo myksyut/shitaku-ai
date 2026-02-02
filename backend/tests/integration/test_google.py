@@ -25,7 +25,7 @@ from src.infrastructure.external.google_oauth_client import (
 )
 from src.main import app
 from src.presentation.api.v1.dependencies import get_current_user_id
-from src.presentation.api.v1.endpoints.google import get_repository
+from src.presentation.api.v1.endpoints.google import get_callback_repository, get_repository
 
 # テスト用の固定UUID
 TEST_USER_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -149,6 +149,8 @@ class TestGoogleIntegration:
         """AC2: OAuthコールバックでstateを検証しCSRF攻撃を防止する"""
         # Arrange: OAuth開始でstateを生成しStateStoreに保存
         app.dependency_overrides[get_repository] = lambda: mock_repository
+        # コールバック用リポジトリもオーバーライド（OAuthコールバックはget_callback_repositoryを使用）
+        app.dependency_overrides[get_callback_repository] = lambda: mock_repository
 
         # 新しい連携を作成するモック設定
         new_integration = GoogleIntegration(
@@ -200,6 +202,7 @@ class TestGoogleIntegration:
         assert "Invalid" in location and "state" in location
 
         app.dependency_overrides.pop(get_repository, None)
+        app.dependency_overrides.pop(get_callback_repository, None)
 
     # AC: "When ユーザーがGoogle連携ボタンをクリックすると、
     #      システムは一意のstateパラメータを生成しStateStoreに保存した上で、
@@ -455,7 +458,9 @@ class TestGoogleIntegration:
         test_state = "test_state_for_denial"
 
         # リポジトリをモックに差し替え（CI環境でSupabase未設定対策）
+        # コールバック用リポジトリもオーバーライド（OAuthコールバックはget_callback_repositoryを使用）
         app.dependency_overrides[get_repository] = lambda: mock_repository
+        app.dependency_overrides[get_callback_repository] = lambda: mock_repository
 
         try:
             # Act: GET /api/v1/google/callback?error=access_denied&state=xxx&code=dummy
@@ -475,3 +480,4 @@ class TestGoogleIntegration:
             assert "access_denied" in location
         finally:
             app.dependency_overrides.pop(get_repository, None)
+            app.dependency_overrides.pop(get_callback_repository, None)

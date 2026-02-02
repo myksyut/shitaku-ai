@@ -62,11 +62,11 @@ async def generate_agenda(
             detail="Database connection not available",
         )
 
-    agenda_repository = AgendaRepositoryImpl()
-    agent_repository = AgentRepositoryImpl()
+    agenda_repository = AgendaRepositoryImpl(client)
+    agent_repository = AgentRepositoryImpl(client)
     note_repository = MeetingNoteRepositoryImpl(client)
     dictionary_repository = DictionaryRepositoryImpl(client)
-    slack_repository = SlackIntegrationRepositoryImpl()
+    slack_repository = SlackIntegrationRepositoryImpl(client)
     generation_service = AgendaGenerationService()
 
     use_case = GenerateAgendaUseCase(
@@ -106,7 +106,13 @@ async def get_agendas(
     user_id: UUID = Depends(get_current_user_id),
 ) -> list[AgendaResponse]:
     """アジェンダ一覧を取得する."""
-    repository = AgendaRepositoryImpl()
+    client = get_supabase_client()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection not available",
+        )
+    repository = AgendaRepositoryImpl(client)
     use_case = GetAgendasUseCase(repository)
     agendas = await use_case.execute(agent_id, user_id, limit)
     return [_to_response(a) for a in agendas]
@@ -118,7 +124,13 @@ async def get_agenda(
     user_id: UUID = Depends(get_current_user_id),
 ) -> AgendaResponse:
     """アジェンダを取得する."""
-    repository = AgendaRepositoryImpl()
+    client = get_supabase_client()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection not available",
+        )
+    repository = AgendaRepositoryImpl(client)
     use_case = GetAgendaUseCase(repository)
     agenda = await use_case.execute(agenda_id, user_id)
     if not agenda:
@@ -133,7 +145,13 @@ async def update_agenda(
     user_id: UUID = Depends(get_current_user_id),
 ) -> AgendaResponse:
     """アジェンダを更新する."""
-    repository = AgendaRepositoryImpl()
+    client = get_supabase_client()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection not available",
+        )
+    repository = AgendaRepositoryImpl(client)
     use_case = UpdateAgendaUseCase(repository)
     agenda = await use_case.execute(agenda_id, user_id, data.content)
     if not agenda:
@@ -147,7 +165,13 @@ async def delete_agenda(
     user_id: UUID = Depends(get_current_user_id),
 ) -> None:
     """アジェンダを削除する."""
-    repository = AgendaRepositoryImpl()
+    client = get_supabase_client()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection not available",
+        )
+    repository = AgendaRepositoryImpl(client)
     use_case = DeleteAgendaUseCase(repository)
     deleted = await use_case.execute(agenda_id, user_id)
     if not deleted:

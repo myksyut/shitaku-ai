@@ -59,7 +59,13 @@ def get_dictionary_repository() -> DictionaryRepositoryImpl:
 
 def get_agent_repository() -> AgentRepositoryImpl:
     """Get agent repository instance."""
-    return AgentRepositoryImpl()
+    client = get_supabase_client()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service unavailable",
+        )
+    return AgentRepositoryImpl(client)
 
 
 async def verify_agent_access(

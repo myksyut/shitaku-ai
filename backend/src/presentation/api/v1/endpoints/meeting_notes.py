@@ -57,7 +57,7 @@ async def upload_meeting_note(
 
     note_repository = MeetingNoteRepositoryImpl(client)
     dictionary_repository = DictionaryRepositoryImpl(client)
-    agent_repository = AgentRepositoryImpl()
+    agent_repository = AgentRepositoryImpl(client)
     normalization_service = NormalizationServiceImpl()
 
     use_case = UploadMeetingNoteUseCase(

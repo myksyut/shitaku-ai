@@ -6,6 +6,7 @@ REST API endpoints for agent management.
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from supabase import Client
 
 from src.application.use_cases.agent_use_cases import (
     CreateAgentUseCase,
@@ -16,15 +17,20 @@ from src.application.use_cases.agent_use_cases import (
 )
 from src.domain.entities.agent import Agent
 from src.infrastructure.repositories.agent_repository_impl import AgentRepositoryImpl
-from src.presentation.api.v1.dependencies import get_current_user_id
+from src.presentation.api.v1.dependencies import (
+    get_current_user_id,
+    get_user_supabase_client,
+)
 from src.presentation.schemas.agent import AgentCreate, AgentResponse, AgentUpdate
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
-def get_repository() -> AgentRepositoryImpl:
-    """リポジトリのDI."""
-    return AgentRepositoryImpl()
+def get_repository(
+    client: Client = Depends(get_user_supabase_client),
+) -> AgentRepositoryImpl:
+    """リポジトリのDI（ユーザーコンテキスト付きクライアント使用）."""
+    return AgentRepositoryImpl(client)
 
 
 def _to_response(agent: Agent) -> AgentResponse:

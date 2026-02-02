@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
+from supabase import Client
 
 from src.application.use_cases.slack_use_cases import (
     DeleteSlackIntegrationUseCase,
@@ -19,7 +20,10 @@ from src.infrastructure.external.supabase_client import get_supabase_client
 from src.infrastructure.repositories.slack_integration_repository_impl import (
     SlackIntegrationRepositoryImpl,
 )
-from src.presentation.api.v1.dependencies import get_current_user_id
+from src.presentation.api.v1.dependencies import (
+    get_current_user_id,
+    get_user_supabase_client,
+)
 from src.presentation.schemas.slack import (
     SlackChannelResponse,
     SlackIntegrationResponse,
@@ -30,15 +34,25 @@ from src.presentation.schemas.slack import (
 router = APIRouter(prefix="/slack", tags=["slack"])
 
 
-def get_repository() -> SlackIntegrationRepositoryImpl:
-    """Get Slack integration repository instance."""
+def get_repository(
+    client: Client = Depends(get_user_supabase_client),
+) -> SlackIntegrationRepositoryImpl:
+    """Get Slack integration repository instance with user context."""
+    return SlackIntegrationRepositoryImpl(client)
+
+
+def get_callback_repository() -> SlackIntegrationRepositoryImpl:
+    """Get repository for OAuth callback (uses service role, no user context).
+
+    OAuth callback is called by Slack, not authenticated user.
+    """
     client = get_supabase_client()
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database service unavailable",
         )
-    return SlackIntegrationRepositoryImpl()
+    return SlackIntegrationRepositoryImpl(client)
 
 
 @router.get("/auth", response_model=SlackOAuthStartResponse)
@@ -65,7 +79,7 @@ async def start_slack_oauth(
 async def slack_oauth_callback(
     code: str = Query(...),
     state: str = Query(...),
-    repository: SlackIntegrationRepositoryImpl = Depends(get_repository),
+    repository: SlackIntegrationRepositoryImpl = Depends(get_callback_repository),
 ) -> RedirectResponse:
     """Slack OAuthコールバックを処理する.
 
