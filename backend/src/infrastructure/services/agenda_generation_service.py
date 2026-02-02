@@ -4,10 +4,11 @@ Infrastructure service for generating meeting agendas.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.domain.entities.dictionary_entry import DictionaryEntry
 from src.domain.entities.meeting_note import MeetingNote
+from src.domain.entities.meeting_transcript import MeetingTranscript
 from src.infrastructure.external.bedrock_client import invoke_claude
 from src.infrastructure.external.slack_client import SlackMessageData
 
@@ -21,6 +22,7 @@ class AgendaGenerationInput:
     latest_note: MeetingNote | None
     slack_messages: list[SlackMessageData]
     dictionary: list[DictionaryEntry]
+    transcripts: list[MeetingTranscript] = field(default_factory=list)
 
 
 class AgendaGenerationService:
