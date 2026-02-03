@@ -289,7 +289,7 @@ uv run pytest             # テスト
 uv run pytest --cov       # カバレッジ
 ```
 
-**注意**: CIでは`ty`を使用するため、`mypy`だけでなく`ty check`も必ず実行すること。
+**注意**: `mypy`と`ty check`の両方を必ず実行すること（CIでは`ty`を使用）。
 
 ### フロントエンド（frontend/）
 ```bash
