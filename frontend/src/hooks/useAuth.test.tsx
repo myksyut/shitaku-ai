@@ -119,6 +119,11 @@ describe('AuthContext', () => {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/`,
+          scopes: 'https://www.googleapis.com/auth/calendar.readonly',
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       })
     })

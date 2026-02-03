@@ -263,3 +263,81 @@ class RefreshGoogleTokenUseCase:
         token_response = await client.refresh_access_token(refresh_token)
 
         return token_response.access_token
+
+
+@dataclass
+class SyncProviderTokenResult:
+    """providerToken同期結果."""
+
+    success: bool
+    message: str
+    integration_id: UUID | None = None
+
+
+class SyncProviderTokenUseCase:
+    """Supabase AuthのproviderTokenを同期するユースケース."""
+
+    def __init__(self, repository: GoogleIntegrationRepository) -> None:
+        """Initialize use case with repository."""
+        self.repository = repository
+
+    async def execute(
+        self,
+        user_id: UUID,
+        email: str,
+        provider_refresh_token: str | None,
+        scopes: list[str] | None = None,
+    ) -> SyncProviderTokenResult:
+        """Supabase Authから取得したproviderTokenをgoogle_integrationsに保存する.
+
+        Args:
+            user_id: ユーザーID.
+            email: Googleアカウントのメール.
+            provider_refresh_token: Supabase Authから取得したrefresh_token.
+            scopes: 許可されたスコープ.
+
+        Returns:
+            SyncProviderTokenResult.
+        """
+        if not provider_refresh_token:
+            return SyncProviderTokenResult(
+                success=False,
+                message="No refresh token provided. Re-authenticate with consent.",
+            )
+
+        # 許可されたスコープを設定
+        granted_scopes = scopes if scopes else DEFAULT_SCOPES
+
+        # リフレッシュトークンを暗号化
+        encrypted_token = encrypt_google_token(provider_refresh_token)
+
+        # 既存の連携を確認
+        existing = await self.repository.get_by_email(user_id, email)
+
+        if existing:
+            # 既存の連携を更新
+            existing.update_token(encrypted_token)
+            existing.add_scopes(granted_scopes)
+            updated = await self.repository.update(existing)
+            return SyncProviderTokenResult(
+                success=True,
+                message="Google integration updated",
+                integration_id=updated.id,
+            )
+
+        # 新規作成
+        integration = GoogleIntegration(
+            id=uuid4(),
+            user_id=user_id,
+            email=email,
+            encrypted_refresh_token=encrypted_token,
+            granted_scopes=granted_scopes,
+            created_at=datetime.now(),
+            updated_at=None,
+        )
+        created = await self.repository.create(integration)
+        return SyncProviderTokenResult(
+            success=True,
+            message="Google integration created",
+            integration_id=created.id,
+        )

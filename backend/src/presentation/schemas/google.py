@@ -71,3 +71,20 @@ class UnlinkRecurringMeetingResponse(BaseModel):
     """定例MTG紐付け解除レスポンス."""
 
     message: str
+
+
+class SyncProviderTokenRequest(BaseModel):
+    """Supabase AuthのproviderTokenを同期するリクエスト."""
+
+    provider_token: str
+    provider_refresh_token: str | None = None
+    email: str
+    scopes: list[str] | None = None
+
+
+class SyncProviderTokenResponse(BaseModel):
+    """providerToken同期レスポンス."""
+
+    success: bool
+    message: str
+    integration_id: UUID | None = None
