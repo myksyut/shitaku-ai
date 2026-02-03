@@ -4,6 +4,7 @@ Provides methods for interacting with Slack workspace data.
 """
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -11,6 +12,9 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 logger = logging.getLogger(__name__)
+
+# チャンネルキャッシュのTTL（秒）
+CHANNEL_CACHE_TTL_SECONDS = 300  # 5分
 
 
 @dataclass
@@ -48,9 +52,11 @@ class SlackClient:
         """
         self.client = WebClient(token=access_token)
         self._user_cache: dict[str, str] = {}
+        self._channel_cache: list[SlackChannel] | None = None
+        self._channel_cache_timestamp: float | None = None
 
     def get_channels(self) -> list[SlackChannel]:
-        """チャンネル一覧を取得する（ページネーション対応）.
+        """チャンネル一覧を取得する（ページネーション対応、TTLキャッシュ付き）.
 
         Returns:
             List of SlackChannel objects.
@@ -58,6 +64,14 @@ class SlackClient:
         Raises:
             SlackApiError: If API call fails.
         """
+        # キャッシュヒット判定
+        if self._channel_cache is not None and self._channel_cache_timestamp is not None:
+            elapsed = time.time() - self._channel_cache_timestamp
+            if elapsed < CHANNEL_CACHE_TTL_SECONDS:
+                logger.debug("Channel cache hit (age: %.1fs)", elapsed)
+                return self._channel_cache
+
+        # キャッシュミス → API呼び出し
         try:
             all_channels: list[SlackChannel] = []
             cursor: str | None = None
@@ -76,6 +90,11 @@ class SlackClient:
                 cursor = response_metadata.get("next_cursor")
                 if not cursor:
                     break
+
+            # キャッシュを更新
+            self._channel_cache = all_channels
+            self._channel_cache_timestamp = time.time()
+            logger.debug("Channel cache updated (%d channels)", len(all_channels))
 
             return all_channels
         except SlackApiError as e:
