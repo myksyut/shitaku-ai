@@ -201,6 +201,33 @@ function KnowledgeUploadModal({ agentId, isOpen, onClose }: KnowledgeUploadModal
   )
 }
 
+interface KnowledgeListModalProps {
+  isOpen: boolean
+  onClose: () => void
+  knowledgeList: Knowledge[]
+  onDelete: (knowledgeId: string) => void
+  onView: (knowledge: Knowledge) => void
+  isDeleting: boolean
+}
+
+function KnowledgeListModal({ isOpen, onClose, knowledgeList, onDelete, onView, isDeleting }: KnowledgeListModalProps) {
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="全てのナレッジ" size="lg">
+      <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+        {knowledgeList.map((knowledge) => (
+          <KnowledgeCard
+            key={knowledge.id}
+            knowledge={knowledge}
+            onDelete={() => onDelete(knowledge.id)}
+            onView={() => onView(knowledge)}
+            isDeleting={isDeleting}
+          />
+        ))}
+      </div>
+    </Modal>
+  )
+}
+
 interface KnowledgeDetailModalProps {
   knowledge: Knowledge | null
   onClose: () => void
@@ -257,14 +284,22 @@ function KnowledgeDetailModal({ knowledge, onClose }: KnowledgeDetailModalProps)
   )
 }
 
-interface SlackChannelSelectorProps {
-  agent: Agent
-  onUpdate: (channelId: string | null) => void
+interface SlackChannelSelectorModalProps {
+  isOpen: boolean
+  onClose: () => void
+  agentSlackChannelId: string | null
+  onSelect: (channelId: string) => void
   isUpdating: boolean
 }
 
-function SlackChannelSelector({ agent, onUpdate, isUpdating }: SlackChannelSelectorProps) {
-  const { data: integrations, isLoading: integrationsLoading } = useSlackIntegrations()
+function SlackChannelSelectorModal({
+  isOpen,
+  onClose,
+  agentSlackChannelId,
+  onSelect,
+  isUpdating,
+}: SlackChannelSelectorModalProps) {
+  const { data: integrations } = useSlackIntegrations()
   const firstIntegration = integrations?.[0]
   const { data: channels, isLoading: channelsLoading } = useSlackChannels(firstIntegration?.id ?? '')
   const [searchQuery, setSearchQuery] = useState('')
@@ -275,6 +310,117 @@ function SlackChannelSelector({ agent, onUpdate, isUpdating }: SlackChannelSelec
     const query = searchQuery.toLowerCase()
     return channels.filter((channel) => channel.name.toLowerCase().includes(query))
   }, [channels, searchQuery])
+
+  const handleSelect = (channelId: string) => {
+    onSelect(channelId)
+    onClose()
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Slackチャンネルを選択" size="lg">
+      {channelsLoading ? (
+        <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-warm-gray-500)' }}>
+          読み込み中...
+        </div>
+      ) : (
+        <div>
+          <input
+            type="text"
+            placeholder="チャンネルを検索..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: 'var(--space-2) var(--space-3)',
+              marginBottom: 'var(--space-3)',
+              border: '1px solid var(--color-warm-gray-300)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: 'var(--font-size-sm)',
+              outline: 'none',
+            }}
+          />
+          {searchQuery && (
+            <p
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--color-warm-gray-500)',
+                marginBottom: 'var(--space-2)',
+              }}
+            >
+              {filteredChannels.length}件のチャンネルが見つかりました
+            </p>
+          )}
+          <div
+            style={{
+              maxHeight: '300px',
+              overflowY: 'auto',
+              border: '1px solid var(--color-warm-gray-200)',
+              borderRadius: 'var(--radius-md)',
+            }}
+          >
+            {filteredChannels.map((channel) => (
+              <button
+                type="button"
+                key={channel.id}
+                onClick={() => handleSelect(channel.id)}
+                disabled={isUpdating || channel.id === agentSlackChannelId}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: 'var(--space-2) var(--space-3)',
+                  textAlign: 'left',
+                  background: channel.id === agentSlackChannelId ? 'var(--color-cream-300)' : 'transparent',
+                  border: 'none',
+                  borderBottom: '1px solid var(--color-warm-gray-100)',
+                  cursor: channel.id === agentSlackChannelId ? 'default' : 'pointer',
+                  fontSize: 'var(--font-size-sm)',
+                  color: 'var(--color-warm-gray-700)',
+                }}
+              >
+                #{channel.name}
+                {channel.id === agentSlackChannelId && (
+                  <span
+                    style={{
+                      marginLeft: 'var(--space-2)',
+                      fontSize: 'var(--font-size-xs)',
+                      color: 'var(--color-warm-gray-500)',
+                    }}
+                  >
+                    (現在連携中)
+                  </span>
+                )}
+              </button>
+            ))}
+            {filteredChannels.length === 0 && (
+              <div
+                style={{
+                  padding: 'var(--space-4)',
+                  textAlign: 'center',
+                  color: 'var(--color-warm-gray-500)',
+                  fontSize: 'var(--font-size-sm)',
+                }}
+              >
+                チャンネルが見つかりません
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+interface SlackChannelDisplayProps {
+  agent: Agent
+  onUpdate: (channelId: string | null) => void
+  isUpdating: boolean
+}
+
+function SlackChannelDisplay({ agent, onUpdate, isUpdating }: SlackChannelDisplayProps) {
+  const { data: integrations, isLoading: integrationsLoading } = useSlackIntegrations()
+  const firstIntegration = integrations?.[0]
+  const { data: channels, isLoading: channelsLoading } = useSlackChannels(firstIntegration?.id ?? '')
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   const selectedChannel = useMemo(() => {
     if (!agent.slack_channel_id || !channels) return null
@@ -309,9 +455,9 @@ function SlackChannelSelector({ agent, onUpdate, isUpdating }: SlackChannelSelec
     )
   }
 
-  return (
-    <div>
-      {selectedChannel && (
+  if (selectedChannel) {
+    return (
+      <>
         <div
           style={{
             display: 'flex',
@@ -320,99 +466,61 @@ function SlackChannelSelector({ agent, onUpdate, isUpdating }: SlackChannelSelec
             padding: 'var(--space-3)',
             background: 'var(--color-cream-200)',
             borderRadius: 'var(--radius-md)',
-            marginBottom: 'var(--space-3)',
           }}
         >
           <span style={{ fontWeight: 600, color: 'var(--color-warm-gray-700)' }}>#{selectedChannel.name}</span>
-          <Button
-            variant="ghost"
-            onClick={() => onUpdate(null)}
-            disabled={isUpdating}
-            style={{ padding: 'var(--space-1) var(--space-2)', fontSize: 'var(--font-size-sm)' }}
-          >
-            解除
-          </Button>
-        </div>
-      )}
-      {channels && channels.length > 10 && (
-        <input
-          type="text"
-          placeholder="チャンネルを検索..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            width: '100%',
-            padding: 'var(--space-2) var(--space-3)',
-            marginBottom: 'var(--space-2)',
-            border: '1px solid var(--color-warm-gray-300)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: 'var(--font-size-sm)',
-            outline: 'none',
-          }}
-        />
-      )}
-      {searchQuery && (
-        <p
-          style={{
-            fontSize: 'var(--font-size-xs)',
-            color: 'var(--color-warm-gray-500)',
-            marginBottom: 'var(--space-2)',
-          }}
-        >
-          {filteredChannels.length}件のチャンネルが見つかりました
-        </p>
-      )}
-      <div
-        style={{
-          maxHeight: '200px',
-          overflowY: 'auto',
-          border: '1px solid var(--color-warm-gray-200)',
-          borderRadius: 'var(--radius-md)',
-        }}
-      >
-        {filteredChannels.map((channel) => (
-          <button
-            type="button"
-            key={channel.id}
-            onClick={() => onUpdate(channel.id)}
-            disabled={isUpdating || channel.id === agent.slack_channel_id}
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: 'var(--space-2) var(--space-3)',
-              textAlign: 'left',
-              background: channel.id === agent.slack_channel_id ? 'var(--color-cream-300)' : 'transparent',
-              border: 'none',
-              borderBottom: '1px solid var(--color-warm-gray-100)',
-              cursor: channel.id === agent.slack_channel_id ? 'default' : 'pointer',
-              fontSize: 'var(--font-size-sm)',
-              color: 'var(--color-warm-gray-700)',
-            }}
-          >
-            #{channel.name}
-          </button>
-        ))}
-        {filteredChannels.length === 0 && (
-          <div
-            style={{
-              padding: 'var(--space-4)',
-              textAlign: 'center',
-              color: 'var(--color-warm-gray-500)',
-              fontSize: 'var(--font-size-sm)',
-            }}
-          >
-            チャンネルが見つかりません
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <Button
+              variant="ghost"
+              onClick={() => setIsModalOpen(true)}
+              disabled={isUpdating}
+              style={{ padding: 'var(--space-1) var(--space-2)', fontSize: 'var(--font-size-sm)' }}
+            >
+              変更
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => onUpdate(null)}
+              disabled={isUpdating}
+              style={{
+                padding: 'var(--space-1) var(--space-2)',
+                fontSize: 'var(--font-size-sm)',
+                color: 'var(--color-error)',
+              }}
+            >
+              解除
+            </Button>
           </div>
-        )}
-      </div>
-      {agent.slack_channel_id && (
+        </div>
         <p
           style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-warm-gray-500)', marginTop: 'var(--space-2)' }}
         >
           このチャンネルの会話がアジェンダ生成に使用されます
         </p>
-      )}
-    </div>
+        <SlackChannelSelectorModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          agentSlackChannelId={agent.slack_channel_id}
+          onSelect={(channelId) => onUpdate(channelId)}
+          isUpdating={isUpdating}
+        />
+      </>
+    )
+  }
+
+  return (
+    <>
+      <Button variant="secondary" onClick={() => setIsModalOpen(true)} disabled={isUpdating}>
+        チャンネルを連携
+      </Button>
+      <SlackChannelSelectorModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        agentSlackChannelId={agent.slack_channel_id}
+        onSelect={(channelId) => onUpdate(channelId)}
+        isUpdating={isUpdating}
+      />
+    </>
   )
 }
 
@@ -466,20 +574,20 @@ function ReferenceSettingsSection({ agent, onSave, isSaving }: ReferenceSettings
   const hasValidationError = !!transcriptCountError || !!slackMessageDaysError
 
   return (
-    <div style={{ marginTop: 'var(--space-6)' }}>
-      <h2
+    <div>
+      <h3
         style={{
-          fontSize: 'var(--font-size-lg)',
+          fontSize: 'var(--font-size-base)',
           fontWeight: 700,
           color: 'var(--color-warm-gray-800)',
-          marginBottom: 'var(--space-4)',
+          marginBottom: 'var(--space-3)',
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--space-2)',
         }}
       >
-        <span style={{ fontSize: '20px' }}>&#x2699;&#xfe0f;</span> アジェンダ生成参照設定
-      </h2>
+        <span style={{ fontSize: '18px' }}>&#x2699;&#xfe0f;</span> アジェンダ生成参照設定
+      </h3>
       <Card>
         <p
           style={{
@@ -614,6 +722,48 @@ function ReferenceSettingsSection({ agent, onSave, isSaving }: ReferenceSettings
   )
 }
 
+interface AgentSettingsModalProps {
+  isOpen: boolean
+  onClose: () => void
+  agent: Agent
+  agentId: string
+  onSaveReferenceSettings: (data: { transcript_count: number; slack_message_days: number }) => Promise<void>
+  isSavingReferenceSettings: boolean
+}
+
+function AgentSettingsModal({
+  isOpen,
+  onClose,
+  agent,
+  agentId,
+  onSaveReferenceSettings,
+  isSavingReferenceSettings,
+}: AgentSettingsModalProps) {
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="詳細設定" size="xl">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+        <ReferenceSettingsSection agent={agent} onSave={onSaveReferenceSettings} isSaving={isSavingReferenceSettings} />
+        <div>
+          <h3
+            style={{
+              fontSize: 'var(--font-size-base)',
+              fontWeight: 700,
+              color: 'var(--color-warm-gray-800)',
+              marginBottom: 'var(--space-3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <span style={{ fontSize: '18px' }}>&#x1F4D6;</span> 辞書
+          </h3>
+          <DictionarySection agentId={agentId} />
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export function AgentDetailPage() {
   const { agentId } = useParams<{ agentId: string }>()
   const navigate = useNavigate()
@@ -622,6 +772,8 @@ export function AgentDetailPage() {
   const [selectedKnowledge, setSelectedKnowledge] = useState<Knowledge | null>(null)
   const [isAgendaModalOpen, setIsAgendaModalOpen] = useState(false)
   const [isMeetingSelectorOpen, setIsMeetingSelectorOpen] = useState(false)
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
+  const [isKnowledgeListModalOpen, setIsKnowledgeListModalOpen] = useState(false)
 
   const { data: agent, isLoading, error } = useAgent(agentId ?? '')
   const { data: recurringMeetings, isLoading: meetingsLoading } = useAgentRecurringMeetings(agentId ?? null)
@@ -635,6 +787,8 @@ export function AgentDetailPage() {
     setIsAgendaModalOpen(true)
   }
   const { data: knowledgeList, isLoading: knowledgeLoading } = useKnowledgeList(agentId ?? '')
+  const latestKnowledge = knowledgeList?.slice(0, 3) ?? []
+  const hasMoreKnowledge = (knowledgeList?.length ?? 0) > 3
   const deleteMutation = useDeleteAgent()
   const deleteKnowledgeMutation = useDeleteKnowledge()
   const updateMutation = useUpdateAgent()
@@ -740,6 +894,9 @@ export function AgentDetailPage() {
             <Button variant="ghost" onClick={() => setIsFormOpen(true)}>
               編集
             </Button>
+            <Button variant="ghost" onClick={() => setIsSettingsModalOpen(true)}>
+              詳細設定
+            </Button>
             <Button
               variant="ghost"
               onClick={handleDelete}
@@ -775,7 +932,133 @@ export function AgentDetailPage() {
           gap: 'var(--space-6)',
         }}
       >
-        {/* Meeting Notes Section */}
+        {/* Left Column: Slack + Calendar Integration */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+          {/* Slack Channel Section */}
+          <div>
+            <h2
+              style={{
+                fontSize: 'var(--font-size-lg)',
+                fontWeight: 700,
+                color: 'var(--color-warm-gray-800)',
+                marginBottom: 'var(--space-4)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+              }}
+            >
+              <SlackIcon size={22} /> Slackチャンネル連携
+            </h2>
+            <Card>
+              <p
+                style={{
+                  fontSize: 'var(--font-size-sm)',
+                  color: 'var(--color-warm-gray-600)',
+                  marginBottom: 'var(--space-4)',
+                }}
+              >
+                Slackチャンネルを連携すると、チャンネル内の会話からアジェンダを自動生成できます
+              </p>
+              <SlackChannelDisplay
+                agent={agent}
+                onUpdate={handleSlackChannelUpdate}
+                isUpdating={updateMutation.isPending}
+              />
+            </Card>
+          </div>
+
+          {/* Recurring Meeting Section */}
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 'var(--space-4)',
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: 'var(--font-size-lg)',
+                  fontWeight: 700,
+                  color: 'var(--color-warm-gray-800)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  margin: 0,
+                }}
+              >
+                <span style={{ fontSize: '20px' }}>📅</span> 定例MTG連携
+              </h2>
+              <Button variant="secondary" onClick={() => setIsMeetingSelectorOpen(true)}>
+                定例を追加
+              </Button>
+            </div>
+            <Card>
+              <p
+                style={{
+                  fontSize: 'var(--font-size-sm)',
+                  color: 'var(--color-warm-gray-600)',
+                  marginBottom: 'var(--space-4)',
+                }}
+              >
+                定例MTGを紐付けると、Google Meetの議事録から自動でアジェンダを生成できます
+              </p>
+              {meetingsLoading ? (
+                <div style={{ color: 'var(--color-warm-gray-500)', fontSize: 'var(--font-size-sm)' }}>
+                  読み込み中...
+                </div>
+              ) : recurringMeetings && recurringMeetings.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  {recurringMeetings.map((meeting) => (
+                    <div
+                      key={meeting.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 'var(--space-3)',
+                        background: 'var(--color-cream-200)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--color-warm-gray-700)' }}>{meeting.title}</div>
+                        <div
+                          style={{
+                            fontSize: 'var(--font-size-xs)',
+                            color: 'var(--color-warm-gray-500)',
+                            marginTop: '2px',
+                          }}
+                        >
+                          {meeting.frequency === 'weekly' && '毎週'}
+                          {meeting.frequency === 'biweekly' && '隔週'}
+                          {meeting.frequency === 'monthly' && '毎月'}
+                          {' • '}
+                          {meeting.attendees.length}名参加
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleUnlinkMeeting(meeting.id)}
+                        disabled={unlinkMeetingMutation.isPending}
+                        style={{ padding: 'var(--space-1) var(--space-2)', fontSize: 'var(--font-size-sm)' }}
+                      >
+                        {unlinkMeetingMutation.isPending ? '解除中...' : '解除'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: 'var(--color-warm-gray-500)', fontSize: 'var(--font-size-sm)' }}>
+                  紐付けられた定例MTGはありません
+                </div>
+              )}
+            </Card>
+          </div>
+        </div>
+
+        {/* Right Column: Knowledge Section */}
         <div>
           <div
             style={{
@@ -791,9 +1074,23 @@ export function AgentDetailPage() {
                 fontWeight: 700,
                 color: 'var(--color-warm-gray-800)',
                 margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
               }}
             >
               📝 ナレッジ
+              {knowledgeList && knowledgeList.length > 0 && (
+                <span
+                  style={{
+                    fontSize: 'var(--font-size-sm)',
+                    fontWeight: 500,
+                    color: 'var(--color-warm-gray-500)',
+                  }}
+                >
+                  ({knowledgeList.length}件)
+                </span>
+              )}
             </h2>
             <Button variant="secondary" onClick={() => setIsUploadOpen(true)}>
               アップロード
@@ -806,7 +1103,7 @@ export function AgentDetailPage() {
             </div>
           ) : knowledgeList && knowledgeList.length > 0 ? (
             <div>
-              {knowledgeList.map((knowledge) => (
+              {latestKnowledge.map((knowledge) => (
                 <KnowledgeCard
                   key={knowledge.id}
                   knowledge={knowledge}
@@ -815,6 +1112,19 @@ export function AgentDetailPage() {
                   isDeleting={deleteKnowledgeMutation.isPending}
                 />
               ))}
+              {hasMoreKnowledge && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setIsKnowledgeListModalOpen(true)}
+                  style={{
+                    width: '100%',
+                    marginTop: 'var(--space-2)',
+                    color: 'var(--color-primary-600)',
+                  }}
+                >
+                  すべて見る ({knowledgeList.length}件)
+                </Button>
+              )}
             </div>
           ) : (
             <EmptyState
@@ -829,152 +1139,44 @@ export function AgentDetailPage() {
             />
           )}
         </div>
-
-        {/* Slack Channel Section */}
-        <div>
-          <h2
-            style={{
-              fontSize: 'var(--font-size-lg)',
-              fontWeight: 700,
-              color: 'var(--color-warm-gray-800)',
-              marginBottom: 'var(--space-4)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-            }}
-          >
-            <SlackIcon size={22} /> Slackチャンネル連携
-          </h2>
-          <Card>
-            <p
-              style={{
-                fontSize: 'var(--font-size-sm)',
-                color: 'var(--color-warm-gray-600)',
-                marginBottom: 'var(--space-4)',
-              }}
-            >
-              Slackチャンネルを連携すると、チャンネル内の会話からアジェンダを自動生成できます
-            </p>
-            <SlackChannelSelector
-              agent={agent}
-              onUpdate={handleSlackChannelUpdate}
-              isUpdating={updateMutation.isPending}
-            />
-          </Card>
-        </div>
-      </div>
-
-      {/* Recurring Meeting Section */}
-      <div style={{ marginTop: 'var(--space-6)' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 'var(--space-4)',
-          }}
-        >
-          <h2
-            style={{
-              fontSize: 'var(--font-size-lg)',
-              fontWeight: 700,
-              color: 'var(--color-warm-gray-800)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-              margin: 0,
-            }}
-          >
-            <span style={{ fontSize: '20px' }}>📅</span> 定例MTG連携
-          </h2>
-          <Button variant="secondary" onClick={() => setIsMeetingSelectorOpen(true)}>
-            定例を追加
-          </Button>
-        </div>
-        <Card>
-          <p
-            style={{
-              fontSize: 'var(--font-size-sm)',
-              color: 'var(--color-warm-gray-600)',
-              marginBottom: 'var(--space-4)',
-            }}
-          >
-            定例MTGを紐付けると、Google Meetの議事録から自動でアジェンダを生成できます
-          </p>
-          {meetingsLoading ? (
-            <div style={{ color: 'var(--color-warm-gray-500)', fontSize: 'var(--font-size-sm)' }}>読み込み中...</div>
-          ) : recurringMeetings && recurringMeetings.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-              {recurringMeetings.map((meeting) => (
-                <div
-                  key={meeting.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 'var(--space-3)',
-                    background: 'var(--color-cream-200)',
-                    borderRadius: 'var(--radius-md)',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 600, color: 'var(--color-warm-gray-700)' }}>{meeting.title}</div>
-                    <div
-                      style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-warm-gray-500)', marginTop: '2px' }}
-                    >
-                      {meeting.frequency === 'weekly' && '毎週'}
-                      {meeting.frequency === 'biweekly' && '隔週'}
-                      {meeting.frequency === 'monthly' && '毎月'}
-                      {' • '}
-                      {meeting.attendees.length}名参加
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    onClick={() => handleUnlinkMeeting(meeting.id)}
-                    disabled={unlinkMeetingMutation.isPending}
-                    style={{ padding: 'var(--space-1) var(--space-2)', fontSize: 'var(--font-size-sm)' }}
-                  >
-                    {unlinkMeetingMutation.isPending ? '解除中...' : '解除'}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ color: 'var(--color-warm-gray-500)', fontSize: 'var(--font-size-sm)' }}>
-              紐付けられた定例MTGはありません
-            </div>
-          )}
-        </Card>
-      </div>
-
-      {/* Reference Settings Section */}
-      <ReferenceSettingsSection
-        agent={agent}
-        onSave={async (data) => {
-          await updateMutation.mutateAsync({
-            id: agentId,
-            data,
-          })
-        }}
-        isSaving={updateMutation.isPending}
-      />
-
-      {/* Dictionary Section (full width) */}
-      <div style={{ marginTop: 'var(--space-6)' }}>
-        <DictionarySection agentId={agentId} />
       </div>
 
       {/* Modals */}
       {isFormOpen && <AgentForm agent={agent} onClose={() => setIsFormOpen(false)} />}
       <KnowledgeUploadModal agentId={agentId} isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} />
       <KnowledgeDetailModal knowledge={selectedKnowledge} onClose={() => setSelectedKnowledge(null)} />
+      {knowledgeList && (
+        <KnowledgeListModal
+          isOpen={isKnowledgeListModalOpen}
+          onClose={() => setIsKnowledgeListModalOpen(false)}
+          knowledgeList={knowledgeList}
+          onDelete={handleDeleteKnowledge}
+          onView={(knowledge) => {
+            setSelectedKnowledge(knowledge)
+            setIsKnowledgeListModalOpen(false)
+          }}
+          isDeleting={deleteKnowledgeMutation.isPending}
+        />
+      )}
       {isAgendaModalOpen && <AgendaGeneratePage agentId={agentId} onClose={() => setIsAgendaModalOpen(false)} />}
       <RecurringMeetingSelector
         agentId={agentId}
         isOpen={isMeetingSelectorOpen}
         onClose={() => setIsMeetingSelectorOpen(false)}
         excludeMeetingIds={recurringMeetings?.map((m) => m.id) ?? []}
+      />
+      <AgentSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        agent={agent}
+        agentId={agentId}
+        onSaveReferenceSettings={async (data) => {
+          await updateMutation.mutateAsync({
+            id: agentId,
+            data,
+          })
+        }}
+        isSavingReferenceSettings={updateMutation.isPending}
       />
     </div>
   )

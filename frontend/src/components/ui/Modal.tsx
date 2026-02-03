@@ -8,7 +8,7 @@ interface ModalProps {
   isOpen: boolean
   onClose: () => void
   title: string
-  size?: 'default' | 'lg'
+  size?: 'default' | 'lg' | 'xl'
   children: ReactNode
   footer?: ReactNode
 }
@@ -71,7 +71,7 @@ export function Modal({ isOpen, onClose, title, size = 'default', children, foot
       aria-labelledby="modal-title"
     >
       <div
-        className={`modal-content ${size === 'lg' ? 'modal-content-lg' : ''}`}
+        className={`modal-content ${size === 'lg' ? 'modal-content-lg' : ''}${size === 'xl' ? 'modal-content-xl' : ''}`}
         onClick={handleContentClick}
         onKeyDown={handleContentKeyDown}
         role="document"
