@@ -3,7 +3,6 @@
  */
 
 import { useState } from 'react'
-import { MarkdownEditor } from '../../components/editor'
 import { useUploadMeetingNote } from './hooks'
 
 interface Props {
@@ -79,17 +78,18 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
           </div>
 
           <div>
-            <span className="block text-sm font-medium mb-1">
+            <label htmlFor="meeting-text" className="block text-sm font-medium mb-1">
               議事録テキスト <span className="text-red-500">*</span>
-            </span>
-            <div className="border rounded overflow-hidden">
-              <MarkdownEditor
-                initialValue={text}
-                onChange={setText}
-                placeholder="議事録のテキストを貼り付けてください..."
-                minHeight={400}
-              />
-            </div>
+            </label>
+            <textarea
+              id="meeting-text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              className="w-full border rounded px-3 py-2 font-mono text-sm"
+              rows={15}
+              required
+              placeholder="議事録のテキストを貼り付けてください..."
+            />
             <p className="text-xs text-gray-500 mt-1">辞書に登録された表記揺れは自動的に正規化されます</p>
           </div>
 
