@@ -481,3 +481,79 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         assert result.agenda is not None
         assert result.has_transcripts is True
         assert result.transcript_count == 1
+
+    @pytest.mark.asyncio
+    async def test_recurring_meeting_title_set_on_transcripts(
+        self,
+        user_id: UUID,
+        agent_id: UUID,
+        mock_agenda_repository: AsyncMock,
+        mock_agent_repository: MagicMock,
+        mock_note_repository: AsyncMock,
+        mock_dictionary_repository: AsyncMock,
+        mock_slack_repository: AsyncMock,
+        mock_recurring_meeting_repository: AsyncMock,
+        mock_transcript_repository: AsyncMock,
+        mock_generation_service: AsyncMock,
+    ) -> None:
+        """トランスクリプトに定例会議名がセットされること."""
+        # Arrange
+        agent = self._create_agent(agent_id, user_id, transcript_count=2)
+        mock_agent_repository.get_by_id.return_value = agent
+
+        meeting1_id = uuid4()
+        meeting2_id = uuid4()
+        recurring_meetings = [
+            self._create_recurring_meeting(meeting1_id, agent_id, user_id, "Weekly Standup"),
+            self._create_recurring_meeting(meeting2_id, agent_id, user_id, "Sprint Review"),
+        ]
+        mock_recurring_meeting_repository.get_list_by_agent_id.return_value = recurring_meetings
+
+        now = datetime.now()
+        transcripts_meeting1 = [
+            self._create_transcript(uuid4(), meeting1_id, now),
+        ]
+        transcripts_meeting2 = [
+            self._create_transcript(uuid4(), meeting2_id, now - timedelta(days=1)),
+        ]
+        mock_transcript_repository.get_by_recurring_meeting.side_effect = [
+            transcripts_meeting1,
+            transcripts_meeting2,
+        ]
+
+        created_agenda = Agenda(
+            id=uuid4(),
+            agent_id=agent_id,
+            user_id=user_id,
+            content="# Generated Agenda",
+            source_note_id=None,
+            generated_at=datetime.now(),
+            created_at=datetime.now(),
+        )
+        mock_agenda_repository.create.return_value = created_agenda
+
+        # Act
+        use_case = GenerateAgendaUseCase(
+            agenda_repository=mock_agenda_repository,
+            agent_repository=mock_agent_repository,
+            note_repository=mock_note_repository,
+            dictionary_repository=mock_dictionary_repository,
+            slack_repository=mock_slack_repository,
+            recurring_meeting_repository=mock_recurring_meeting_repository,
+            meeting_transcript_repository=mock_transcript_repository,
+            generation_service=mock_generation_service,
+        )
+
+        await use_case.execute(user_id, agent_id)
+
+        # Assert: トランスクリプトにrecurring_meeting_titleがセットされていること
+        call_args = mock_generation_service.generate.call_args
+        input_data = call_args[0][0]
+        transcripts = input_data.transcripts
+
+        assert len(transcripts) == 2
+
+        # 日付降順なのでWeekly Standupが先
+        transcript_titles = [t.recurring_meeting_title for t in transcripts]
+        assert "Weekly Standup" in transcript_titles
+        assert "Sprint Review" in transcript_titles

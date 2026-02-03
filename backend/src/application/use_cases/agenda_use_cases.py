@@ -182,6 +182,9 @@ class GenerateAgendaUseCase:
                 transcripts = await self.meeting_transcript_repository.get_by_recurring_meeting(
                     meeting.id, limit=agent.transcript_count
                 )
+                # 定例会議名をトランスクリプトにセット
+                for transcript in transcripts:
+                    transcript.recurring_meeting_title = meeting.title
                 all_transcripts.extend(transcripts)
             except Exception as e:
                 logger.warning(

@@ -52,6 +52,7 @@ class MeetingTranscript:
         structured_data: 構造化データ（パース済み）
         match_confidence: 紐付け信頼度（0.0-1.0）
         created_at: 作成日時
+        recurring_meeting_title: 紐付けられた定例MTGの名称（アジェンダ生成用）
     """
 
     id: UUID
@@ -62,6 +63,7 @@ class MeetingTranscript:
     structured_data: TranscriptStructuredData | None
     match_confidence: float
     created_at: datetime
+    recurring_meeting_title: str | None = None
 
     def is_auto_linked(self) -> bool:
         """自動紐付けされたかを判定する.

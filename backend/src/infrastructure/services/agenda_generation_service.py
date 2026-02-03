@@ -81,6 +81,17 @@ class AgendaGenerationService:
             )
             parts.append(f"## 前回MTG以降のSlack履歴\n{messages}")
 
+        # トランスクリプト情報
+        if input_data.transcripts:
+            transcript_entries: list[str] = []
+            for transcript in input_data.transcripts:
+                meeting_title = transcript.recurring_meeting_title or "不明な定例"
+                meeting_date = transcript.meeting_date.strftime("%Y/%m/%d")
+                # 内容が長い場合は最初の2000文字に切り詰め
+                content = transcript.raw_text[:2000] if len(transcript.raw_text) > 2000 else transcript.raw_text
+                transcript_entries.append(f"### {meeting_title} ({meeting_date})\n{content}")
+            parts.append("## 過去のMTGトランスクリプト\n" + "\n\n".join(transcript_entries))
+
         context = "\n\n".join(parts)
 
         # データソースの状況を判定
