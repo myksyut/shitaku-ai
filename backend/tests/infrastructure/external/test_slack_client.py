@@ -131,6 +131,111 @@ class TestSlackClient:
 
         assert messages[0].user_name == "U001"
 
+    def test_get_messages_with_thread_ts(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
+        """スレッド情報を含むメッセージを正しく取得できる"""
+        mock_web_client.conversations_history.return_value = {
+            "ok": True,
+            "messages": [
+                {
+                    "type": "message",
+                    "ts": "1704067200.000001",
+                    "user": "U001",
+                    "text": "スレッド親メッセージ",
+                    "thread_ts": "1704067200.000001",
+                    "reply_count": 3,
+                },
+                {"type": "message", "ts": "1704067201.000002", "user": "U002", "text": "通常メッセージ"},
+            ],
+        }
+        mock_web_client.users_info.side_effect = [
+            {"ok": True, "user": {"real_name": "田中太郎"}},
+            {"ok": True, "user": {"real_name": "山田花子"}},
+        ]
+
+        oldest = datetime(2024, 1, 1, 0, 0, 0)
+        messages = slack_client.get_messages("C001", oldest)
+
+        assert len(messages) == 2
+        assert messages[0].thread_ts == "1704067200.000001"
+        assert messages[0].reply_count == 3
+        assert messages[1].thread_ts is None
+        assert messages[1].reply_count == 0
+
+    def test_get_thread_replies_success(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
+        """スレッド返信を正しく取得できる"""
+        mock_web_client.conversations_replies.return_value = {
+            "ok": True,
+            "messages": [
+                # 親メッセージ（除外される）
+                {
+                    "type": "message",
+                    "ts": "1704067200.000001",
+                    "user": "U001",
+                    "text": "親メッセージ",
+                    "thread_ts": "1704067200.000001",
+                },
+                # 返信1
+                {
+                    "type": "message",
+                    "ts": "1704067201.000002",
+                    "user": "U002",
+                    "text": "返信1",
+                    "thread_ts": "1704067200.000001",
+                },
+                # 返信2
+                {
+                    "type": "message",
+                    "ts": "1704067202.000003",
+                    "user": "U003",
+                    "text": "返信2",
+                    "thread_ts": "1704067200.000001",
+                },
+            ],
+        }
+        mock_web_client.users_info.side_effect = [
+            {"ok": True, "user": {"real_name": "山田花子"}},
+            {"ok": True, "user": {"real_name": "佐藤次郎"}},
+        ]
+
+        replies = slack_client.get_thread_replies("C001", "1704067200.000001")
+
+        assert len(replies) == 2
+        assert replies[0].text == "返信1"
+        assert replies[0].user_name == "山田花子"
+        assert replies[0].thread_ts == "1704067200.000001"
+        assert replies[1].text == "返信2"
+        assert replies[1].user_name == "佐藤次郎"
+
+    def test_get_thread_replies_api_error(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
+        """スレッド返信取得時のAPIエラーで例外を発生させる"""
+        mock_web_client.conversations_replies.side_effect = SlackApiError(  # type: ignore[no-untyped-call]
+            message="channel_not_found",
+            response={"ok": False, "error": "channel_not_found"},
+        )
+
+        with pytest.raises(SlackApiError):
+            slack_client.get_thread_replies("C001", "1704067200.000001")
+
+    def test_get_thread_replies_empty(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
+        """返信がないスレッドは空リストを返す"""
+        mock_web_client.conversations_replies.return_value = {
+            "ok": True,
+            "messages": [
+                # 親メッセージのみ
+                {
+                    "type": "message",
+                    "ts": "1704067200.000001",
+                    "user": "U001",
+                    "text": "親メッセージ",
+                    "thread_ts": "1704067200.000001",
+                },
+            ],
+        }
+
+        replies = slack_client.get_thread_replies("C001", "1704067200.000001")
+
+        assert len(replies) == 0
+
 
 class TestSlackDataClasses:
     """データクラスのテスト"""
@@ -154,3 +259,19 @@ class TestSlackDataClasses:
         assert message.user_name == "田中太郎"
         assert message.text == "テストメッセージ"
         assert message.posted_at == posted_at
+        assert message.thread_ts is None
+        assert message.reply_count == 0
+
+    def test_slack_message_data_with_thread(self) -> None:
+        """スレッド情報付きSlackMessageDataが正しく作成できる"""
+        posted_at = datetime(2024, 1, 1, 12, 0, 0)
+        message = SlackMessageData(
+            ts="1704067200.000001",
+            user_name="田中太郎",
+            text="スレッド親メッセージ",
+            posted_at=posted_at,
+            thread_ts="1704067200.000001",
+            reply_count=5,
+        )
+        assert message.thread_ts == "1704067200.000001"
+        assert message.reply_count == 5

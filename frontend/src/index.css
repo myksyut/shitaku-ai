@@ -536,6 +536,10 @@ body {
   max-width: 800px;
 }
 
+.modal-content-xl {
+  max-width: 1000px;
+}
+
 .modal-header {
   display: flex;
   align-items: center;

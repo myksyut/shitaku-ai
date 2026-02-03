@@ -23,7 +23,7 @@ from src.domain.repositories.meeting_transcript_repository import MeetingTranscr
 from src.domain.repositories.recurring_meeting_repository import RecurringMeetingRepository
 from src.domain.repositories.slack_integration_repository import SlackIntegrationRepository
 from src.infrastructure.external.encryption import decrypt_token
-from src.infrastructure.external.slack_client import SlackClient
+from src.infrastructure.external.slack_client import SlackClient, SlackMessageData
 from src.infrastructure.services.agenda_generation_service import (
     AgendaGenerationInput,
     AgendaGenerationService,
@@ -103,6 +103,9 @@ class GenerateAgendaUseCase:
                         channel_id=agent.slack_channel_id,
                         oldest=slack_oldest,
                     )
+
+                    # スレッド返信を取得
+                    slack_messages = self._fetch_thread_replies(client, agent.slack_channel_id, slack_messages)
             except SlackApiError as e:
                 error_code = e.response.get("error", "")
                 if error_code == "not_in_channel":
@@ -224,6 +227,48 @@ class GenerateAgendaUseCase:
 
         # なければslack_message_days前から
         return datetime.now() - timedelta(days=agent.slack_message_days)
+
+    def _fetch_thread_replies(
+        self,
+        client: SlackClient,
+        channel_id: str,
+        messages: list[SlackMessageData],
+    ) -> list[SlackMessageData]:
+        """スレッドの返信メッセージを取得してメッセージリストに追加する.
+
+        Args:
+            client: SlackClientインスタンス
+            channel_id: チャンネルID
+            messages: 元のメッセージリスト
+
+        Returns:
+            返信を含むメッセージリスト（時系列順）
+        """
+        all_messages: list[SlackMessageData] = list(messages)
+
+        # スレッド親メッセージ（reply_count > 0）の返信を取得
+        for msg in messages:
+            if msg.reply_count > 0 and msg.thread_ts:
+                try:
+                    replies = client.get_thread_replies(channel_id, msg.thread_ts)
+                    all_messages.extend(replies)
+                    logger.info(
+                        "Fetched %d replies for thread %s",
+                        len(replies),
+                        msg.thread_ts,
+                    )
+                except SlackApiError as e:
+                    # 個別スレッドのエラーは警告のみ、処理継続
+                    logger.warning(
+                        "Failed to get thread replies for %s: %s",
+                        msg.thread_ts,
+                        e,
+                    )
+                    continue
+
+        # 時系列順にソート
+        all_messages.sort(key=lambda m: m.posted_at)
+        return all_messages
 
 
 class GetAgendasUseCase:

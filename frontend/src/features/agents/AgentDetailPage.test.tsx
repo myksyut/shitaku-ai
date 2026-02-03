@@ -95,15 +95,27 @@ describe('AgentDetailPage - Reference Settings', () => {
     mockUpdateAgent.mockResolvedValue({ ...mockAgent })
   })
 
-  it('should display current reference settings', async () => {
-    render(<AgentDetailPage />, { wrapper: createWrapper() })
-
+  const openSettingsModal = async (user: ReturnType<typeof userEvent.setup>) => {
+    // Wait for agent to load
     await waitFor(() => {
       expect(screen.getByText('Test Agent')).toBeInTheDocument()
     })
 
-    // Check that reference settings section exists
-    expect(screen.getByText('アジェンダ生成参照設定')).toBeInTheDocument()
+    // Click settings button to open modal
+    const settingsButton = screen.getByRole('button', { name: /詳細設定/i })
+    await user.click(settingsButton)
+
+    // Wait for modal to appear
+    await waitFor(() => {
+      expect(screen.getByText('アジェンダ生成参照設定')).toBeInTheDocument()
+    })
+  }
+
+  it('should display current reference settings', async () => {
+    const user = userEvent.setup()
+    render(<AgentDetailPage />, { wrapper: createWrapper() })
+
+    await openSettingsModal(user)
 
     // Check that inputs display correct values
     const transcriptInput = screen.getByLabelText(/トランスクリプト参照件数/i)
@@ -117,9 +129,7 @@ describe('AgentDetailPage - Reference Settings', () => {
     const user = userEvent.setup()
     render(<AgentDetailPage />, { wrapper: createWrapper() })
 
-    await waitFor(() => {
-      expect(screen.getByText('Test Agent')).toBeInTheDocument()
-    })
+    await openSettingsModal(user)
 
     const transcriptInput = screen.getByLabelText(/トランスクリプト参照件数/i)
     await user.clear(transcriptInput)
@@ -137,9 +147,7 @@ describe('AgentDetailPage - Reference Settings', () => {
     const user = userEvent.setup()
     render(<AgentDetailPage />, { wrapper: createWrapper() })
 
-    await waitFor(() => {
-      expect(screen.getByText('Test Agent')).toBeInTheDocument()
-    })
+    await openSettingsModal(user)
 
     const slackDaysInput = screen.getByLabelText(/Slackメッセージ取得日数/i)
     await user.clear(slackDaysInput)
@@ -157,9 +165,7 @@ describe('AgentDetailPage - Reference Settings', () => {
     const user = userEvent.setup()
     render(<AgentDetailPage />, { wrapper: createWrapper() })
 
-    await waitFor(() => {
-      expect(screen.getByText('Test Agent')).toBeInTheDocument()
-    })
+    await openSettingsModal(user)
 
     const transcriptInput = screen.getByLabelText(/トランスクリプト参照件数/i)
     await user.clear(transcriptInput)
@@ -174,9 +180,7 @@ describe('AgentDetailPage - Reference Settings', () => {
     const user = userEvent.setup()
     render(<AgentDetailPage />, { wrapper: createWrapper() })
 
-    await waitFor(() => {
-      expect(screen.getByText('Test Agent')).toBeInTheDocument()
-    })
+    await openSettingsModal(user)
 
     const slackDaysInput = screen.getByLabelText(/Slackメッセージ取得日数/i)
     await user.clear(slackDaysInput)
@@ -191,9 +195,7 @@ describe('AgentDetailPage - Reference Settings', () => {
     const user = userEvent.setup()
     render(<AgentDetailPage />, { wrapper: createWrapper() })
 
-    await waitFor(() => {
-      expect(screen.getByText('Test Agent')).toBeInTheDocument()
-    })
+    await openSettingsModal(user)
 
     const transcriptInput = screen.getByLabelText(/トランスクリプト参照件数/i)
     await user.clear(transcriptInput)
