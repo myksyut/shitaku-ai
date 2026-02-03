@@ -30,7 +30,7 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
     setUploadResult(null)
 
     if (!text.trim()) {
-      setError('議事録テキストは必須です')
+      setError('ナレッジテキストは必須です')
       return
     }
 
@@ -60,7 +60,7 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">議事録アップロード</h2>
+        <h2 className="text-xl font-bold mb-4">ナレッジアップロード</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -79,7 +79,7 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
 
           <div>
             <label htmlFor="meeting-text" className="block text-sm font-medium mb-1">
-              議事録テキスト <span className="text-red-500">*</span>
+              ナレッジテキスト <span className="text-red-500">*</span>
             </label>
             <textarea
               id="meeting-text"
@@ -88,7 +88,7 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
               className="w-full border rounded px-3 py-2 font-mono text-sm"
               rows={15}
               required
-              placeholder="議事録のテキストを貼り付けてください..."
+              placeholder="ナレッジのテキストを貼り付けてください..."
             />
             <p className="text-xs text-gray-500 mt-1">辞書に登録された表記揺れは自動的に正規化されます</p>
           </div>

@@ -20,7 +20,7 @@ export function MeetingNotesPage() {
   const deleteMutation = useDeleteMeetingNote()
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('この議事録を削除しますか？')) {
+    if (window.confirm('このナレッジを削除しますか？')) {
       await deleteMutation.mutateAsync(id)
     }
   }
@@ -50,7 +50,7 @@ export function MeetingNotesPage() {
 
       <div className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-2xl font-bold">{agent.name} - 議事録</h1>
+          <h1 className="text-2xl font-bold">{agent.name} - ナレッジ</h1>
           {agent.description && <p className="text-gray-600 text-sm mt-1">{agent.description}</p>}
         </div>
         <button
@@ -58,11 +58,11 @@ export function MeetingNotesPage() {
           onClick={() => setIsUploadOpen(true)}
           className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
         >
-          議事録アップロード
+          ナレッジアップロード
         </button>
       </div>
 
-      {/* 議事録一覧 */}
+      {/* ナレッジ一覧 */}
       <div className="space-y-4">
         {notes?.map((note) => (
           <div key={note.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
@@ -102,7 +102,7 @@ export function MeetingNotesPage() {
       </div>
 
       {notes?.length === 0 && (
-        <div className="text-center text-gray-500 py-8">議事録がありません。アップロードしてください。</div>
+        <div className="text-center text-gray-500 py-8">ナレッジがありません。アップロードしてください。</div>
       )}
 
       {/* アップロードモーダル */}

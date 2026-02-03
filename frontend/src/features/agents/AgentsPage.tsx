@@ -100,7 +100,7 @@ function AgentCard({ agent, onClick }: AgentCardProps) {
           color: 'var(--color-warm-gray-500)',
         }}
       >
-        <span>📝 議事録 {noteCount}件</span>
+        <span>📝 ナレッジ {noteCount}件</span>
       </div>
     </Card>
   )

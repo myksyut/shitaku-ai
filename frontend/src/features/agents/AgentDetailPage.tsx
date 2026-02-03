@@ -119,7 +119,7 @@ function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadM
     setError(null)
 
     if (!text.trim()) {
-      setError('議事録テキストは必須です')
+      setError('ナレッジテキストは必須です')
       return
     }
 
@@ -145,7 +145,7 @@ function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadM
   if (!isOpen) return null
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="議事録をアップロード" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title="ナレッジをアップロード" size="lg">
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <label
@@ -181,7 +181,7 @@ function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadM
               marginBottom: 'var(--space-2)',
             }}
           >
-            議事録テキスト
+            ナレッジテキスト
           </label>
           <textarea
             id="meeting-text"
@@ -190,7 +190,7 @@ function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadM
             className="input"
             rows={12}
             required
-            placeholder="議事録のテキストを貼り付けてください..."
+            placeholder="ナレッジのテキストを貼り付けてください..."
             style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-sm)' }}
           />
           <p
@@ -249,7 +249,7 @@ function MeetingNoteDetailModal({ note, onClose }: MeetingNoteDetailModalProps) 
   }
 
   return (
-    <Modal isOpen={!!note} onClose={onClose} title="議事録詳細" size="lg">
+    <Modal isOpen={!!note} onClose={onClose} title="ナレッジ詳細" size="lg">
       <div style={{ marginBottom: 'var(--space-4)' }}>
         <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-warm-gray-500)' }}>MTG日時:</span>
         <span style={{ marginLeft: 'var(--space-2)', fontWeight: 600 }}>{formatDate(note.meeting_date)}</span>
@@ -669,14 +669,14 @@ export function AgentDetailPage() {
 
   const handleDelete = async () => {
     if (!agentId) return
-    if (window.confirm('このエージェントを削除しますか？関連する議事録・アジェンダも削除されます。')) {
+    if (window.confirm('このエージェントを削除しますか？関連するナレッジ・アジェンダも削除されます。')) {
       await deleteMutation.mutateAsync(agentId)
       handleBack()
     }
   }
 
   const handleDeleteNote = async (noteId: string) => {
-    if (window.confirm('この議事録を削除しますか？')) {
+    if (window.confirm('このナレッジを削除しますか？')) {
       await deleteNoteMutation.mutateAsync(noteId)
     }
   }
@@ -821,7 +821,7 @@ export function AgentDetailPage() {
                 margin: 0,
               }}
             >
-              📝 過去の議事録
+              📝 ナレッジ
             </h2>
             <Button variant="secondary" onClick={() => setIsUploadOpen(true)}>
               アップロード
@@ -847,11 +847,11 @@ export function AgentDetailPage() {
           ) : (
             <EmptyState
               icon="📝"
-              title="議事録がありません"
-              description="過去の議事録をアップロードすると、より良いアジェンダを提案できます"
+              title="ナレッジがありません"
+              description="ナレッジをアップロードすると、より良いアジェンダを提案できます"
               action={
                 <Button variant="secondary" onClick={() => setIsUploadOpen(true)}>
-                  議事録をアップロード
+                  ナレッジをアップロード
                 </Button>
               }
             />
