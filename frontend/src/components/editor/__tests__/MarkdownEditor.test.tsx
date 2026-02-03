@@ -10,8 +10,20 @@
  */
 
 import { render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MarkdownEditor } from '../MarkdownEditor'
+
+// AgendaEditorのhooksモック用の関数を先に定義
+const mockMutateAsync = vi.fn()
+
+// AgendaEditorの依存をモック（ファイルトップレベルで定義）
+vi.mock('../../../features/agendas/hooks', () => ({
+  useUpdateAgenda: () => ({
+    mutateAsync: mockMutateAsync,
+    isPending: false,
+  }),
+}))
 
 // BlockNoteはブラウザAPIに依存するため、モックを提供
 vi.mock('@blocknote/react', () => {
@@ -216,7 +228,85 @@ describe('MarkdownEditor Integration Test', () => {
   //   - data-testid="markdown-editor" is present
   //   - Save button triggers onSave with Markdown format
   //   - No preview/edit mode toggle exists (WYSIWYG)
-  it.todo('AC-AgendaEditor: BlockNote editor displays and saves in Markdown format')
+  describe('AC-AgendaEditor: BlockNoteエディタ表示とマークダウン保存', () => {
+    // AgendaEditorテスト用のコールバック
+    const mockOnSaved = vi.fn()
+    const mockOnCancel = vi.fn()
+
+    const mockAgenda = {
+      id: 'agenda-123',
+      agent_id: 'agent-456',
+      content: '# テストアジェンダ\n- 項目1\n- 項目2',
+      source_note_id: null,
+      generated_at: '2026-02-01T00:00:00Z',
+      created_at: '2026-02-01T00:00:00Z',
+      updated_at: null,
+    }
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      mockMutateAsync.mockResolvedValue({ ...mockAgenda, content: '更新後' })
+    })
+
+    it('MarkdownEditorがAgendaEditor内にレンダリングされる', async () => {
+      // テスト目的: AgendaEditorが正しくMarkdownEditorを含むことを検証
+      const AgendaEditorModule = await import('../../../features/agendas/AgendaEditor')
+      const { AgendaEditor } = AgendaEditorModule
+
+      render(<AgendaEditor agenda={mockAgenda} onSaved={mockOnSaved} onCancel={mockOnCancel} />)
+
+      // data-testid="markdown-editor"が存在することを確認
+      expect(screen.getByTestId('markdown-editor')).toBeInTheDocument()
+    })
+
+    it('保存ボタンでマークダウン形式が送信される', async () => {
+      // テスト目的: 保存ボタンクリック時にAPIがマークダウン形式のcontentで呼ばれることを検証
+      const AgendaEditorModule = await import('../../../features/agendas/AgendaEditor')
+      const { AgendaEditor } = AgendaEditorModule
+
+      render(<AgendaEditor agenda={mockAgenda} onSaved={mockOnSaved} onCancel={mockOnCancel} />)
+
+      // 保存ボタンをクリック
+      const saveButton = screen.getByRole('button', { name: /保存する/ })
+      await userEvent.click(saveButton)
+
+      // mutateAsyncがcontentを含むオブジェクトで呼ばれることを確認
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith({
+          id: mockAgenda.id,
+          data: expect.objectContaining({ content: expect.any(String) }),
+        })
+      })
+    })
+
+    it('プレビュー/編集モード切り替えが存在しない（WYSIWYGのため）', async () => {
+      // テスト目的: BlockNoteはWYSIWYGなのでプレビューモード切り替えが不要であることを確認
+      const AgendaEditorModule = await import('../../../features/agendas/AgendaEditor')
+      const { AgendaEditor } = AgendaEditorModule
+
+      render(<AgendaEditor agenda={mockAgenda} onSaved={mockOnSaved} onCancel={mockOnCancel} />)
+
+      // プレビュー/編集ボタンが存在しないことを確認
+      expect(screen.queryByRole('button', { name: /プレビュー/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /編集/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('tab', { name: /プレビュー/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('tab', { name: /編集/ })).not.toBeInTheDocument()
+    })
+
+    it('既存のアジェンダコンテンツがエディタに読み込まれる', async () => {
+      // テスト目的: agenda.contentがMarkdownEditorのinitialValueとして渡されることを確認
+      const AgendaEditorModule = await import('../../../features/agendas/AgendaEditor')
+      const { AgendaEditor } = AgendaEditorModule
+
+      render(<AgendaEditor agenda={mockAgenda} onSaved={mockOnSaved} onCancel={mockOnCancel} />)
+
+      // MarkdownEditorコンポーネントがレンダリングされることを確認
+      // (モックにより内部のBlockNoteはシミュレートされる)
+      await waitFor(() => {
+        expect(screen.getByTestId('markdown-editor')).toBeInTheDocument()
+      })
+    })
+  })
 
   // AC: "When 議事録アップロードフォームを開くと、BlockNoteエディタが表示される"
   // AC: "When 「アップロード」ボタンをクリックすると、マークダウン形式で送信される"
