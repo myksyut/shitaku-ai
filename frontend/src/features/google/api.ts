@@ -6,6 +6,8 @@ import type {
   LinkRecurringMeetingResponse,
   MeetingTranscript,
   RecurringMeeting,
+  SyncProviderTokenRequest,
+  SyncProviderTokenResponse,
   TranscriptsResponse,
   UnlinkRecurringMeetingResponse,
 } from './types'
@@ -23,6 +25,13 @@ export async function getGoogleIntegrations(): Promise<GoogleIntegration[]> {
 export async function deleteGoogleIntegration(integrationId: string): Promise<void> {
   await apiClient<void>(`${BASE_PATH}/integrations/${integrationId}`, {
     method: 'DELETE',
+  })
+}
+
+export async function syncProviderToken(request: SyncProviderTokenRequest): Promise<SyncProviderTokenResponse> {
+  return apiClient<SyncProviderTokenResponse>(`${BASE_PATH}/sync-token`, {
+    method: 'POST',
+    body: JSON.stringify(request),
   })
 }
 

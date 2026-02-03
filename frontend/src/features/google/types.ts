@@ -86,3 +86,18 @@ export interface LinkRecurringMeetingResponse {
 export interface UnlinkRecurringMeetingResponse {
   message: string
 }
+
+/** providerToken同期リクエスト */
+export interface SyncProviderTokenRequest {
+  provider_token: string
+  provider_refresh_token: string | null
+  email: string
+  scopes: string[] | null
+}
+
+/** providerToken同期レスポンス */
+export interface SyncProviderTokenResponse {
+  success: boolean
+  message: string
+  integration_id: string | null
+}

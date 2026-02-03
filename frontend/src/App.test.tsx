@@ -41,7 +41,7 @@ describe('App', () => {
   it('shows auth page when not logged in', async () => {
     render(<App />, { wrapper: createWrapper() })
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'おかえりなさい' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'ログイン' })).toBeInTheDocument()
     })
   })
 })

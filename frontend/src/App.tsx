@@ -3,13 +3,14 @@
  * Using react-router-dom for navigation
  */
 import type { Session } from '@supabase/supabase-js'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import { Button, SlackIcon } from './components/ui'
 import { GoogleIcon } from './components/ui/GoogleIcon'
 import { AgentDetailPage, AgentsPage } from './features/agents'
 import { AuthPage } from './features/auth'
 import { GoogleIntegrationPage, TranscriptViewer } from './features/google'
+import { syncProviderToken } from './features/google/api'
 import { SlackSettingsPage } from './features/slack'
 import { supabase } from './lib/supabase'
 
@@ -146,17 +147,45 @@ function Header({ email, onLogout }: HeaderProps) {
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const tokenSyncAttempted = useRef(false)
 
   useEffect(() => {
+    const syncGoogleToken = async (sess: Session) => {
+      const email = sess.user?.email
+      if (!email || !sess.provider_refresh_token) return
+
+      try {
+        await syncProviderToken({
+          provider_token: sess.provider_token ?? '',
+          provider_refresh_token: sess.provider_refresh_token,
+          email,
+          scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+        })
+      } catch (error) {
+        console.error('Failed to sync Google token:', error)
+      }
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setLoading(false)
+      if (session?.provider_refresh_token && !tokenSyncAttempted.current) {
+        tokenSyncAttempted.current = true
+        syncGoogleToken(session)
+      }
     })
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
+      if (event === 'SIGNED_IN' && session?.provider_refresh_token && !tokenSyncAttempted.current) {
+        tokenSyncAttempted.current = true
+        syncGoogleToken(session)
+      }
+      if (event === 'SIGNED_OUT') {
+        tokenSyncAttempted.current = false
+      }
     })
 
     return () => subscription.unsubscribe()
