@@ -1,8 +1,9 @@
 /**
- * Agenda editor component with preview and edit modes
+ * Agenda editor component with WYSIWYG markdown editing
  */
 import { useState } from 'react'
-import { Button, Textarea } from '../../components/ui'
+import { MarkdownEditor } from '../../components/editor'
+import { Button } from '../../components/ui'
 import { useUpdateAgenda } from './hooks'
 import type { Agenda } from './types'
 
@@ -13,7 +14,6 @@ interface Props {
 }
 
 export function AgendaEditor({ agenda, onSaved, onCancel }: Props) {
-  const [isEditing, setIsEditing] = useState(false)
   const [content, setContent] = useState(agenda.content)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -34,7 +34,6 @@ export function AgendaEditor({ agenda, onSaved, onCancel }: Props) {
         data: { content: content.trim() },
       })
       setSaved(true)
-      setIsEditing(false)
 
       // 保存成功後に少し待ってから閉じる
       setTimeout(() => {
@@ -48,104 +47,19 @@ export function AgendaEditor({ agenda, onSaved, onCancel }: Props) {
   }
 
   const handleCancel = () => {
-    if (isEditing) {
-      setContent(agenda.content)
-      setIsEditing(false)
-    } else {
-      onCancel()
-    }
+    onCancel()
   }
 
   return (
     <div>
-      {/* Mode Toggle */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--space-4)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            gap: 'var(--space-2)',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setIsEditing(false)}
-            style={{
-              padding: 'var(--space-2) var(--space-4)',
-              fontSize: 'var(--font-size-sm)',
-              fontWeight: 600,
-              fontFamily: 'var(--font-family)',
-              border: 'none',
-              borderRadius: 'var(--radius-md)',
-              cursor: 'pointer',
-              transition: 'all var(--transition-fast)',
-              background: !isEditing ? 'var(--color-primary-100)' : 'transparent',
-              color: !isEditing ? 'var(--color-primary-700)' : 'var(--color-warm-gray-500)',
-            }}
-          >
-            プレビュー
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsEditing(true)}
-            disabled={saved}
-            style={{
-              padding: 'var(--space-2) var(--space-4)',
-              fontSize: 'var(--font-size-sm)',
-              fontWeight: 600,
-              fontFamily: 'var(--font-family)',
-              border: 'none',
-              borderRadius: 'var(--radius-md)',
-              cursor: saved ? 'not-allowed' : 'pointer',
-              transition: 'all var(--transition-fast)',
-              background: isEditing ? 'var(--color-primary-100)' : 'transparent',
-              color: isEditing ? 'var(--color-primary-700)' : 'var(--color-warm-gray-500)',
-              opacity: saved ? 0.5 : 1,
-            }}
-          >
-            編集
-          </button>
-        </div>
-      </div>
-
-      {/* Content Area */}
-      {isEditing ? (
-        <Textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          rows={16}
-          placeholder="マークダウン形式でアジェンダを編集..."
-          style={{
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            fontSize: 'var(--font-size-sm)',
-            lineHeight: 1.7,
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            padding: 'var(--space-5)',
-            background: 'var(--color-cream-50)',
-            borderRadius: 'var(--radius-lg)',
-            border: '1px solid var(--color-cream-300)',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            fontSize: 'var(--font-size-sm)',
-            lineHeight: 1.8,
-            whiteSpace: 'pre-wrap',
-            maxHeight: '400px',
-            overflowY: 'auto',
-            color: 'var(--color-warm-gray-700)',
-          }}
-        >
-          {content}
-        </div>
-      )}
+      {/* WYSIWYG Markdown Editor */}
+      <MarkdownEditor
+        initialValue={content}
+        onChange={setContent}
+        minHeight={400}
+        placeholder="アジェンダを入力してください..."
+        readOnly={saved}
+      />
 
       {/* Error */}
       {error && (
@@ -174,13 +88,11 @@ export function AgendaEditor({ agenda, onSaved, onCancel }: Props) {
         }}
       >
         <Button variant="secondary" onClick={handleCancel} disabled={updateMutation.isPending}>
-          {isEditing ? 'キャンセル' : '閉じる'}
+          閉じる
         </Button>
-        {isEditing && (
-          <Button variant="primary" onClick={handleSave} isLoading={updateMutation.isPending} disabled={saved}>
-            保存する
-          </Button>
-        )}
+        <Button variant="primary" onClick={handleSave} isLoading={updateMutation.isPending} disabled={saved}>
+          保存する
+        </Button>
       </div>
     </div>
   )
