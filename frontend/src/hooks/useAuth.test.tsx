@@ -5,8 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Supabaseモジュールをモック
 const mockGetSession = vi.fn()
 const mockOnAuthStateChange = vi.fn()
-const mockSignInWithPassword = vi.fn()
-const mockSignUp = vi.fn()
+const mockSignInWithOAuth = vi.fn()
 const mockSignOut = vi.fn()
 
 vi.mock('@supabase/supabase-js', () => ({
@@ -14,8 +13,7 @@ vi.mock('@supabase/supabase-js', () => ({
     auth: {
       getSession: mockGetSession,
       onAuthStateChange: mockOnAuthStateChange,
-      signInWithPassword: mockSignInWithPassword,
-      signUp: mockSignUp,
+      signInWithOAuth: mockSignInWithOAuth,
       signOut: mockSignOut,
     },
   })),
@@ -27,8 +25,7 @@ vi.mock('../lib/supabase', () => ({
     auth: {
       getSession: () => mockGetSession(),
       onAuthStateChange: (callback: unknown) => mockOnAuthStateChange(callback),
-      signInWithPassword: (params: unknown) => mockSignInWithPassword(params),
-      signUp: (params: unknown) => mockSignUp(params),
+      signInWithOAuth: (params: unknown) => mockSignInWithOAuth(params),
       signOut: () => mockSignOut(),
     },
   },
@@ -85,14 +82,14 @@ describe('AuthContext', () => {
   })
 
   describe('useAuth functions', () => {
-    it('should have signIn function', async () => {
+    it('should have signInWithGoogle function', async () => {
       const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>
       const { result } = renderHook(() => useAuth(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
       })
-      expect(typeof result.current.signIn).toBe('function')
+      expect(typeof result.current.signInWithGoogle).toBe('function')
     })
 
     it('should have signOut function', async () => {
@@ -105,8 +102,8 @@ describe('AuthContext', () => {
       expect(typeof result.current.signOut).toBe('function')
     })
 
-    it('should call supabase signIn when signIn is called', async () => {
-      mockSignInWithPassword.mockResolvedValue({ error: null })
+    it('should call supabase signInWithOAuth when signInWithGoogle is called', async () => {
+      mockSignInWithOAuth.mockResolvedValue({ error: null })
       const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>
       const { result } = renderHook(() => useAuth(), { wrapper })
 
@@ -115,12 +112,14 @@ describe('AuthContext', () => {
       })
 
       await act(async () => {
-        await result.current.signIn('test@example.com', 'password')
+        await result.current.signInWithGoogle()
       })
 
-      expect(mockSignInWithPassword).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        password: 'password',
+      expect(mockSignInWithOAuth).toHaveBeenCalledWith({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
       })
     })
 
