@@ -121,9 +121,7 @@ class TestKnowledgeIntegration:
             patch("src.presentation.api.v1.endpoints.knowledge.AgentRepositoryImpl") as mock_agent_repo_class,
             patch("src.presentation.api.v1.endpoints.knowledge.DictionaryRepositoryImpl") as mock_dict_repo_class,
             patch("src.presentation.api.v1.endpoints.knowledge.KnowledgeRepositoryImpl") as mock_knowledge_repo_class,
-            patch(
-                "src.presentation.api.v1.endpoints.knowledge.NormalizationServiceImpl"
-            ) as mock_norm_service_class,
+            patch("src.presentation.api.v1.endpoints.knowledge.NormalizationServiceImpl") as mock_norm_service_class,
         ):
             # Supabase client mock
             mock_supabase_client.return_value = MagicMock()
@@ -210,9 +208,7 @@ class TestKnowledgeIntegration:
             patch("src.presentation.api.v1.endpoints.knowledge.AgentRepositoryImpl") as mock_agent_repo_class,
             patch("src.presentation.api.v1.endpoints.knowledge.DictionaryRepositoryImpl") as mock_dict_repo_class,
             patch("src.presentation.api.v1.endpoints.knowledge.KnowledgeRepositoryImpl") as mock_knowledge_repo_class,
-            patch(
-                "src.presentation.api.v1.endpoints.knowledge.NormalizationServiceImpl"
-            ) as mock_norm_service_class,
+            patch("src.presentation.api.v1.endpoints.knowledge.NormalizationServiceImpl") as mock_norm_service_class,
         ):
             # Supabase client mock
             mock_supabase_client.return_value = MagicMock()
