@@ -1,4 +1,4 @@
-"""Use cases for MeetingNote management.
+"""Use cases for Knowledge management.
 
 Application layer use cases following clean architecture principles.
 """
@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from src.domain.entities.meeting_note import MeetingNote
+from src.domain.entities.knowledge import Knowledge
 from src.domain.repositories.agent_repository import AgentRepository
 from src.domain.repositories.dictionary_repository import DictionaryRepository
-from src.domain.repositories.meeting_note_repository import MeetingNoteRepository
+from src.domain.repositories.knowledge_repository import KnowledgeRepository
 from src.domain.services.normalization_service import NormalizationError, NormalizationService
 
 logger = logging.getLogger(__name__)
@@ -21,22 +21,22 @@ logger = logging.getLogger(__name__)
 class UploadResult:
     """アップロード結果."""
 
-    note: MeetingNote
+    knowledge: Knowledge
     normalization_warning: str | None
     replacement_count: int
 
 
-class UploadMeetingNoteUseCase:
-    """議事録アップロードユースケース（正規化処理含む）."""
+class UploadKnowledgeUseCase:
+    """ナレッジアップロードユースケース（正規化処理含む）."""
 
     def __init__(
         self,
-        note_repository: MeetingNoteRepository,
+        knowledge_repository: KnowledgeRepository,
         dictionary_repository: DictionaryRepository,
         agent_repository: AgentRepository,
         normalization_service: NormalizationService,
     ) -> None:
-        self.note_repository = note_repository
+        self.knowledge_repository = knowledge_repository
         self.dictionary_repository = dictionary_repository
         self.agent_repository = agent_repository
         self.normalization_service = normalization_service
@@ -46,9 +46,8 @@ class UploadMeetingNoteUseCase:
         user_id: UUID,
         agent_id: UUID,
         text: str,
-        meeting_date: datetime,
     ) -> UploadResult:
-        """議事録をアップロードする（正規化処理含む）."""
+        """ナレッジをアップロードする（正規化処理含む）."""
         # エージェントの存在確認
         agent = self.agent_repository.get_by_id(agent_id, user_id)
         if not agent:
@@ -70,30 +69,31 @@ class UploadMeetingNoteUseCase:
             logger.warning(f"Normalization failed, using original text: {e}")
             normalization_warning = "正規化処理に失敗しました。元のテキストを保存しました。"
 
-        # 議事録を作成
-        note = MeetingNote(
+        # ナレッジを作成（meeting_dateは作成日時を使用）
+        now = datetime.now()
+        knowledge = Knowledge(
             id=uuid4(),
             agent_id=agent_id,
             user_id=user_id,
             original_text=text,
             normalized_text=normalized_text,
-            meeting_date=meeting_date,
-            created_at=datetime.now(),
+            meeting_date=now,
+            created_at=now,
         )
 
-        saved_note = await self.note_repository.create(note)
+        saved_knowledge = await self.knowledge_repository.create(knowledge)
 
         return UploadResult(
-            note=saved_note,
+            knowledge=saved_knowledge,
             normalization_warning=normalization_warning,
             replacement_count=replacement_count,
         )
 
 
-class GetMeetingNotesUseCase:
-    """議事録一覧取得ユースケース."""
+class GetKnowledgeListUseCase:
+    """ナレッジ一覧取得ユースケース."""
 
-    def __init__(self, repository: MeetingNoteRepository) -> None:
+    def __init__(self, repository: KnowledgeRepository) -> None:
         self.repository = repository
 
     async def execute(
@@ -101,28 +101,28 @@ class GetMeetingNotesUseCase:
         agent_id: UUID,
         user_id: UUID,
         limit: int | None = None,
-    ) -> list[MeetingNote]:
-        """エージェントの議事録一覧を取得する."""
+    ) -> list[Knowledge]:
+        """エージェントのナレッジ一覧を取得する."""
         return await self.repository.get_by_agent(agent_id, user_id, limit)
 
 
-class GetMeetingNoteUseCase:
-    """議事録取得ユースケース."""
+class GetKnowledgeUseCase:
+    """ナレッジ取得ユースケース."""
 
-    def __init__(self, repository: MeetingNoteRepository) -> None:
+    def __init__(self, repository: KnowledgeRepository) -> None:
         self.repository = repository
 
-    async def execute(self, note_id: UUID, user_id: UUID) -> MeetingNote | None:
-        """IDで議事録を取得する."""
-        return await self.repository.get_by_id(note_id, user_id)
+    async def execute(self, knowledge_id: UUID, user_id: UUID) -> Knowledge | None:
+        """IDでナレッジを取得する."""
+        return await self.repository.get_by_id(knowledge_id, user_id)
 
 
-class DeleteMeetingNoteUseCase:
-    """議事録削除ユースケース."""
+class DeleteKnowledgeUseCase:
+    """ナレッジ削除ユースケース."""
 
-    def __init__(self, repository: MeetingNoteRepository) -> None:
+    def __init__(self, repository: KnowledgeRepository) -> None:
         self.repository = repository
 
-    async def execute(self, note_id: UUID, user_id: UUID) -> bool:
-        """議事録を削除する."""
-        return await self.repository.delete(note_id, user_id)
+    async def execute(self, knowledge_id: UUID, user_id: UUID) -> bool:
+        """ナレッジを削除する."""
+        return await self.repository.delete(knowledge_id, user_id)

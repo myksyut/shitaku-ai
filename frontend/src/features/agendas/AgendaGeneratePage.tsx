@@ -118,8 +118,8 @@ export function AgendaGeneratePage({ agentId, onClose }: Props) {
             }}
           >
             {generateMutation.isPending
-              ? '前回の議事録とSlack履歴を分析しています'
-              : '前回の議事録とSlack履歴を元に、次回MTGのアジェンダを自動生成します'}
+              ? '過去のナレッジとSlack履歴を分析しています'
+              : '過去のナレッジとSlack履歴を元に、次回MTGのアジェンダを自動生成します'}
           </p>
 
           {/* Error */}
@@ -199,9 +199,14 @@ export function AgendaGeneratePage({ agentId, onClose }: Props) {
                 }}
               >
                 <DataSourceBadge
-                  label="前回議事録"
-                  value={dataSources.has_meeting_note ? '参照済' : 'なし'}
-                  active={dataSources.has_meeting_note}
+                  label="ナレッジ"
+                  value={dataSources.has_knowledge ? '参照済' : 'なし'}
+                  active={dataSources.has_knowledge}
+                />
+                <DataSourceBadge
+                  label="議事録"
+                  value={dataSources.has_transcripts ? `${dataSources.transcript_count}件` : 'なし'}
+                  active={dataSources.has_transcripts}
                 />
                 <DataSourceBadge
                   label="Slackメッセージ"

@@ -29,7 +29,7 @@ class AgendaResponse(BaseModel):
     id: UUID
     agent_id: UUID
     content: str
-    source_note_id: UUID | None
+    source_knowledge_id: UUID | None
     generated_at: datetime
     created_at: datetime
     updated_at: datetime | None
@@ -38,10 +38,12 @@ class AgendaResponse(BaseModel):
 class DataSourcesInfo(BaseModel):
     """使用されたデータソース情報."""
 
-    has_meeting_note: bool
+    has_knowledge: bool
     has_slack_messages: bool
     slack_message_count: int
     dictionary_entry_count: int
+    has_transcripts: bool = False
+    transcript_count: int = 0
     slack_error: str | None = None
 
 

@@ -1,8 +1,8 @@
 /**
- * MeetingNote feature type definitions
+ * Knowledge feature type definitions
  */
 
-export interface MeetingNote {
+export interface Knowledge {
   id: string
   agent_id: string
   original_text: string
@@ -12,14 +12,13 @@ export interface MeetingNote {
   is_normalized: boolean
 }
 
-export interface MeetingNoteCreate {
+export interface KnowledgeCreate {
   agent_id: string
   text: string
-  meeting_date: string
 }
 
-export interface MeetingNoteUploadResponse {
-  note: MeetingNote
+export interface KnowledgeUploadResponse {
+  knowledge: Knowledge
   normalization_warning: string | null
   replacement_count: number
 }

@@ -7,23 +7,23 @@ import { AgentAvatar, Button, Card, EmptyState, Modal, SlackIcon } from '../../c
 import { AgendaGeneratePage } from '../agendas'
 import { DictionarySection } from '../dictionary/DictionarySection'
 import { useAgentRecurringMeetings, useUnlinkRecurringMeeting } from '../google/hooks'
-// Import meeting notes components
-import { useDeleteMeetingNote, useMeetingNotes, useUploadMeetingNote } from '../meeting-notes/hooks'
-import type { MeetingNote } from '../meeting-notes/types'
+// Import knowledge components
+import { useDeleteKnowledge, useKnowledgeList, useUploadKnowledge } from '../knowledge/hooks'
+import type { Knowledge } from '../knowledge/types'
 import { useSlackChannels, useSlackIntegrations } from '../slack/hooks'
 import { AgentForm } from './AgentForm'
 import { useAgent, useDeleteAgent, useUpdateAgent } from './hooks'
 import { RecurringMeetingSelector } from './RecurringMeetingSelector'
 import type { Agent } from './types'
 
-interface MeetingNoteCardProps {
-  note: MeetingNote
+interface KnowledgeCardProps {
+  knowledge: Knowledge
   onDelete: () => void
   onView: () => void
   isDeleting: boolean
 }
 
-function MeetingNoteCard({ note, onDelete, onView, isDeleting }: MeetingNoteCardProps) {
+function KnowledgeCard({ knowledge, onDelete, onView, isDeleting }: KnowledgeCardProps) {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
     return date.toLocaleDateString('ja-JP', {
@@ -47,9 +47,9 @@ function MeetingNoteCard({ note, onDelete, onView, isDeleting }: MeetingNoteCard
           >
             <span style={{ fontSize: '16px' }}>📝</span>
             <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-warm-gray-700)' }}>
-              {formatDate(note.meeting_date)}
+              {formatDate(knowledge.meeting_date)}
             </span>
-            {note.is_normalized && (
+            {knowledge.is_normalized && (
               <span
                 style={{
                   fontSize: 'var(--font-size-xs)',
@@ -75,8 +75,8 @@ function MeetingNoteCard({ note, onDelete, onView, isDeleting }: MeetingNoteCard
               lineHeight: 1.5,
             }}
           >
-            {note.normalized_text.substring(0, 150)}
-            {note.normalized_text.length > 150 && '...'}
+            {knowledge.normalized_text.substring(0, 150)}
+            {knowledge.normalized_text.length > 150 && '...'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', marginLeft: 'var(--space-3)' }}>
@@ -97,29 +97,25 @@ function MeetingNoteCard({ note, onDelete, onView, isDeleting }: MeetingNoteCard
   )
 }
 
-interface MeetingNoteUploadModalProps {
+interface KnowledgeUploadModalProps {
   agentId: string
   isOpen: boolean
   onClose: () => void
 }
 
-function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadModalProps) {
+function KnowledgeUploadModal({ agentId, isOpen, onClose }: KnowledgeUploadModalProps) {
   const [text, setText] = useState('')
-  const [meetingDate, setMeetingDate] = useState(() => {
-    const now = new Date()
-    return now.toISOString().slice(0, 16)
-  })
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  const uploadMutation = useUploadMeetingNote()
+  const uploadMutation = useUploadKnowledge()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
     if (!text.trim()) {
-      setError('議事録テキストは必須です')
+      setError('ナレッジテキストは必須です')
       return
     }
 
@@ -127,7 +123,6 @@ function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadM
       await uploadMutation.mutateAsync({
         agent_id: agentId,
         text: text.trim(),
-        meeting_date: new Date(meetingDate).toISOString(),
       })
       setSuccess(true)
       setTimeout(() => {
@@ -145,11 +140,11 @@ function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadM
   if (!isOpen) return null
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="議事録をアップロード" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title="ナレッジをアップロード" size="lg">
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <label
-            htmlFor="meeting-date"
+            htmlFor="knowledge-text"
             style={{
               display: 'block',
               fontSize: 'var(--font-size-sm)',
@@ -158,39 +153,16 @@ function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadM
               marginBottom: 'var(--space-2)',
             }}
           >
-            MTG開催日時
-          </label>
-          <input
-            id="meeting-date"
-            type="datetime-local"
-            value={meetingDate}
-            onChange={(e) => setMeetingDate(e.target.value)}
-            className="input"
-            required
-          />
-        </div>
-
-        <div style={{ marginBottom: 'var(--space-4)' }}>
-          <label
-            htmlFor="meeting-text"
-            style={{
-              display: 'block',
-              fontSize: 'var(--font-size-sm)',
-              fontWeight: 600,
-              color: 'var(--color-warm-gray-700)',
-              marginBottom: 'var(--space-2)',
-            }}
-          >
-            議事録テキスト
+            ナレッジテキスト
           </label>
           <textarea
-            id="meeting-text"
+            id="knowledge-text"
             value={text}
             onChange={(e) => setText(e.target.value)}
             className="input"
             rows={12}
             required
-            placeholder="議事録のテキストを貼り付けてください..."
+            placeholder="ナレッジのテキストを貼り付けてください..."
             style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-sm)' }}
           />
           <p
@@ -229,13 +201,13 @@ function MeetingNoteUploadModal({ agentId, isOpen, onClose }: MeetingNoteUploadM
   )
 }
 
-interface MeetingNoteDetailModalProps {
-  note: MeetingNote | null
+interface KnowledgeDetailModalProps {
+  knowledge: Knowledge | null
   onClose: () => void
 }
 
-function MeetingNoteDetailModal({ note, onClose }: MeetingNoteDetailModalProps) {
-  if (!note) return null
+function KnowledgeDetailModal({ knowledge, onClose }: KnowledgeDetailModalProps) {
+  if (!knowledge) return null
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -249,10 +221,10 @@ function MeetingNoteDetailModal({ note, onClose }: MeetingNoteDetailModalProps) 
   }
 
   return (
-    <Modal isOpen={!!note} onClose={onClose} title="議事録詳細" size="lg">
+    <Modal isOpen={!!knowledge} onClose={onClose} title="ナレッジ詳細" size="lg">
       <div style={{ marginBottom: 'var(--space-4)' }}>
         <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-warm-gray-500)' }}>MTG日時:</span>
-        <span style={{ marginLeft: 'var(--space-2)', fontWeight: 600 }}>{formatDate(note.meeting_date)}</span>
+        <span style={{ marginLeft: 'var(--space-2)', fontWeight: 600 }}>{formatDate(knowledge.meeting_date)}</span>
       </div>
 
       <div>
@@ -278,7 +250,7 @@ function MeetingNoteDetailModal({ note, onClose }: MeetingNoteDetailModalProps) 
             overflowY: 'auto',
           }}
         >
-          {note.normalized_text}
+          {knowledge.normalized_text}
         </div>
       </div>
     </Modal>
@@ -647,7 +619,7 @@ export function AgentDetailPage() {
   const navigate = useNavigate()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isUploadOpen, setIsUploadOpen] = useState(false)
-  const [selectedNote, setSelectedNote] = useState<MeetingNote | null>(null)
+  const [selectedKnowledge, setSelectedKnowledge] = useState<Knowledge | null>(null)
   const [isAgendaModalOpen, setIsAgendaModalOpen] = useState(false)
   const [isMeetingSelectorOpen, setIsMeetingSelectorOpen] = useState(false)
 
@@ -662,22 +634,22 @@ export function AgentDetailPage() {
   const handleGenerateAgenda = () => {
     setIsAgendaModalOpen(true)
   }
-  const { data: notes, isLoading: notesLoading } = useMeetingNotes(agentId ?? '')
+  const { data: knowledgeList, isLoading: knowledgeLoading } = useKnowledgeList(agentId ?? '')
   const deleteMutation = useDeleteAgent()
-  const deleteNoteMutation = useDeleteMeetingNote()
+  const deleteKnowledgeMutation = useDeleteKnowledge()
   const updateMutation = useUpdateAgent()
 
   const handleDelete = async () => {
     if (!agentId) return
-    if (window.confirm('このエージェントを削除しますか？関連する議事録・アジェンダも削除されます。')) {
+    if (window.confirm('このエージェントを削除しますか？関連するナレッジ・アジェンダも削除されます。')) {
       await deleteMutation.mutateAsync(agentId)
       handleBack()
     }
   }
 
-  const handleDeleteNote = async (noteId: string) => {
-    if (window.confirm('この議事録を削除しますか？')) {
-      await deleteNoteMutation.mutateAsync(noteId)
+  const handleDeleteKnowledge = async (knowledgeId: string) => {
+    if (window.confirm('このナレッジを削除しますか？')) {
+      await deleteKnowledgeMutation.mutateAsync(knowledgeId)
     }
   }
 
@@ -821,37 +793,37 @@ export function AgentDetailPage() {
                 margin: 0,
               }}
             >
-              📝 過去の議事録
+              📝 ナレッジ
             </h2>
             <Button variant="secondary" onClick={() => setIsUploadOpen(true)}>
               アップロード
             </Button>
           </div>
 
-          {notesLoading ? (
+          {knowledgeLoading ? (
             <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-warm-gray-500)' }}>
               読み込み中...
             </div>
-          ) : notes && notes.length > 0 ? (
+          ) : knowledgeList && knowledgeList.length > 0 ? (
             <div>
-              {notes.map((note) => (
-                <MeetingNoteCard
-                  key={note.id}
-                  note={note}
-                  onDelete={() => handleDeleteNote(note.id)}
-                  onView={() => setSelectedNote(note)}
-                  isDeleting={deleteNoteMutation.isPending}
+              {knowledgeList.map((knowledge) => (
+                <KnowledgeCard
+                  key={knowledge.id}
+                  knowledge={knowledge}
+                  onDelete={() => handleDeleteKnowledge(knowledge.id)}
+                  onView={() => setSelectedKnowledge(knowledge)}
+                  isDeleting={deleteKnowledgeMutation.isPending}
                 />
               ))}
             </div>
           ) : (
             <EmptyState
               icon="📝"
-              title="議事録がありません"
-              description="過去の議事録をアップロードすると、より良いアジェンダを提案できます"
+              title="ナレッジがありません"
+              description="ナレッジをアップロードすると、より良いアジェンダを提案できます"
               action={
                 <Button variant="secondary" onClick={() => setIsUploadOpen(true)}>
-                  議事録をアップロード
+                  ナレッジをアップロード
                 </Button>
               }
             />
@@ -995,8 +967,8 @@ export function AgentDetailPage() {
 
       {/* Modals */}
       {isFormOpen && <AgentForm agent={agent} onClose={() => setIsFormOpen(false)} />}
-      <MeetingNoteUploadModal agentId={agentId} isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} />
-      <MeetingNoteDetailModal note={selectedNote} onClose={() => setSelectedNote(null)} />
+      <KnowledgeUploadModal agentId={agentId} isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} />
+      <KnowledgeDetailModal knowledge={selectedKnowledge} onClose={() => setSelectedKnowledge(null)} />
       {isAgendaModalOpen && <AgendaGeneratePage agentId={agentId} onClose={() => setIsAgendaModalOpen(false)} />}
       <RecurringMeetingSelector
         agentId={agentId}

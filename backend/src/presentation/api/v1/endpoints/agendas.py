@@ -19,7 +19,13 @@ from src.infrastructure.external.supabase_client import get_supabase_client
 from src.infrastructure.repositories.agenda_repository_impl import AgendaRepositoryImpl
 from src.infrastructure.repositories.agent_repository_impl import AgentRepositoryImpl
 from src.infrastructure.repositories.dictionary_repository_impl import DictionaryRepositoryImpl
-from src.infrastructure.repositories.meeting_note_repository_impl import MeetingNoteRepositoryImpl
+from src.infrastructure.repositories.knowledge_repository_impl import KnowledgeRepositoryImpl
+from src.infrastructure.repositories.meeting_transcript_repository_impl import (
+    MeetingTranscriptRepositoryImpl,
+)
+from src.infrastructure.repositories.recurring_meeting_repository_impl import (
+    RecurringMeetingRepositoryImpl,
+)
 from src.infrastructure.repositories.slack_integration_repository_impl import (
     SlackIntegrationRepositoryImpl,
 )
@@ -42,7 +48,7 @@ def _to_response(agenda: Agenda) -> AgendaResponse:
         id=agenda.id,
         agent_id=agenda.agent_id,
         content=agenda.content,
-        source_note_id=agenda.source_note_id,
+        source_knowledge_id=agenda.source_knowledge_id,
         generated_at=agenda.generated_at,
         created_at=agenda.created_at,
         updated_at=agenda.updated_at,
@@ -64,18 +70,22 @@ async def generate_agenda(
 
     agenda_repository = AgendaRepositoryImpl(client)
     agent_repository = AgentRepositoryImpl(client)
-    note_repository = MeetingNoteRepositoryImpl(client)
+    knowledge_repository = KnowledgeRepositoryImpl(client)
     dictionary_repository = DictionaryRepositoryImpl(client)
     slack_repository = SlackIntegrationRepositoryImpl(client)
+    recurring_meeting_repository = RecurringMeetingRepositoryImpl(client)
+    meeting_transcript_repository = MeetingTranscriptRepositoryImpl(client)
     generation_service = AgendaGenerationService()
 
     use_case = GenerateAgendaUseCase(
         agenda_repository=agenda_repository,
         agent_repository=agent_repository,
-        note_repository=note_repository,
+        knowledge_repository=knowledge_repository,
         dictionary_repository=dictionary_repository,
         slack_repository=slack_repository,
         generation_service=generation_service,
+        recurring_meeting_repository=recurring_meeting_repository,
+        meeting_transcript_repository=meeting_transcript_repository,
     )
 
     try:
@@ -83,10 +93,12 @@ async def generate_agenda(
         return AgendaGenerateResponse(
             agenda=_to_response(result.agenda),
             data_sources=DataSourcesInfo(
-                has_meeting_note=result.has_meeting_note,
+                has_knowledge=result.has_knowledge,
                 has_slack_messages=result.has_slack_messages,
                 slack_message_count=result.slack_message_count,
                 dictionary_entry_count=result.dictionary_entry_count,
+                has_transcripts=result.has_transcripts,
+                transcript_count=result.transcript_count,
                 slack_error=result.slack_error,
             ),
         )

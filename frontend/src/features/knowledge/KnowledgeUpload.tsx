@@ -1,28 +1,24 @@
 /**
- * Meeting note upload form component
+ * Knowledge upload form component
  */
 
 import { useState } from 'react'
-import { useUploadMeetingNote } from './hooks'
+import { useUploadKnowledge } from './hooks'
 
 interface Props {
   agentId: string
   onClose: () => void
 }
 
-export function MeetingNoteUpload({ agentId, onClose }: Props) {
+export function KnowledgeUpload({ agentId, onClose }: Props) {
   const [text, setText] = useState('')
-  const [meetingDate, setMeetingDate] = useState(() => {
-    const now = new Date()
-    return now.toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm format
-  })
   const [error, setError] = useState<string | null>(null)
   const [uploadResult, setUploadResult] = useState<{
     warning: string | null
     replacementCount: number
   } | null>(null)
 
-  const uploadMutation = useUploadMeetingNote()
+  const uploadMutation = useUploadKnowledge()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,7 +26,7 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
     setUploadResult(null)
 
     if (!text.trim()) {
-      setError('議事録テキストは必須です')
+      setError('ナレッジテキストは必須です')
       return
     }
 
@@ -38,7 +34,6 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
       const result = await uploadMutation.mutateAsync({
         agent_id: agentId,
         text: text.trim(),
-        meeting_date: new Date(meetingDate).toISOString(),
       })
 
       setUploadResult({
@@ -60,35 +55,21 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">議事録アップロード</h2>
+        <h2 className="text-xl font-bold mb-4">ナレッジアップロード</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="meeting-date" className="block text-sm font-medium mb-1">
-              MTG開催日時 <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="meeting-date"
-              type="datetime-local"
-              value={meetingDate}
-              onChange={(e) => setMeetingDate(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="meeting-text" className="block text-sm font-medium mb-1">
-              議事録テキスト <span className="text-red-500">*</span>
+            <label htmlFor="knowledge-text" className="block text-sm font-medium mb-1">
+              ナレッジテキスト <span className="text-red-500">*</span>
             </label>
             <textarea
-              id="meeting-text"
+              id="knowledge-text"
               value={text}
               onChange={(e) => setText(e.target.value)}
               className="w-full border rounded px-3 py-2 font-mono text-sm"
               rows={15}
               required
-              placeholder="議事録のテキストを貼り付けてください..."
+              placeholder="ナレッジのテキストを貼り付けてください..."
             />
             <p className="text-xs text-gray-500 mt-1">辞書に登録された表記揺れは自動的に正規化されます</p>
           </div>

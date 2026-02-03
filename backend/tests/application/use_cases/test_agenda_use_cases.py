@@ -23,7 +23,7 @@ from src.domain.entities.recurring_meeting import (
 from src.domain.repositories.agenda_repository import AgendaRepository
 from src.domain.repositories.agent_repository import AgentRepository
 from src.domain.repositories.dictionary_repository import DictionaryRepository
-from src.domain.repositories.meeting_note_repository import MeetingNoteRepository
+from src.domain.repositories.knowledge_repository import KnowledgeRepository
 from src.domain.repositories.meeting_transcript_repository import MeetingTranscriptRepository
 from src.domain.repositories.recurring_meeting_repository import RecurringMeetingRepository
 from src.domain.repositories.slack_integration_repository import SlackIntegrationRepository
@@ -56,9 +56,9 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         return MagicMock(spec=AgentRepository)
 
     @pytest.fixture
-    def mock_note_repository(self) -> AsyncMock:
-        """MeetingNoteRepository モック."""
-        mock = AsyncMock(spec=MeetingNoteRepository)
+    def mock_knowledge_repository(self) -> AsyncMock:
+        """KnowledgeRepository モック."""
+        mock = AsyncMock(spec=KnowledgeRepository)
         mock.get_latest_by_agent.return_value = None
         return mock
 
@@ -155,7 +155,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         agent_id: UUID,
         mock_agenda_repository: AsyncMock,
         mock_agent_repository: MagicMock,
-        mock_note_repository: AsyncMock,
+        mock_knowledge_repository: AsyncMock,
         mock_dictionary_repository: AsyncMock,
         mock_slack_repository: AsyncMock,
         mock_recurring_meeting_repository: AsyncMock,
@@ -197,7 +197,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
             agent_id=agent_id,
             user_id=user_id,
             content="# Generated Agenda",
-            source_note_id=None,
+            source_knowledge_id=None,
             generated_at=datetime.now(),
             created_at=datetime.now(),
         )
@@ -207,7 +207,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         use_case = GenerateAgendaUseCase(
             agenda_repository=mock_agenda_repository,
             agent_repository=mock_agent_repository,
-            note_repository=mock_note_repository,
+            knowledge_repository=mock_knowledge_repository,
             dictionary_repository=mock_dictionary_repository,
             slack_repository=mock_slack_repository,
             recurring_meeting_repository=mock_recurring_meeting_repository,
@@ -238,7 +238,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         agent_id: UUID,
         mock_agenda_repository: AsyncMock,
         mock_agent_repository: MagicMock,
-        mock_note_repository: AsyncMock,
+        mock_knowledge_repository: AsyncMock,
         mock_dictionary_repository: AsyncMock,
         mock_slack_repository: AsyncMock,
         mock_recurring_meeting_repository: AsyncMock,
@@ -274,7 +274,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
             agent_id=agent_id,
             user_id=user_id,
             content="# Agenda",
-            source_note_id=None,
+            source_knowledge_id=None,
             generated_at=datetime.now(),
             created_at=datetime.now(),
         )
@@ -284,7 +284,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         use_case = GenerateAgendaUseCase(
             agenda_repository=mock_agenda_repository,
             agent_repository=mock_agent_repository,
-            note_repository=mock_note_repository,
+            knowledge_repository=mock_knowledge_repository,
             dictionary_repository=mock_dictionary_repository,
             slack_repository=mock_slack_repository,
             recurring_meeting_repository=mock_recurring_meeting_repository,
@@ -310,7 +310,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         agent_id: UUID,
         mock_agenda_repository: AsyncMock,
         mock_agent_repository: MagicMock,
-        mock_note_repository: AsyncMock,
+        mock_knowledge_repository: AsyncMock,
         mock_dictionary_repository: AsyncMock,
         mock_slack_repository: AsyncMock,
         mock_recurring_meeting_repository: AsyncMock,
@@ -331,7 +331,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
             agent_id=agent_id,
             user_id=user_id,
             content="# Agenda",
-            source_note_id=None,
+            source_knowledge_id=None,
             generated_at=datetime.now(),
             created_at=datetime.now(),
         )
@@ -341,7 +341,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         use_case = GenerateAgendaUseCase(
             agenda_repository=mock_agenda_repository,
             agent_repository=mock_agent_repository,
-            note_repository=mock_note_repository,
+            knowledge_repository=mock_knowledge_repository,
             dictionary_repository=mock_dictionary_repository,
             slack_repository=mock_slack_repository,
             recurring_meeting_repository=mock_recurring_meeting_repository,
@@ -362,7 +362,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         agent_id: UUID,
         mock_agenda_repository: AsyncMock,
         mock_agent_repository: MagicMock,
-        mock_note_repository: AsyncMock,
+        mock_knowledge_repository: AsyncMock,
         mock_dictionary_repository: AsyncMock,
         mock_slack_repository: AsyncMock,
         mock_recurring_meeting_repository: AsyncMock,
@@ -382,7 +382,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
             agent_id=agent_id,
             user_id=user_id,
             content="# Generated Agenda",
-            source_note_id=None,
+            source_knowledge_id=None,
             generated_at=datetime.now(),
             created_at=datetime.now(),
         )
@@ -392,7 +392,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         use_case = GenerateAgendaUseCase(
             agenda_repository=mock_agenda_repository,
             agent_repository=mock_agent_repository,
-            note_repository=mock_note_repository,
+            knowledge_repository=mock_knowledge_repository,
             dictionary_repository=mock_dictionary_repository,
             slack_repository=mock_slack_repository,
             recurring_meeting_repository=mock_recurring_meeting_repository,
@@ -419,7 +419,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         agent_id: UUID,
         mock_agenda_repository: AsyncMock,
         mock_agent_repository: MagicMock,
-        mock_note_repository: AsyncMock,
+        mock_knowledge_repository: AsyncMock,
         mock_dictionary_repository: AsyncMock,
         mock_slack_repository: AsyncMock,
         mock_recurring_meeting_repository: AsyncMock,
@@ -453,7 +453,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
             agent_id=agent_id,
             user_id=user_id,
             content="# Generated Agenda",
-            source_note_id=None,
+            source_knowledge_id=None,
             generated_at=datetime.now(),
             created_at=datetime.now(),
         )
@@ -463,7 +463,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         use_case = GenerateAgendaUseCase(
             agenda_repository=mock_agenda_repository,
             agent_repository=mock_agent_repository,
-            note_repository=mock_note_repository,
+            knowledge_repository=mock_knowledge_repository,
             dictionary_repository=mock_dictionary_repository,
             slack_repository=mock_slack_repository,
             recurring_meeting_repository=mock_recurring_meeting_repository,
@@ -489,7 +489,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         agent_id: UUID,
         mock_agenda_repository: AsyncMock,
         mock_agent_repository: MagicMock,
-        mock_note_repository: AsyncMock,
+        mock_knowledge_repository: AsyncMock,
         mock_dictionary_repository: AsyncMock,
         mock_slack_repository: AsyncMock,
         mock_recurring_meeting_repository: AsyncMock,
@@ -526,7 +526,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
             agent_id=agent_id,
             user_id=user_id,
             content="# Generated Agenda",
-            source_note_id=None,
+            source_knowledge_id=None,
             generated_at=datetime.now(),
             created_at=datetime.now(),
         )
@@ -536,7 +536,7 @@ class TestGenerateAgendaUseCaseTranscriptCollection:
         use_case = GenerateAgendaUseCase(
             agenda_repository=mock_agenda_repository,
             agent_repository=mock_agent_repository,
-            note_repository=mock_note_repository,
+            knowledge_repository=mock_knowledge_repository,
             dictionary_repository=mock_dictionary_repository,
             slack_repository=mock_slack_repository,
             recurring_meeting_repository=mock_recurring_meeting_repository,

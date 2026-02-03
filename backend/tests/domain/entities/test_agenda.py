@@ -37,7 +37,7 @@ class TestAgendaCreation:
         assert agenda.agent_id == agent_id
         assert agenda.user_id == user_id
         assert agenda.content == content
-        assert agenda.source_note_id is None
+        assert agenda.source_knowledge_id is None
         assert agenda.generated_at == generated_at
         assert agenda.created_at == created_at
         assert agenda.updated_at is None
@@ -48,7 +48,7 @@ class TestAgendaCreation:
         agenda_id = uuid4()
         agent_id = uuid4()
         user_id = uuid4()
-        source_note_id = uuid4()
+        source_knowledge_id = uuid4()
         content = "## 次回MTGアジェンダ\n\n### 1. 進捗確認\n### 2. 課題共有"
         generated_at = datetime.now()
         created_at = datetime.now()
@@ -60,7 +60,7 @@ class TestAgendaCreation:
             agent_id=agent_id,
             user_id=user_id,
             content=content,
-            source_note_id=source_note_id,
+            source_knowledge_id=source_knowledge_id,
             generated_at=generated_at,
             created_at=created_at,
             updated_at=updated_at,
@@ -71,7 +71,7 @@ class TestAgendaCreation:
         assert agenda.agent_id == agent_id
         assert agenda.user_id == user_id
         assert agenda.content == content
-        assert agenda.source_note_id == source_note_id
+        assert agenda.source_knowledge_id == source_knowledge_id
         assert agenda.generated_at == generated_at
         assert agenda.created_at == created_at
         assert agenda.updated_at == updated_at

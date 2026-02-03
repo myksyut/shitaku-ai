@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgentAvatar, Button, Card, EmptyState, SlackIcon } from '../../components/ui'
-import { useMeetingNotes } from '../meeting-notes/hooks'
+import { useKnowledgeList } from '../knowledge/hooks'
 import { AgentForm } from './AgentForm'
 import { useAgents } from './hooks'
 import type { Agent } from './types'
@@ -15,8 +15,8 @@ interface AgentCardProps {
 }
 
 function AgentCard({ agent, onClick }: AgentCardProps) {
-  const { data: notes } = useMeetingNotes(agent.id, 5)
-  const noteCount = notes?.length ?? 0
+  const { data: knowledgeList } = useKnowledgeList(agent.id, 5)
+  const knowledgeCount = knowledgeList?.length ?? 0
 
   return (
     <Card
@@ -100,7 +100,7 @@ function AgentCard({ agent, onClick }: AgentCardProps) {
           color: 'var(--color-warm-gray-500)',
         }}
       >
-        <span>📝 議事録 {noteCount}件</span>
+        <span>📝 ナレッジ {knowledgeCount}件</span>
       </div>
     </Card>
   )

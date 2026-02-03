@@ -35,7 +35,7 @@ class AgendaRepositoryImpl(AgendaRepository):
             "agent_id": str(agenda.agent_id),
             "user_id": str(agenda.user_id),
             "content": agenda.content,
-            "source_note_id": str(agenda.source_note_id) if agenda.source_note_id else None,
+            "source_knowledge_id": str(agenda.source_knowledge_id) if agenda.source_knowledge_id else None,
             "generated_at": agenda.generated_at.isoformat(),
             "created_at": agenda.created_at.isoformat(),
         }
@@ -111,14 +111,14 @@ class AgendaRepositoryImpl(AgendaRepository):
         generated_at_str = data["generated_at"]
         created_at_str = data["created_at"]
         updated_at_str = data.get("updated_at")
-        source_note_id_str = data.get("source_note_id")
+        source_knowledge_id_str = data.get("source_knowledge_id")
 
         return Agenda(
             id=UUID(str(data["id"])),
             agent_id=UUID(str(data["agent_id"])),
             user_id=UUID(str(data["user_id"])),
             content=str(data["content"]),
-            source_note_id=UUID(str(source_note_id_str)) if source_note_id_str else None,
+            source_knowledge_id=UUID(str(source_knowledge_id_str)) if source_knowledge_id_str else None,
             generated_at=(
                 datetime.fromisoformat(str(generated_at_str)) if isinstance(generated_at_str, str) else datetime.now()
             ),

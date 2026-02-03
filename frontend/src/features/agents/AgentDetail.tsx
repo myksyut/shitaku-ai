@@ -13,7 +13,7 @@ export function AgentDetail() {
   const deleteMutation = useDeleteAgent()
 
   const handleDelete = async () => {
-    if (window.confirm('このエージェントを削除しますか？関連する議事録・アジェンダも削除されます。')) {
+    if (window.confirm('このエージェントを削除しますか？関連するナレッジ・アジェンダも削除されます。')) {
       await deleteMutation.mutateAsync(agentId)
       navigate('/agents')
     }
@@ -57,10 +57,10 @@ export function AgentDetail() {
 
         <div className="mt-6 flex gap-4">
           <Link
-            to={`/agents/${agent.id}/meeting-notes`}
+            to={`/agents/${agent.id}/knowledge`}
             className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
           >
-            議事録一覧
+            ナレッジ一覧
           </Link>
           <Link
             to={`/agents/${agent.id}/agendas/generate`}

@@ -18,7 +18,7 @@ class Agenda:
         agent_id: 紐付けられたエージェントのID
         user_id: 所有ユーザーのID
         content: アジェンダの内容（マークダウン形式）
-        source_note_id: 生成元の議事録ID（存在しない場合はNone）
+        source_knowledge_id: 生成元のナレッジID（存在しない場合はNone）
         generated_at: アジェンダが生成された日時
         created_at: 作成日時
         updated_at: 更新日時
@@ -30,7 +30,7 @@ class Agenda:
     content: str
     generated_at: datetime
     created_at: datetime
-    source_note_id: UUID | None = None
+    source_knowledge_id: UUID | None = None
     updated_at: datetime | None = None
 
     def update_content(self, content: str) -> None:

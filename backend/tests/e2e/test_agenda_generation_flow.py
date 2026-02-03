@@ -98,7 +98,7 @@ class TestAgendaGenerationFlowE2E:
         # Assert:
         # - 201レスポンス
         # - normalized_textに"金沢太郎"と"Shitaku.ai"が含まれる
-        # - meeting_note_idを取得
+        # - knowledge_idを取得
 
         # ============================================================
         # Step 5: Slack連携を設定
@@ -147,8 +147,8 @@ class TestAgendaGenerationFlowE2E:
         # ============================================================
         # Assert:
         # - 全データが正しく連携している
-        # - agents, dictionary_entries, meeting_notes, agendas に各1件以上
-        # - source_note_idが正しくリンクされている
+        # - agents, dictionary_entries, knowledges, agendas に各1件以上
+        # - source_knowledge_idが正しくリンクされている
         pass
 
     # ユーザージャーニー: 辞書作成 -> 議事録アップロード -> 正規化結果確認
@@ -218,7 +218,7 @@ class TestAgendaGenerationFlowE2E:
         # Step 5: 正規化結果確認
         # ============================================================
         # Act:
-        # - GET /api/v1/meeting-notes/{meeting_note_id}
+        # - GET /api/v1/meeting-notes/{knowledge_id}
 
         # Assert:
         # - original_text != normalized_text

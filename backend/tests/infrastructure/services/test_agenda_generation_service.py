@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 
 from src.domain.entities.dictionary_entry import DictionaryEntry
-from src.domain.entities.meeting_note import MeetingNote
+from src.domain.entities.knowledge import Knowledge
 from src.domain.entities.meeting_transcript import MeetingTranscript, TranscriptStructuredData
 from src.infrastructure.external.slack_client import SlackMessageData
 from src.infrastructure.services.agenda_generation_service import (
@@ -26,7 +26,7 @@ class TestAgendaGenerationServicePromptBuilding:
         # Arrange
         service = AgendaGenerationService()
 
-        note = MeetingNote(
+        knowledge = Knowledge(
             id=uuid4(),
             agent_id=uuid4(),
             user_id=uuid4(),
@@ -57,7 +57,7 @@ class TestAgendaGenerationServicePromptBuilding:
         ]
 
         input_data = AgendaGenerationInput(
-            latest_note=note,
+            latest_knowledge=knowledge,
             slack_messages=slack_messages,
             dictionary=dictionary,
         )
@@ -68,18 +68,18 @@ class TestAgendaGenerationServicePromptBuilding:
         # Assert
         assert "ユビキタス言語辞書" in prompt
         assert "田中太郎" in prompt
-        assert "前回MTGの議事録" in prompt
+        assert "過去のナレッジ" in prompt
         assert "進捗確認を行いました" in prompt
         assert "Slack履歴" in prompt
         assert "デザインレビュー" in prompt
-        assert "前回議事録とSlack履歴の両方を参照しています" in prompt
+        assert "ナレッジとSlack履歴の両方を参照しています" in prompt
 
     def test_build_prompt_with_note_only(self) -> None:
         """議事録のみの場合のプロンプト構築"""
         # Arrange
         service = AgendaGenerationService()
 
-        note = MeetingNote(
+        knowledge = Knowledge(
             id=uuid4(),
             agent_id=uuid4(),
             user_id=uuid4(),
@@ -90,7 +90,7 @@ class TestAgendaGenerationServicePromptBuilding:
         )
 
         input_data = AgendaGenerationInput(
-            latest_note=note,
+            latest_knowledge=knowledge,
             slack_messages=[],
             dictionary=[],
         )
@@ -99,8 +99,8 @@ class TestAgendaGenerationServicePromptBuilding:
         prompt = service._build_prompt(input_data)
 
         # Assert
-        assert "前回MTGの議事録" in prompt
-        assert "前回議事録のみを参照しています（Slack履歴なし）" in prompt
+        assert "過去のナレッジ" in prompt
+        assert "ナレッジのみを参照しています（Slack履歴なし）" in prompt
         assert "Slack履歴" not in prompt or "Slack履歴なし" in prompt
 
     def test_build_prompt_with_slack_only(self) -> None:
@@ -118,7 +118,7 @@ class TestAgendaGenerationServicePromptBuilding:
         ]
 
         input_data = AgendaGenerationInput(
-            latest_note=None,
+            latest_knowledge=None,
             slack_messages=slack_messages,
             dictionary=[],
         )
@@ -127,7 +127,7 @@ class TestAgendaGenerationServicePromptBuilding:
         prompt = service._build_prompt(input_data)
 
         # Assert
-        assert "Slack履歴のみを参照しています（前回議事録なし）" in prompt
+        assert "Slack履歴のみを参照しています（ナレッジなし）" in prompt
         assert "新機能について議論したい" in prompt
 
     def test_build_prompt_with_no_data(self) -> None:
@@ -136,7 +136,7 @@ class TestAgendaGenerationServicePromptBuilding:
         service = AgendaGenerationService()
 
         input_data = AgendaGenerationInput(
-            latest_note=None,
+            latest_knowledge=None,
             slack_messages=[],
             dictionary=[],
         )
@@ -164,7 +164,7 @@ class TestAgendaGenerationServicePromptBuilding:
         ]
 
         input_data = AgendaGenerationInput(
-            latest_note=None,
+            latest_knowledge=None,
             slack_messages=slack_messages,
             dictionary=[],
         )
@@ -198,7 +198,7 @@ class TestAgendaGenerationServicePromptBuilding:
         )
 
         input_data = AgendaGenerationInput(
-            latest_note=None,
+            latest_knowledge=None,
             slack_messages=[],
             dictionary=[],
             transcripts=[transcript],
@@ -232,7 +232,7 @@ class TestAgendaGenerationServicePromptBuilding:
         )
 
         input_data = AgendaGenerationInput(
-            latest_note=None,
+            latest_knowledge=None,
             slack_messages=[],
             dictionary=[],
             transcripts=[transcript],
@@ -266,7 +266,7 @@ class TestAgendaGenerationServicePromptBuilding:
         )
 
         input_data = AgendaGenerationInput(
-            latest_note=None,
+            latest_knowledge=None,
             slack_messages=[],
             dictionary=[],
             transcripts=[transcript],
@@ -289,7 +289,7 @@ class TestAgendaGenerationServicePromptBuilding:
         service = AgendaGenerationService()
 
         input_data = AgendaGenerationInput(
-            latest_note=None,
+            latest_knowledge=None,
             slack_messages=[],
             dictionary=[],
             transcripts=[],  # 空リスト
