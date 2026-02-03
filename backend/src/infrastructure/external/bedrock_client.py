@@ -8,6 +8,7 @@ import json
 import httpx
 
 from src.config import settings
+from src.infrastructure.external.llm_logger import log_llm_invocation
 
 # Model IDs (using system-defined inference profiles)
 CLAUDE_HAIKU_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -63,11 +64,15 @@ def invoke_claude(prompt: str, max_tokens: int = 512) -> str | None:
             if content and isinstance(content, list) and len(content) > 0:
                 first_content = content[0]
                 if isinstance(first_content, dict) and first_content.get("type") == "text":
-                    return str(first_content.get("text", ""))
+                    result = str(first_content.get("text", ""))
+                    log_llm_invocation(prompt, result)
+                    return result
 
+            log_llm_invocation(prompt, None)
             return None
 
     except (httpx.HTTPError, json.JSONDecodeError, KeyError):
+        log_llm_invocation(prompt, None)
         return None
 
 
