@@ -14,12 +14,14 @@
 """
 
 from datetime import datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 
 from src.application.use_cases.agenda_use_cases import GenerateAgendaUseCase
+from src.domain.entities.agenda import Agenda
 from src.domain.entities.agent import Agent
 from src.domain.entities.meeting_transcript import MeetingTranscript
 from src.domain.entities.recurring_meeting import MeetingFrequency, RecurringMeeting
@@ -43,7 +45,7 @@ class TestAgentReferenceSettingsIntegration:
         return uuid4()
 
     @pytest.fixture
-    def setup_repositories(self) -> dict:
+    def setup_repositories(self) -> dict[str, Any]:
         """リポジトリとサービスのモックをセットアップ."""
         return {
             "agenda_repository": MagicMock(),
@@ -75,9 +77,9 @@ class TestAgentReferenceSettingsIntegration:
     @pytest.mark.asyncio
     async def test_collect_transcripts_from_multiple_recurring_meetings(
         self,
-        user_id,
-        agent_id,
-        setup_repositories,
+        user_id: UUID,
+        agent_id: UUID,
+        setup_repositories: dict[str, Any],
     ) -> None:
         """AC2-1/AC2-2: 複数定例MTGから設定件数分のトランスクリプトが日付降順で収集される"""
         repos = setup_repositories
@@ -170,7 +172,7 @@ class TestAgentReferenceSettingsIntegration:
             ),
         ]
 
-        async def get_transcripts_side_effect(meeting_id, limit=None):
+        async def get_transcripts_side_effect(meeting_id: UUID, limit: int | None = None) -> list[MeetingTranscript]:
             if meeting_id == meeting1_id:
                 return transcripts_meeting1
             if meeting_id == meeting2_id:
@@ -190,7 +192,7 @@ class TestAgentReferenceSettingsIntegration:
         repos["generation_service"].generate = AsyncMock(return_value="Generated Agenda")
 
         # AgendaRepository
-        async def save_agenda(agenda):
+        async def save_agenda(agenda: Agenda) -> Agenda:
             return agenda
 
         repos["agenda_repository"].create = AsyncMock(side_effect=save_agenda)
@@ -241,8 +243,8 @@ class TestAgentReferenceSettingsIntegration:
     @pytest.mark.asyncio
     async def test_prompt_includes_transcripts_with_meeting_info(
         self,
-        user_id,
-        agent_id,
+        user_id: UUID,
+        agent_id: UUID,
     ) -> None:
         """AC4-1: 収集したトランスクリプトが定例MTG情報付きでプロンプトに含まれる"""
         now = datetime.now()
@@ -314,9 +316,9 @@ class TestAgentReferenceSettingsIntegration:
     @pytest.mark.asyncio
     async def test_slack_messages_fetched_for_configured_days(
         self,
-        user_id,
-        agent_id,
-        setup_repositories,
+        user_id: UUID,
+        agent_id: UUID,
+        setup_repositories: dict[str, Any],
     ) -> None:
         """AC3-1: slack_message_daysで指定した日数分のSlackメッセージが取得される"""
         repos = setup_repositories
@@ -351,7 +353,7 @@ class TestAgentReferenceSettingsIntegration:
         repos["generation_service"].generate = AsyncMock(return_value="Generated Agenda")
 
         # AgendaRepository
-        async def save_agenda(agenda):
+        async def save_agenda(agenda: Agenda) -> Agenda:
             return agenda
 
         repos["agenda_repository"].create = AsyncMock(side_effect=save_agenda)
@@ -359,9 +361,9 @@ class TestAgentReferenceSettingsIntegration:
         # SlackClientとdecrypt_tokenをモック
         mock_slack_client = MagicMock()
         mock_slack_client.get_messages.return_value = []
-        captured_oldest = None
+        captured_oldest: datetime | None = None
 
-        def capture_get_messages(channel_id, oldest):
+        def capture_get_messages(channel_id: str, oldest: datetime) -> list[Any]:
             nonlocal captured_oldest
             captured_oldest = oldest
             return []
