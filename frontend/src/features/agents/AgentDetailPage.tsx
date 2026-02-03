@@ -1,7 +1,7 @@
 /**
  * Agent detail page - Shows agent info, meeting notes, and Slack integration
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatar, Button, Card, EmptyState, Modal, SlackIcon } from '../../components/ui'
 import { AgendaGeneratePage } from '../agendas'
@@ -444,6 +444,204 @@ function SlackChannelSelector({ agent, onUpdate, isUpdating }: SlackChannelSelec
   )
 }
 
+interface ReferenceSettingsSectionProps {
+  agent: Agent
+  onSave: (data: { transcript_count: number; slack_message_days: number }) => Promise<void>
+  isSaving: boolean
+}
+
+function ReferenceSettingsSection({ agent, onSave, isSaving }: ReferenceSettingsSectionProps) {
+  const [transcriptCount, setTranscriptCount] = useState<number>(agent.transcript_count)
+  const [slackMessageDays, setSlackMessageDays] = useState<number>(agent.slack_message_days)
+  const [transcriptCountError, setTranscriptCountError] = useState<string | null>(null)
+  const [slackMessageDaysError, setSlackMessageDaysError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setTranscriptCount(agent.transcript_count)
+    setSlackMessageDays(agent.slack_message_days)
+  }, [agent.transcript_count, agent.slack_message_days])
+
+  const validateTranscriptCount = (value: number): boolean => {
+    if (Number.isNaN(value) || value < 0 || value > 10) {
+      setTranscriptCountError('0〜10の範囲で入力してください')
+      return false
+    }
+    setTranscriptCountError(null)
+    return true
+  }
+
+  const validateSlackMessageDays = (value: number): boolean => {
+    if (Number.isNaN(value) || value < 1 || value > 30) {
+      setSlackMessageDaysError('1〜30の範囲で入力してください')
+      return false
+    }
+    setSlackMessageDaysError(null)
+    return true
+  }
+
+  const handleSave = async () => {
+    const isTranscriptValid = validateTranscriptCount(transcriptCount)
+    const isSlackDaysValid = validateSlackMessageDays(slackMessageDays)
+
+    if (!isTranscriptValid || !isSlackDaysValid) return
+
+    await onSave({
+      transcript_count: transcriptCount,
+      slack_message_days: slackMessageDays,
+    })
+  }
+
+  const hasValidationError = !!transcriptCountError || !!slackMessageDaysError
+
+  return (
+    <div style={{ marginTop: 'var(--space-6)' }}>
+      <h2
+        style={{
+          fontSize: 'var(--font-size-lg)',
+          fontWeight: 700,
+          color: 'var(--color-warm-gray-800)',
+          marginBottom: 'var(--space-4)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
+        }}
+      >
+        <span style={{ fontSize: '20px' }}>&#x2699;&#xfe0f;</span> アジェンダ生成参照設定
+      </h2>
+      <Card>
+        <p
+          style={{
+            fontSize: 'var(--font-size-sm)',
+            color: 'var(--color-warm-gray-600)',
+            marginBottom: 'var(--space-4)',
+          }}
+        >
+          アジェンダ生成時に参照するデータの範囲を設定できます
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {/* Transcript Count */}
+          <div>
+            <label
+              htmlFor="transcript-count"
+              style={{
+                display: 'block',
+                fontSize: 'var(--font-size-sm)',
+                fontWeight: 600,
+                color: 'var(--color-warm-gray-700)',
+                marginBottom: 'var(--space-1)',
+              }}
+            >
+              トランスクリプト参照件数
+            </label>
+            <p
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--color-warm-gray-500)',
+                marginBottom: 'var(--space-2)',
+              }}
+            >
+              アジェンダ生成時に参照するトランスクリプトの件数（0〜10件）
+            </p>
+            <input
+              id="transcript-count"
+              type="number"
+              min={0}
+              max={10}
+              value={transcriptCount}
+              onChange={(e) => {
+                const value = Number.parseInt(e.target.value, 10)
+                setTranscriptCount(value)
+                validateTranscriptCount(value)
+              }}
+              style={{
+                width: '100px',
+                padding: 'var(--space-2) var(--space-3)',
+                border: '1px solid var(--color-warm-gray-300)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 'var(--font-size-sm)',
+              }}
+            />
+            {transcriptCountError && (
+              <p
+                style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: 'var(--color-error)',
+                  marginTop: 'var(--space-1)',
+                }}
+              >
+                {transcriptCountError}
+              </p>
+            )}
+          </div>
+
+          {/* Slack Message Days */}
+          <div>
+            <label
+              htmlFor="slack-message-days"
+              style={{
+                display: 'block',
+                fontSize: 'var(--font-size-sm)',
+                fontWeight: 600,
+                color: 'var(--color-warm-gray-700)',
+                marginBottom: 'var(--space-1)',
+              }}
+            >
+              Slackメッセージ取得日数
+            </label>
+            <p
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--color-warm-gray-500)',
+                marginBottom: 'var(--space-2)',
+              }}
+            >
+              アジェンダ生成時に参照するSlackメッセージの日数（1〜30日）
+            </p>
+            <input
+              id="slack-message-days"
+              type="number"
+              min={1}
+              max={30}
+              value={slackMessageDays}
+              onChange={(e) => {
+                const value = Number.parseInt(e.target.value, 10)
+                setSlackMessageDays(value)
+                validateSlackMessageDays(value)
+              }}
+              style={{
+                width: '100px',
+                padding: 'var(--space-2) var(--space-3)',
+                border: '1px solid var(--color-warm-gray-300)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 'var(--font-size-sm)',
+              }}
+            />
+            {slackMessageDaysError && (
+              <p
+                style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: 'var(--color-error)',
+                  marginTop: 'var(--space-1)',
+                }}
+              >
+                {slackMessageDaysError}
+              </p>
+            )}
+          </div>
+
+          {/* Save Button */}
+          <div style={{ marginTop: 'var(--space-2)' }}>
+            <Button variant="secondary" onClick={handleSave} disabled={isSaving || hasValidationError}>
+              {isSaving ? '保存中...' : '参照設定を保存'}
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 export function AgentDetailPage() {
   const { agentId } = useParams<{ agentId: string }>()
   const navigate = useNavigate()
@@ -777,6 +975,18 @@ export function AgentDetailPage() {
           )}
         </Card>
       </div>
+
+      {/* Reference Settings Section */}
+      <ReferenceSettingsSection
+        agent={agent}
+        onSave={async (data) => {
+          await updateMutation.mutateAsync({
+            id: agentId,
+            data,
+          })
+        }}
+        isSaving={updateMutation.isPending}
+      />
 
       {/* Dictionary Section (full width) */}
       <div style={{ marginTop: 'var(--space-6)' }}>
