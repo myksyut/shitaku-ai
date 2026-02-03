@@ -47,6 +47,7 @@ class SlackClient:
             access_token: Slack OAuth access token.
         """
         self.client = WebClient(token=access_token)
+        self._user_cache: dict[str, str] = {}
 
     def get_channels(self) -> list[SlackChannel]:
         """チャンネル一覧を取得する（ページネーション対応）.
@@ -197,10 +198,17 @@ class SlackClient:
         Returns:
             User's display name, or user_id if lookup fails.
         """
+        # キャッシュヒット
+        if user_id in self._user_cache:
+            return self._user_cache[user_id]
+
+        # キャッシュミス → API呼び出し
         try:
             result = self.client.users_info(user=user_id)
             user: dict[str, str] = result.get("user", {})
-            return user.get("real_name") or user.get("name", user_id)
+            name = user.get("real_name") or user.get("name", user_id)
+            self._user_cache[user_id] = name
+            return name
         except SlackApiError:
             return user_id
 

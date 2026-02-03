@@ -236,6 +236,49 @@ class TestSlackClient:
 
         assert len(replies) == 0
 
+    def test_user_cache_reduces_api_calls(
+        self, slack_client: SlackClient, mock_web_client: MagicMock
+    ) -> None:
+        """同じユーザーの2回目以降はAPIを呼ばずキャッシュを返す"""
+        mock_web_client.users_info.return_value = {
+            "ok": True,
+            "user": {"real_name": "田中太郎", "name": "tanaka"},
+        }
+
+        # 同じユーザーIDで2回呼び出し
+        name1 = slack_client._get_user_name("U001")
+        name2 = slack_client._get_user_name("U001")
+
+        assert name1 == "田中太郎"
+        assert name2 == "田中太郎"
+        # APIは1回しか呼ばれない
+        assert mock_web_client.users_info.call_count == 1
+
+    def test_user_cache_with_multiple_users_in_messages(
+        self, slack_client: SlackClient, mock_web_client: MagicMock
+    ) -> None:
+        """同じユーザーが複数メッセージを投稿してもAPIは1回のみ"""
+        mock_web_client.conversations_history.return_value = {
+            "ok": True,
+            "messages": [
+                {"type": "message", "ts": "1704067200.000001", "user": "U001", "text": "Hello"},
+                {"type": "message", "ts": "1704067201.000002", "user": "U001", "text": "World"},
+                {"type": "message", "ts": "1704067202.000003", "user": "U001", "text": "Again"},
+            ],
+        }
+        mock_web_client.users_info.return_value = {
+            "ok": True,
+            "user": {"real_name": "田中太郎"},
+        }
+
+        oldest = datetime(2024, 1, 1, 0, 0, 0)
+        messages = slack_client.get_messages("C001", oldest)
+
+        assert len(messages) == 3
+        assert all(m.user_name == "田中太郎" for m in messages)
+        # 同じユーザーなのでAPIは1回のみ
+        assert mock_web_client.users_info.call_count == 1
+
 
 class TestSlackDataClasses:
     """データクラスのテスト"""
