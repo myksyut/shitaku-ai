@@ -4,11 +4,14 @@ Uses API Key (Bearer Token) authentication instead of IAM credentials.
 """
 
 import json
+import logging
 
 import httpx
 
 from src.config import settings
 from src.infrastructure.external.llm_logger import log_llm_invocation
+
+logger = logging.getLogger(__name__)
 
 # Model IDs (using system-defined inference profiles)
 CLAUDE_HAIKU_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -71,7 +74,8 @@ def invoke_claude(prompt: str, max_tokens: int = 512) -> str | None:
             log_llm_invocation(prompt, None)
             return None
 
-    except (httpx.HTTPError, json.JSONDecodeError, KeyError):
+    except (httpx.HTTPError, json.JSONDecodeError, KeyError) as e:
+        logger.error("Bedrock API error: %s", e)
         log_llm_invocation(prompt, None)
         return None
 
