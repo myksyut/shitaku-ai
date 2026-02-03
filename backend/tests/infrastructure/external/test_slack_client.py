@@ -236,9 +236,7 @@ class TestSlackClient:
 
         assert len(replies) == 0
 
-    def test_user_cache_reduces_api_calls(
-        self, slack_client: SlackClient, mock_web_client: MagicMock
-    ) -> None:
+    def test_user_cache_reduces_api_calls(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
         """同じユーザーの2回目以降はAPIを呼ばずキャッシュを返す"""
         mock_web_client.users_info.return_value = {
             "ok": True,
