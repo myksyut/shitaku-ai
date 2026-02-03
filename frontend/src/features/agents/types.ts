@@ -9,6 +9,8 @@ export interface Agent {
   slack_channel_id: string | null
   created_at: string
   updated_at: string | null
+  transcript_count: number
+  slack_message_days: number
 }
 
 export interface AgentCreate {
@@ -21,4 +23,6 @@ export interface AgentUpdate {
   name?: string
   description?: string | null
   slack_channel_id?: string | null
+  transcript_count?: number
+  slack_message_days?: number
 }

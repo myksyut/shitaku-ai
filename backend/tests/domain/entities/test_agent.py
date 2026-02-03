@@ -184,3 +184,119 @@ class TestAgentUpdateInfo:
         # Assert
         assert agent.name == original_name
         assert agent.description == original_description
+
+
+class TestAgentReferenceSettings:
+    """Test Agent reference settings (transcript_count, slack_message_days)."""
+
+    def test_default_values(self) -> None:
+        """デフォルト値が設定されていること"""
+        # Arrange & Act
+        agent = Agent(
+            id=uuid4(),
+            user_id=uuid4(),
+            name="Test Agent",
+            created_at=datetime.now(),
+        )
+
+        # Assert
+        assert agent.transcript_count == 3
+        assert agent.slack_message_days == 7
+
+    def test_update_reference_settings_valid(self) -> None:
+        """有効な値で参照設定を更新できること"""
+        # Arrange
+        agent = Agent(
+            id=uuid4(),
+            user_id=uuid4(),
+            name="Test Agent",
+            created_at=datetime.now(),
+        )
+        original_updated_at = agent.updated_at
+
+        # Act
+        agent.update_reference_settings(transcript_count=5, slack_message_days=14)
+
+        # Assert
+        assert agent.transcript_count == 5
+        assert agent.slack_message_days == 14
+        assert agent.updated_at != original_updated_at
+
+    def test_update_reference_settings_partial(self) -> None:
+        """一部の設定のみ更新できること"""
+        # Arrange
+        agent = Agent(
+            id=uuid4(),
+            user_id=uuid4(),
+            name="Test Agent",
+            created_at=datetime.now(),
+        )
+
+        # Act
+        agent.update_reference_settings(transcript_count=10)
+
+        # Assert
+        assert agent.transcript_count == 10
+        assert agent.slack_message_days == 7  # デフォルトのまま
+
+    def test_update_reference_settings_transcript_count_out_of_range(self) -> None:
+        """transcript_countが範囲外の場合はValueError"""
+        import pytest
+
+        # Arrange
+        agent = Agent(
+            id=uuid4(),
+            user_id=uuid4(),
+            name="Test Agent",
+            created_at=datetime.now(),
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError, match="transcript_count must be between 0 and 10"):
+            agent.update_reference_settings(transcript_count=11)
+
+        with pytest.raises(ValueError, match="transcript_count must be between 0 and 10"):
+            agent.update_reference_settings(transcript_count=-1)
+
+    def test_update_reference_settings_slack_message_days_out_of_range(self) -> None:
+        """slack_message_daysが範囲外の場合はValueError"""
+        import pytest
+
+        # Arrange
+        agent = Agent(
+            id=uuid4(),
+            user_id=uuid4(),
+            name="Test Agent",
+            created_at=datetime.now(),
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError, match="slack_message_days must be between 1 and 30"):
+            agent.update_reference_settings(slack_message_days=0)
+
+        with pytest.raises(ValueError, match="slack_message_days must be between 1 and 30"):
+            agent.update_reference_settings(slack_message_days=31)
+
+    def test_update_reference_settings_boundary_values(self) -> None:
+        """境界値で更新できること"""
+        # Arrange
+        agent = Agent(
+            id=uuid4(),
+            user_id=uuid4(),
+            name="Test Agent",
+            created_at=datetime.now(),
+        )
+
+        # Act - 最小値
+        agent.update_reference_settings(transcript_count=0, slack_message_days=1)
+
+        # Assert
+        assert agent.transcript_count == 0
+        assert agent.slack_message_days == 1
+
+        # Act - 最大値
+        agent.update_reference_settings(transcript_count=10, slack_message_days=30)
+
+        # Assert
+        assert agent.transcript_count == 10
+        assert agent.slack_message_days == 30
