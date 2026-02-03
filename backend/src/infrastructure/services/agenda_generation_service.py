@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass, field
 
 from src.domain.entities.dictionary_entry import DictionaryEntry
-from src.domain.entities.meeting_note import MeetingNote
+from src.domain.entities.knowledge import Knowledge
 from src.domain.entities.meeting_transcript import MeetingTranscript
 from src.infrastructure.external.bedrock_client import invoke_claude
 from src.infrastructure.external.slack_client import SlackMessageData
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class AgendaGenerationInput:
     """アジェンダ生成の入力."""
 
-    latest_note: MeetingNote | None
+    latest_knowledge: Knowledge | None
     slack_messages: list[SlackMessageData]
     dictionary: list[DictionaryEntry]
     transcripts: list[MeetingTranscript] = field(default_factory=list)
@@ -67,9 +67,9 @@ class AgendaGenerationService:
             dict_info = "\n".join([f"- {e.canonical_name}" for e in input_data.dictionary])
             parts.append(f"## 参考: ユビキタス言語辞書\n{dict_info}")
 
-        # 前回議事録
-        if input_data.latest_note:
-            parts.append(f"## 前回MTGの議事録\n{input_data.latest_note.normalized_text}")
+        # ナレッジ
+        if input_data.latest_knowledge:
+            parts.append(f"## 過去のナレッジ\n{input_data.latest_knowledge.normalized_text}")
 
         # Slackメッセージ
         if input_data.slack_messages:
@@ -95,15 +95,15 @@ class AgendaGenerationService:
         context = "\n\n".join(parts)
 
         # データソースの状況を判定
-        has_note = input_data.latest_note is not None
+        has_knowledge = input_data.latest_knowledge is not None
         has_slack = len(input_data.slack_messages) > 0
 
-        if has_note and has_slack:
-            source_note = "前回議事録とSlack履歴の両方を参照しています。"
-        elif has_note:
-            source_note = "前回議事録のみを参照しています（Slack履歴なし）。"
+        if has_knowledge and has_slack:
+            source_note = "ナレッジとSlack履歴の両方を参照しています。"
+        elif has_knowledge:
+            source_note = "ナレッジのみを参照しています（Slack履歴なし）。"
         elif has_slack:
-            source_note = "Slack履歴のみを参照しています（前回議事録なし）。"
+            source_note = "Slack履歴のみを参照しています（ナレッジなし）。"
         else:
             source_note = "参照できる情報がありません。一般的なアジェンダ形式で生成してください。"
 

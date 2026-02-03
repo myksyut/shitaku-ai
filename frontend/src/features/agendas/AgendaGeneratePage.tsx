@@ -199,9 +199,14 @@ export function AgendaGeneratePage({ agentId, onClose }: Props) {
                 }}
               >
                 <DataSourceBadge
-                  label="過去ナレッジ"
-                  value={dataSources.has_meeting_note ? '参照済' : 'なし'}
-                  active={dataSources.has_meeting_note}
+                  label="ナレッジ"
+                  value={dataSources.has_knowledge ? '参照済' : 'なし'}
+                  active={dataSources.has_knowledge}
+                />
+                <DataSourceBadge
+                  label="議事録"
+                  value={dataSources.has_transcripts ? `${dataSources.transcript_count}件` : 'なし'}
+                  active={dataSources.has_transcripts}
                 />
                 <DataSourceBadge
                   label="Slackメッセージ"

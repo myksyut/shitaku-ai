@@ -1,6 +1,6 @@
-"""MeetingNoteRepository implementation using Supabase.
+"""KnowledgeRepository implementation using Supabase.
 
-Infrastructure layer implementation of MeetingNoteRepository interface.
+Infrastructure layer implementation of KnowledgeRepository interface.
 Following ADR-0001 clean architecture principles.
 """
 
@@ -10,12 +10,12 @@ from uuid import UUID
 
 from supabase import Client
 
-from src.domain.entities.meeting_note import MeetingNote
-from src.domain.repositories.meeting_note_repository import MeetingNoteRepository
+from src.domain.entities.knowledge import Knowledge
+from src.domain.repositories.knowledge_repository import KnowledgeRepository
 
 
-class MeetingNoteRepositoryImpl(MeetingNoteRepository):
-    """議事録リポジトリのSupabase実装."""
+class KnowledgeRepositoryImpl(KnowledgeRepository):
+    """ナレッジリポジトリのSupabase実装."""
 
     def __init__(self, client: Client) -> None:
         """リポジトリを初期化する.
@@ -25,26 +25,26 @@ class MeetingNoteRepositoryImpl(MeetingNoteRepository):
         """
         self.client = client
 
-    async def create(self, note: MeetingNote) -> MeetingNote:
-        """議事録を作成する."""
+    async def create(self, knowledge: Knowledge) -> Knowledge:
+        """ナレッジを作成する."""
         data = {
-            "id": str(note.id),
-            "agent_id": str(note.agent_id),
-            "user_id": str(note.user_id),
-            "original_text": note.original_text,
-            "normalized_text": note.normalized_text,
-            "meeting_date": note.meeting_date.isoformat(),
-            "created_at": note.created_at.isoformat(),
+            "id": str(knowledge.id),
+            "agent_id": str(knowledge.agent_id),
+            "user_id": str(knowledge.user_id),
+            "original_text": knowledge.original_text,
+            "normalized_text": knowledge.normalized_text,
+            "meeting_date": knowledge.meeting_date.isoformat(),
+            "created_at": knowledge.created_at.isoformat(),
         }
-        self.client.table("meeting_notes").insert(data).execute()
-        return note
+        self.client.table("knowledge").insert(data).execute()
+        return knowledge
 
-    async def get_by_id(self, note_id: UUID, user_id: UUID) -> MeetingNote | None:
-        """IDで議事録を取得する."""
+    async def get_by_id(self, knowledge_id: UUID, user_id: UUID) -> Knowledge | None:
+        """IDでナレッジを取得する."""
         result = (
-            self.client.table("meeting_notes")
+            self.client.table("knowledge")
             .select("*")
-            .eq("id", str(note_id))
+            .eq("id", str(knowledge_id))
             .eq("user_id", str(user_id))
             .maybe_single()
             .execute()
@@ -60,10 +60,10 @@ class MeetingNoteRepositoryImpl(MeetingNoteRepository):
         agent_id: UUID,
         user_id: UUID,
         limit: int | None = None,
-    ) -> list[MeetingNote]:
-        """エージェントの議事録一覧を取得する."""
+    ) -> list[Knowledge]:
+        """エージェントのナレッジ一覧を取得する."""
         query = (
-            self.client.table("meeting_notes")
+            self.client.table("knowledge")
             .select("*")
             .eq("agent_id", str(agent_id))
             .eq("user_id", str(user_id))
@@ -80,10 +80,10 @@ class MeetingNoteRepositoryImpl(MeetingNoteRepository):
         self,
         agent_id: UUID,
         user_id: UUID,
-    ) -> MeetingNote | None:
-        """エージェントの最新議事録を取得する."""
+    ) -> Knowledge | None:
+        """エージェントの最新ナレッジを取得する."""
         result = (
-            self.client.table("meeting_notes")
+            self.client.table("knowledge")
             .select("*")
             .eq("agent_id", str(agent_id))
             .eq("user_id", str(user_id))
@@ -97,14 +97,14 @@ class MeetingNoteRepositoryImpl(MeetingNoteRepository):
 
         return self._to_entity(cast(dict[str, Any], result.data[0]))
 
-    async def delete(self, note_id: UUID, user_id: UUID) -> bool:
-        """議事録を削除する."""
+    async def delete(self, knowledge_id: UUID, user_id: UUID) -> bool:
+        """ナレッジを削除する."""
         result = (
-            self.client.table("meeting_notes").delete().eq("id", str(note_id)).eq("user_id", str(user_id)).execute()
+            self.client.table("knowledge").delete().eq("id", str(knowledge_id)).eq("user_id", str(user_id)).execute()
         )
         return len(result.data) > 0
 
-    def _to_entity(self, data: dict[str, Any]) -> MeetingNote:
+    def _to_entity(self, data: dict[str, Any]) -> Knowledge:
         """DB結果をエンティティに変換する."""
         created_at_str = data["created_at"]
         updated_at_str = data.get("updated_at")
@@ -117,7 +117,7 @@ class MeetingNoteRepositoryImpl(MeetingNoteRepository):
         if updated_at_str:
             updated_at = datetime.fromisoformat(str(updated_at_str).replace("Z", "+00:00"))
 
-        return MeetingNote(
+        return Knowledge(
             id=UUID(str(data["id"])),
             agent_id=UUID(str(data["agent_id"])),
             user_id=UUID(str(data["user_id"])),

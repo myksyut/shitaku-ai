@@ -50,7 +50,7 @@ class TestAgentReferenceSettingsIntegration:
         return {
             "agenda_repository": MagicMock(),
             "agent_repository": MagicMock(),
-            "note_repository": MagicMock(),
+            "knowledge_repository": MagicMock(),
             "dictionary_repository": MagicMock(),
             "slack_repository": MagicMock(),
             "generation_service": MagicMock(spec=AgendaGenerationService),
@@ -184,7 +184,7 @@ class TestAgentReferenceSettingsIntegration:
         )
 
         # 他の依存（MeetingNoteと辞書）
-        repos["note_repository"].get_latest_by_agent = AsyncMock(return_value=None)
+        repos["knowledge_repository"].get_latest_by_agent = AsyncMock(return_value=None)
         repos["slack_repository"].get_all = AsyncMock(return_value=[])
         repos["dictionary_repository"].get_all = AsyncMock(return_value=[])
 
@@ -277,7 +277,7 @@ class TestAgentReferenceSettingsIntegration:
         ]
 
         input_data = AgendaGenerationInput(
-            latest_note=None,
+            latest_knowledge=None,
             slack_messages=[],
             dictionary=[],
             transcripts=transcripts,
@@ -345,7 +345,7 @@ class TestAgentReferenceSettingsIntegration:
         repos["slack_repository"].get_all = AsyncMock(return_value=[slack_integration])
 
         # 他の依存
-        repos["note_repository"].get_latest_by_agent = AsyncMock(return_value=None)
+        repos["knowledge_repository"].get_latest_by_agent = AsyncMock(return_value=None)
         repos["dictionary_repository"].get_all = AsyncMock(return_value=[])
         repos["meeting_transcript_repository"].get_by_recurring_meeting = AsyncMock(return_value=[])
 

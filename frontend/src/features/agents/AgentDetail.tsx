@@ -57,7 +57,7 @@ export function AgentDetail() {
 
         <div className="mt-6 flex gap-4">
           <Link
-            to={`/agents/${agent.id}/meeting-notes`}
+            to={`/agents/${agent.id}/knowledge`}
             className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
           >
             ナレッジ一覧

@@ -24,10 +24,10 @@ vi.mock('./api', () => ({
 }))
 
 // Mock other hooks used by AgentDetailPage
-vi.mock('../meeting-notes/hooks', () => ({
-  useMeetingNotes: () => ({ data: [], isLoading: false }),
-  useUploadMeetingNote: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useDeleteMeetingNote: () => ({ mutateAsync: vi.fn(), isPending: false }),
+vi.mock('../knowledge/hooks', () => ({
+  useKnowledgeList: () => ({ data: [], isLoading: false }),
+  useUploadKnowledge: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteKnowledge: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 vi.mock('../slack/hooks', () => ({

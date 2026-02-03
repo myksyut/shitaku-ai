@@ -1,17 +1,17 @@
-"""Tests for MeetingNote entity."""
+"""Tests for Knowledge entity."""
 
 from datetime import datetime
 from uuid import uuid4
 
-from src.domain.entities.meeting_note import MeetingNote
+from src.domain.entities.knowledge import Knowledge
 
 
-class TestMeetingNote:
-    """MeetingNoteエンティティのテスト."""
+class TestKnowledge:
+    """Knowledgeエンティティのテスト."""
 
-    def test_meeting_note_creation(self) -> None:
-        """MeetingNoteが正しくインスタンス化できること."""
-        note_id = uuid4()
+    def test_knowledge_creation(self) -> None:
+        """Knowledgeが正しくインスタンス化できること."""
+        knowledge_id = uuid4()
         agent_id = uuid4()
         user_id = uuid4()
         original_text = "かなざわさんが発言しました"
@@ -19,8 +19,8 @@ class TestMeetingNote:
         meeting_date = datetime(2026, 1, 15, 10, 0, 0)
         created_at = datetime.now()
 
-        note = MeetingNote(
-            id=note_id,
+        knowledge = Knowledge(
+            id=knowledge_id,
             agent_id=agent_id,
             user_id=user_id,
             original_text=original_text,
@@ -29,18 +29,18 @@ class TestMeetingNote:
             created_at=created_at,
         )
 
-        assert note.id == note_id
-        assert note.agent_id == agent_id
-        assert note.user_id == user_id
-        assert note.original_text == original_text
-        assert note.normalized_text == normalized_text
-        assert note.meeting_date == meeting_date
-        assert note.created_at == created_at
-        assert note.updated_at is None
+        assert knowledge.id == knowledge_id
+        assert knowledge.agent_id == agent_id
+        assert knowledge.user_id == user_id
+        assert knowledge.original_text == original_text
+        assert knowledge.normalized_text == normalized_text
+        assert knowledge.meeting_date == meeting_date
+        assert knowledge.created_at == created_at
+        assert knowledge.updated_at is None
 
     def test_update_normalized_text(self) -> None:
         """正規化後テキストを更新できること."""
-        note = MeetingNote(
+        knowledge = Knowledge(
             id=uuid4(),
             agent_id=uuid4(),
             user_id=uuid4(),
@@ -50,17 +50,17 @@ class TestMeetingNote:
             created_at=datetime.now(),
         )
 
-        assert note.updated_at is None
+        assert knowledge.updated_at is None
 
         new_normalized_text = "正規化後のテキスト"
-        note.update_normalized_text(new_normalized_text)
+        knowledge.update_normalized_text(new_normalized_text)
 
-        assert note.normalized_text == new_normalized_text
-        assert note.updated_at is not None
+        assert knowledge.normalized_text == new_normalized_text
+        assert knowledge.updated_at is not None
 
     def test_is_normalized_returns_true_when_text_changed(self) -> None:
         """正規化でテキストが変更された場合はTrueを返すこと."""
-        note = MeetingNote(
+        knowledge = Knowledge(
             id=uuid4(),
             agent_id=uuid4(),
             user_id=uuid4(),
@@ -70,12 +70,12 @@ class TestMeetingNote:
             created_at=datetime.now(),
         )
 
-        assert note.is_normalized() is True
+        assert knowledge.is_normalized() is True
 
     def test_is_normalized_returns_false_when_text_unchanged(self) -> None:
         """正規化でテキストが変更されなかった場合はFalseを返すこと."""
         same_text = "変更なしのテキスト"
-        note = MeetingNote(
+        knowledge = Knowledge(
             id=uuid4(),
             agent_id=uuid4(),
             user_id=uuid4(),
@@ -85,12 +85,12 @@ class TestMeetingNote:
             created_at=datetime.now(),
         )
 
-        assert note.is_normalized() is False
+        assert knowledge.is_normalized() is False
 
-    def test_meeting_note_with_updated_at(self) -> None:
+    def test_knowledge_with_updated_at(self) -> None:
         """updated_atを指定してインスタンス化できること."""
         updated_at = datetime.now()
-        note = MeetingNote(
+        knowledge = Knowledge(
             id=uuid4(),
             agent_id=uuid4(),
             user_id=uuid4(),
@@ -101,4 +101,4 @@ class TestMeetingNote:
             updated_at=updated_at,
         )
 
-        assert note.updated_at == updated_at
+        assert knowledge.updated_at == updated_at

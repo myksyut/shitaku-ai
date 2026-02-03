@@ -1,28 +1,24 @@
 /**
- * Meeting note upload form component
+ * Knowledge upload form component
  */
 
 import { useState } from 'react'
-import { useUploadMeetingNote } from './hooks'
+import { useUploadKnowledge } from './hooks'
 
 interface Props {
   agentId: string
   onClose: () => void
 }
 
-export function MeetingNoteUpload({ agentId, onClose }: Props) {
+export function KnowledgeUpload({ agentId, onClose }: Props) {
   const [text, setText] = useState('')
-  const [meetingDate, setMeetingDate] = useState(() => {
-    const now = new Date()
-    return now.toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm format
-  })
   const [error, setError] = useState<string | null>(null)
   const [uploadResult, setUploadResult] = useState<{
     warning: string | null
     replacementCount: number
   } | null>(null)
 
-  const uploadMutation = useUploadMeetingNote()
+  const uploadMutation = useUploadKnowledge()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,7 +34,6 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
       const result = await uploadMutation.mutateAsync({
         agent_id: agentId,
         text: text.trim(),
-        meeting_date: new Date(meetingDate).toISOString(),
       })
 
       setUploadResult({
@@ -64,25 +59,11 @@ export function MeetingNoteUpload({ agentId, onClose }: Props) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="meeting-date" className="block text-sm font-medium mb-1">
-              MTG開催日時 <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="meeting-date"
-              type="datetime-local"
-              value={meetingDate}
-              onChange={(e) => setMeetingDate(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="meeting-text" className="block text-sm font-medium mb-1">
+            <label htmlFor="knowledge-text" className="block text-sm font-medium mb-1">
               ナレッジテキスト <span className="text-red-500">*</span>
             </label>
             <textarea
-              id="meeting-text"
+              id="knowledge-text"
               value={text}
               onChange={(e) => setText(e.target.value)}
               className="w-full border rounded px-3 py-2 font-mono text-sm"

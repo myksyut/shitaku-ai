@@ -3,14 +3,14 @@
  * Shows before/after comparison of normalized text
  */
 
-import type { MeetingNote } from './types'
+import type { Knowledge } from './types'
 
 interface Props {
-  note: MeetingNote
+  knowledge: Knowledge
   onClose: () => void
 }
 
-export function NormalizationDiff({ note, onClose }: Props) {
+export function NormalizationDiff({ knowledge, onClose }: Props) {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
     return date.toLocaleDateString('ja-JP', {
@@ -28,7 +28,7 @@ export function NormalizationDiff({ note, onClose }: Props) {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h2 className="text-xl font-bold">ナレッジ詳細</h2>
-            <p className="text-sm text-gray-500 mt-1">MTG日: {formatDate(note.meeting_date)}</p>
+            <p className="text-sm text-gray-500 mt-1">MTG日: {formatDate(knowledge.meeting_date)}</p>
           </div>
           <button
             type="button"
@@ -40,13 +40,13 @@ export function NormalizationDiff({ note, onClose }: Props) {
           </button>
         </div>
 
-        {note.is_normalized ? (
+        {knowledge.is_normalized ? (
           <div className="grid md:grid-cols-2 gap-4">
             {/* 元テキスト */}
             <div>
               <h3 className="font-medium mb-2 text-gray-600">元のテキスト</h3>
               <div className="border rounded p-3 bg-gray-50 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
-                {note.original_text}
+                {knowledge.original_text}
               </div>
             </div>
 
@@ -54,7 +54,7 @@ export function NormalizationDiff({ note, onClose }: Props) {
             <div>
               <h3 className="font-medium mb-2 text-green-600">正規化後</h3>
               <div className="border rounded p-3 bg-green-50 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
-                {note.normalized_text}
+                {knowledge.normalized_text}
               </div>
             </div>
           </div>
@@ -62,7 +62,7 @@ export function NormalizationDiff({ note, onClose }: Props) {
           <div>
             <h3 className="font-medium mb-2 text-gray-600">テキスト（変更なし）</h3>
             <div className="border rounded p-3 bg-gray-50 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
-              {note.original_text}
+              {knowledge.original_text}
             </div>
             <p className="text-sm text-gray-500 mt-2">このテキストは正規化による変更がありませんでした。</p>
           </div>

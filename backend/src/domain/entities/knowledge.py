@@ -1,4 +1,4 @@
-"""MeetingNote entity for domain layer.
+"""Knowledge entity for domain layer.
 
 Pure Python entity without SQLAlchemy/Pydantic dependencies.
 Following ADR-0001 clean architecture principles.
@@ -10,11 +10,11 @@ from uuid import UUID
 
 
 @dataclass
-class MeetingNote:
-    """議事録を表すエンティティ.
+class Knowledge:
+    """ナレッジを表すエンティティ.
 
     Attributes:
-        id: 議事録の一意識別子
+        id: ナレッジの一意識別子
         agent_id: 紐付けられたエージェントのID
         user_id: 所有ユーザーのID
         original_text: 正規化前のテキスト

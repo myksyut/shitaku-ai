@@ -13,12 +13,12 @@ from slack_sdk.errors import SlackApiError
 
 from src.domain.entities.agenda import Agenda
 from src.domain.entities.agent import Agent
-from src.domain.entities.meeting_note import MeetingNote
+from src.domain.entities.knowledge import Knowledge
 from src.domain.entities.meeting_transcript import MeetingTranscript
 from src.domain.repositories.agenda_repository import AgendaRepository
 from src.domain.repositories.agent_repository import AgentRepository
 from src.domain.repositories.dictionary_repository import DictionaryRepository
-from src.domain.repositories.meeting_note_repository import MeetingNoteRepository
+from src.domain.repositories.knowledge_repository import KnowledgeRepository
 from src.domain.repositories.meeting_transcript_repository import MeetingTranscriptRepository
 from src.domain.repositories.recurring_meeting_repository import RecurringMeetingRepository
 from src.domain.repositories.slack_integration_repository import SlackIntegrationRepository
@@ -37,7 +37,7 @@ class GenerateResult:
     """アジェンダ生成結果."""
 
     agenda: Agenda
-    has_meeting_note: bool
+    has_knowledge: bool
     has_slack_messages: bool
     slack_message_count: int
     dictionary_entry_count: int
@@ -55,7 +55,7 @@ class GenerateAgendaUseCase:
         self,
         agenda_repository: AgendaRepository,
         agent_repository: AgentRepository,
-        note_repository: MeetingNoteRepository,
+        knowledge_repository: KnowledgeRepository,
         dictionary_repository: DictionaryRepository,
         slack_repository: SlackIntegrationRepository,
         generation_service: AgendaGenerationService,
@@ -64,7 +64,7 @@ class GenerateAgendaUseCase:
     ) -> None:
         self.agenda_repository = agenda_repository
         self.agent_repository = agent_repository
-        self.note_repository = note_repository
+        self.knowledge_repository = knowledge_repository
         self.dictionary_repository = dictionary_repository
         self.slack_repository = slack_repository
         self.generation_service = generation_service
@@ -79,7 +79,7 @@ class GenerateAgendaUseCase:
             raise ValueError("Agent not found")
 
         # データ収集
-        latest_note = await self.note_repository.get_latest_by_agent(agent_id, user_id)
+        latest_knowledge = await self.knowledge_repository.get_latest_by_agent(agent_id, user_id)
         dictionary = await self.dictionary_repository.get_all(user_id)
 
         # 複数定例からトランスクリプトを収集
@@ -87,7 +87,7 @@ class GenerateAgendaUseCase:
         logger.info("Collected %d transcripts total", len(transcripts))
 
         # Slack取得範囲を計算
-        slack_oldest = self._calculate_slack_oldest(agent, transcripts, latest_note)
+        slack_oldest = self._calculate_slack_oldest(agent, transcripts, latest_knowledge)
 
         # Slackメッセージ取得
         slack_messages = []
@@ -120,7 +120,7 @@ class GenerateAgendaUseCase:
 
         # アジェンダ生成（タイムアウト付き）
         input_data = AgendaGenerationInput(
-            latest_note=latest_note,
+            latest_knowledge=latest_knowledge,
             slack_messages=slack_messages,
             dictionary=dictionary,
             transcripts=transcripts,
@@ -140,7 +140,7 @@ class GenerateAgendaUseCase:
             agent_id=agent_id,
             user_id=user_id,
             content=content,
-            source_note_id=latest_note.id if latest_note else None,
+            source_knowledge_id=latest_knowledge.id if latest_knowledge else None,
             generated_at=datetime.now(),
             created_at=datetime.now(),
         )
@@ -149,7 +149,7 @@ class GenerateAgendaUseCase:
 
         return GenerateResult(
             agenda=saved_agenda,
-            has_meeting_note=latest_note is not None,
+            has_knowledge=latest_knowledge is not None,
             has_slack_messages=len(slack_messages) > 0,
             slack_message_count=len(slack_messages),
             dictionary_entry_count=len(dictionary),
@@ -202,14 +202,14 @@ class GenerateAgendaUseCase:
         self,
         agent: Agent,
         transcripts: list[MeetingTranscript],
-        latest_note: MeetingNote | None,
+        latest_knowledge: Knowledge | None,
     ) -> datetime | None:
         """Slack取得範囲の開始日時を計算する.
 
         Args:
             agent: エージェントエンティティ
             transcripts: 収集したトランスクリプト
-            latest_note: 最新の議事録
+            latest_knowledge: 最新のナレッジ
 
         Returns:
             Slack取得開始日時。取得不要な場合はNone。
@@ -218,9 +218,9 @@ class GenerateAgendaUseCase:
         if transcripts:
             return transcripts[0].meeting_date
 
-        # 議事録があればその日付を使用
-        if latest_note:
-            return latest_note.meeting_date
+        # ナレッジがあればその日付を使用
+        if latest_knowledge:
+            return latest_knowledge.meeting_date
 
         # なければslack_message_days前から
         return datetime.now() - timedelta(days=agent.slack_message_days)

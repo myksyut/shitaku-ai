@@ -1,10 +1,10 @@
-# Meeting Notes Integration Test - Design Doc: mvp-core-features.md
+# Knowledge Integration Test - Design Doc: mvp-core-features.md
 # Generated: 2026-01-31 | Quota: 2/3 integration, 0/2 E2E
 """
-議事録アップロード + 正規化機能の統合テスト
+ナレッジアップロード + 正規化機能の統合テスト
 
-テスト対象: F3 議事録アップロード + 正規化
-- 議事録テキストのアップロードとDB保存
+テスト対象: F3 ナレッジアップロード + 正規化
+- ナレッジテキストのアップロードとDB保存
 - ユビキタス言語辞書による正規化処理
 - LLM APIエラー時のフォールバック処理
 """
@@ -77,16 +77,16 @@ def mock_dictionary_entries() -> list[DictionaryEntry]:
     ]
 
 
-class TestMeetingNotesIntegration:
-    """議事録アップロード + 正規化の統合テスト"""
+class TestKnowledgeIntegration:
+    """ナレッジアップロード + 正規化の統合テスト"""
 
-    # AC: "When ユーザーがエージェントを選択して議事録テキストをアップロードすると、
+    # AC: "When ユーザーがエージェントを選択してナレッジテキストをアップロードすると、
     #      システムは辞書を参照して固有名詞を正規化し、DBに保存する"
-    # Property: `meeting_notes.count == previous_count + 1`
+    # Property: `knowledge.count == previous_count + 1`
     # ROI: 99/11 = 9.0 | ビジネス価値: 10 | 頻度: 9
     # 振る舞い: エージェント選択+テキストアップロード -> 辞書参照 -> LLM正規化 -> DB保存
     # @category: core-functionality
-    # @dependency: MeetingNoteRepository, DictionaryEntryRepository, BedrockClient, Supabase
+    # @dependency: KnowledgeRepository, DictionaryEntryRepository, BedrockClient, Supabase
     # @complexity: high
     #
     # 検証項目:
@@ -94,18 +94,17 @@ class TestMeetingNotesIntegration:
     # - レスポンスにid, original_text, normalized_textが含まれる
     # - original_textは入力テキストと同一
     # - normalized_textは正規化処理の結果
-    # - DBに議事録が永続化されている
-    def test_upload_and_normalize_meeting_note(
+    # - DBにナレッジが永続化されている
+    def test_upload_and_normalize_knowledge(
         self,
         authenticated_client: TestClient,
         mock_agent: Agent,
         mock_dictionary_entries: list[DictionaryEntry],
     ) -> None:
-        """AC1: 議事録アップロードで辞書参照正規化されDBに保存される"""
+        """AC1: ナレッジアップロードで辞書参照正規化されDBに保存される"""
         # Arrange
         original_text = "かなざわさんが報告しました。プロジェクトAの進捗です。"
         normalized_text = "金沢太郎さんが報告しました。プロジェクトAの進捗です。"
-        meeting_date = "2026-01-15T10:00:00"
 
         # 正規化成功結果をモック
         normalization_result = NormalizationResult(
@@ -118,12 +117,12 @@ class TestMeetingNotesIntegration:
 
         # 依存関係をモック
         with (
-            patch("src.presentation.api.v1.endpoints.meeting_notes.get_supabase_client") as mock_supabase_client,
-            patch("src.presentation.api.v1.endpoints.meeting_notes.AgentRepositoryImpl") as mock_agent_repo_class,
-            patch("src.presentation.api.v1.endpoints.meeting_notes.DictionaryRepositoryImpl") as mock_dict_repo_class,
-            patch("src.presentation.api.v1.endpoints.meeting_notes.MeetingNoteRepositoryImpl") as mock_note_repo_class,
+            patch("src.presentation.api.v1.endpoints.knowledge.get_supabase_client") as mock_supabase_client,
+            patch("src.presentation.api.v1.endpoints.knowledge.AgentRepositoryImpl") as mock_agent_repo_class,
+            patch("src.presentation.api.v1.endpoints.knowledge.DictionaryRepositoryImpl") as mock_dict_repo_class,
+            patch("src.presentation.api.v1.endpoints.knowledge.KnowledgeRepositoryImpl") as mock_knowledge_repo_class,
             patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.NormalizationServiceImpl"
+                "src.presentation.api.v1.endpoints.knowledge.NormalizationServiceImpl"
             ) as mock_norm_service_class,
         ):
             # Supabase client mock
@@ -148,22 +147,21 @@ class TestMeetingNotesIntegration:
             mock_norm_service.normalize.return_value = normalization_result
             mock_norm_service_class.return_value = mock_norm_service
 
-            # MeetingNoteRepository mock - 保存されたデータを返す
-            mock_note_repo = MagicMock()
+            # KnowledgeRepository mock - 保存されたデータを返す
+            mock_knowledge_repo = MagicMock()
 
-            async def mock_create(note: MagicMock) -> MagicMock:
-                return note
+            async def mock_create(knowledge: MagicMock) -> MagicMock:
+                return knowledge
 
-            mock_note_repo.create = mock_create
-            mock_note_repo_class.return_value = mock_note_repo
+            mock_knowledge_repo.create = mock_create
+            mock_knowledge_repo_class.return_value = mock_knowledge_repo
 
             # Act
             response = authenticated_client.post(
-                "/api/v1/meeting-notes",
+                "/api/v1/knowledge",
                 json={
                     "agent_id": str(TEST_AGENT_ID),
                     "text": original_text,
-                    "meeting_date": meeting_date,
                 },
             )
 
@@ -172,12 +170,12 @@ class TestMeetingNotesIntegration:
             data = response.json()
 
             # レスポンスにoriginal_text, normalized_textが含まれる
-            assert "note" in data
-            assert data["note"]["original_text"] == original_text
-            assert data["note"]["normalized_text"] == normalized_text
+            assert "knowledge" in data
+            assert data["knowledge"]["original_text"] == original_text
+            assert data["knowledge"]["normalized_text"] == normalized_text
 
             # 正規化が行われた
-            assert data["note"]["is_normalized"] is True
+            assert data["knowledge"]["is_normalized"] is True
             assert data["replacement_count"] == 1
             assert data["normalization_warning"] is None
 
@@ -189,14 +187,14 @@ class TestMeetingNotesIntegration:
     # ROI: 27/11 = 2.5 | ビジネス価値: 9 | 頻度: 2
     # 振る舞い: テキストアップロード -> LLM APIエラー -> 元テキスト保存 -> 警告返却
     # @category: edge-case
-    # @dependency: MeetingNoteRepository, BedrockClient, Supabase
+    # @dependency: KnowledgeRepository, BedrockClient, Supabase
     # @complexity: medium
     #
     # 検証項目:
     # - レスポンスに警告メッセージが含まれる
     # - original_textとnormalized_textが同一（フォールバック）
-    # - DBに議事録が永続化されている（元テキストのまま）
-    def test_upload_meeting_note_llm_error_fallback(
+    # - DBにナレッジが永続化されている（元テキストのまま）
+    def test_upload_knowledge_llm_error_fallback(
         self,
         authenticated_client: TestClient,
         mock_agent: Agent,
@@ -205,16 +203,15 @@ class TestMeetingNotesIntegration:
         """AC3: LLM APIエラー時に元テキストが保存され警告が返却される"""
         # Arrange
         original_text = "かなざわさんが報告しました。"
-        meeting_date = "2026-01-15T10:00:00"
 
         # 依存関係をモック
         with (
-            patch("src.presentation.api.v1.endpoints.meeting_notes.get_supabase_client") as mock_supabase_client,
-            patch("src.presentation.api.v1.endpoints.meeting_notes.AgentRepositoryImpl") as mock_agent_repo_class,
-            patch("src.presentation.api.v1.endpoints.meeting_notes.DictionaryRepositoryImpl") as mock_dict_repo_class,
-            patch("src.presentation.api.v1.endpoints.meeting_notes.MeetingNoteRepositoryImpl") as mock_note_repo_class,
+            patch("src.presentation.api.v1.endpoints.knowledge.get_supabase_client") as mock_supabase_client,
+            patch("src.presentation.api.v1.endpoints.knowledge.AgentRepositoryImpl") as mock_agent_repo_class,
+            patch("src.presentation.api.v1.endpoints.knowledge.DictionaryRepositoryImpl") as mock_dict_repo_class,
+            patch("src.presentation.api.v1.endpoints.knowledge.KnowledgeRepositoryImpl") as mock_knowledge_repo_class,
             patch(
-                "src.presentation.api.v1.endpoints.meeting_notes.NormalizationServiceImpl"
+                "src.presentation.api.v1.endpoints.knowledge.NormalizationServiceImpl"
             ) as mock_norm_service_class,
         ):
             # Supabase client mock
@@ -239,22 +236,21 @@ class TestMeetingNotesIntegration:
             mock_norm_service.normalize.side_effect = NormalizationError("LLM API error")
             mock_norm_service_class.return_value = mock_norm_service
 
-            # MeetingNoteRepository mock - 保存されたデータを返す
-            mock_note_repo = MagicMock()
+            # KnowledgeRepository mock - 保存されたデータを返す
+            mock_knowledge_repo = MagicMock()
 
-            async def mock_create(note: MagicMock) -> MagicMock:
-                return note
+            async def mock_create(knowledge: MagicMock) -> MagicMock:
+                return knowledge
 
-            mock_note_repo.create = mock_create
-            mock_note_repo_class.return_value = mock_note_repo
+            mock_knowledge_repo.create = mock_create
+            mock_knowledge_repo_class.return_value = mock_knowledge_repo
 
             # Act
             response = authenticated_client.post(
-                "/api/v1/meeting-notes",
+                "/api/v1/knowledge",
                 json={
                     "agent_id": str(TEST_AGENT_ID),
                     "text": original_text,
-                    "meeting_date": meeting_date,
                 },
             )
 
@@ -267,9 +263,9 @@ class TestMeetingNotesIntegration:
             assert "正規化処理に失敗しました" in data["normalization_warning"]
 
             # original_text == normalized_text（フォールバック）
-            assert data["note"]["original_text"] == original_text
-            assert data["note"]["normalized_text"] == original_text
-            assert data["note"]["is_normalized"] is False
+            assert data["knowledge"]["original_text"] == original_text
+            assert data["knowledge"]["normalized_text"] == original_text
+            assert data["knowledge"]["is_normalized"] is False
 
             # replacement_countは0
             assert data["replacement_count"] == 0

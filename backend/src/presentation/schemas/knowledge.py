@@ -1,6 +1,6 @@
-"""Pydantic schemas for MeetingNote API.
+"""Pydantic schemas for Knowledge API.
 
-Request/Response schemas for meeting note endpoints.
+Request/Response schemas for knowledge endpoints.
 """
 
 from datetime import datetime
@@ -9,16 +9,15 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class MeetingNoteCreate(BaseModel):
-    """議事録作成リクエスト."""
+class KnowledgeCreate(BaseModel):
+    """ナレッジ作成リクエスト."""
 
     agent_id: UUID = Field(..., description="紐付けるエージェントのID")
-    text: str = Field(..., min_length=1, description="議事録テキスト")
-    meeting_date: datetime = Field(..., description="MTG開催日時")
+    text: str = Field(..., min_length=1, description="ナレッジテキスト")
 
 
-class MeetingNoteResponse(BaseModel):
-    """議事録レスポンス."""
+class KnowledgeResponse(BaseModel):
+    """ナレッジレスポンス."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -31,9 +30,9 @@ class MeetingNoteResponse(BaseModel):
     is_normalized: bool  # 正規化が実行されたかどうか
 
 
-class MeetingNoteUploadResponse(BaseModel):
-    """議事録アップロードレスポンス（正規化結果含む）."""
+class KnowledgeUploadResponse(BaseModel):
+    """ナレッジアップロードレスポンス（正規化結果含む）."""
 
-    note: MeetingNoteResponse
+    knowledge: KnowledgeResponse
     normalization_warning: str | None = None  # LLMエラー時の警告メッセージ
     replacement_count: int = 0  # 置換された箇所の数

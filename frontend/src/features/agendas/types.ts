@@ -6,7 +6,7 @@ export interface Agenda {
   id: string
   agent_id: string
   content: string
-  source_note_id: string | null
+  source_knowledge_id: string | null
   generated_at: string
   created_at: string
   updated_at: string | null
@@ -21,10 +21,12 @@ export interface AgendaUpdate {
 }
 
 export interface DataSourcesInfo {
-  has_meeting_note: boolean
+  has_knowledge: boolean
   has_slack_messages: boolean
   slack_message_count: number
   dictionary_entry_count: number
+  has_transcripts: boolean
+  transcript_count: number
   slack_error: string | null
 }
 
