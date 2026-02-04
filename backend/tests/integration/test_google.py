@@ -204,10 +204,10 @@ class TestGoogleIntegration:
                 follow_redirects=False,
             )
 
-            # リダイレクトが返却される（成功ページへ）
+            # リダイレクトが返却される（Google設定ページへ）
             # FastAPIのRedirectResponseは307を返すことがある
             assert response.status_code in (302, 307)
-            assert "/google/success" in response.headers["location"]
+            assert "/settings/google?success=true" in response.headers["location"]
             assert "email=test@example.com" in response.headers["location"]
 
         # Act & Assert (異常系): 不正なstateでコールバック
@@ -218,9 +218,9 @@ class TestGoogleIntegration:
             follow_redirects=False,
         )
 
-        # リダイレクトが返却される（エラーページへ）
+        # リダイレクトが返却される（エラー付きでGoogle設定ページへ）
         assert response_invalid.status_code in (302, 307)
-        assert "/google/error" in response_invalid.headers["location"]
+        assert "/settings/google?error=" in response_invalid.headers["location"]
         # URLエンコードされた "Invalid state" を検証（%20または+）
         location = response_invalid.headers["location"]
         assert "Invalid" in location and "state" in location
