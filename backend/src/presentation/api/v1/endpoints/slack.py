@@ -122,9 +122,10 @@ async def slack_oauth_callback(
 
     try:
         integration = await use_case.execute(code=code, state=state)
-        # 成功時はフロントエンドにリダイレクト
+        # 成功時はフロントエンドのSlack設定ページにリダイレクト
         frontend_url = settings.BACKEND_CORS_ORIGINS[0] if settings.BACKEND_CORS_ORIGINS else ""
-        return RedirectResponse(url=f"{frontend_url}/slack/success?workspace={integration.workspace_name}")
+        redirect_url = f"{frontend_url}/settings/slack?success=true&workspace={integration.workspace_name}"
+        return RedirectResponse(url=redirect_url)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 

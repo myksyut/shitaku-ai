@@ -132,14 +132,14 @@ async def google_oauth_callback(
 
     try:
         integration = await use_case.execute(code=code, state=state)
-        # 成功時はフロントエンドにリダイレクト
+        # 成功時はフロントエンドのGoogle設定ページにリダイレクト
         return RedirectResponse(
-            url=f"{frontend_url}/google/success?email={integration.email}",
+            url=f"{frontend_url}/settings/google?success=true&email={integration.email}",
             status_code=status.HTTP_302_FOUND,
         )
     except ValueError as e:
         return RedirectResponse(
-            url=f"{frontend_url}/google/error?error={str(e)}",
+            url=f"{frontend_url}/settings/google?error={str(e)}",
             status_code=status.HTTP_302_FOUND,
         )
 
