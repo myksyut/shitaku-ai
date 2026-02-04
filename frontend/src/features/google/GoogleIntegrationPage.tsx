@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Button, Card } from '../../components/ui'
 import { GoogleIcon } from '../../components/ui/GoogleIcon'
 import {
@@ -5,6 +7,7 @@ import {
   useGoogleIntegrations,
   useStartAdditionalScopes,
   useStartGoogleOAuth,
+  useSyncRecurringMeetings,
 } from './hooks'
 import type { GoogleIntegration } from './types'
 
@@ -199,8 +202,25 @@ function IntegrationItem({ integration }: { integration: GoogleIntegration }) {
 }
 
 export function GoogleIntegrationPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data: integrations, isLoading, error } = useGoogleIntegrations()
   const startOAuth = useStartGoogleOAuth()
+  const syncMeetings = useSyncRecurringMeetings()
+  const hasSyncedRef = useRef(false)
+
+  // OAuth成功後にカレンダー同期を自動実行
+  useEffect(() => {
+    const success = searchParams.get('success')
+    if (success === 'true' && !hasSyncedRef.current) {
+      hasSyncedRef.current = true
+      syncMeetings.mutate(undefined, {
+        onSettled: () => {
+          // 同期完了後にURLパラメータをクリア
+          setSearchParams({}, { replace: true })
+        },
+      })
+    }
+  }, [searchParams, setSearchParams, syncMeetings])
 
   const handleConnect = () => {
     startOAuth.mutate()
