@@ -17,6 +17,9 @@ from src.application.use_cases.slack_use_cases import (
 )
 from src.config import settings
 from src.infrastructure.external.supabase_client import get_supabase_client
+from src.infrastructure.repositories.oauth_state_repository_impl import (
+    OAuthStateRepositoryImpl,
+)
 from src.infrastructure.repositories.slack_integration_repository_impl import (
     SlackIntegrationRepositoryImpl,
 )
@@ -55,18 +58,40 @@ def get_callback_repository() -> SlackIntegrationRepositoryImpl:
     return SlackIntegrationRepositoryImpl(client)
 
 
+def get_oauth_state_repository(
+    client: Client = Depends(get_user_supabase_client),
+) -> OAuthStateRepositoryImpl:
+    """Get OAuth state repository with user context for /auth endpoint."""
+    return OAuthStateRepositoryImpl(client)
+
+
+def get_callback_oauth_state_repository() -> OAuthStateRepositoryImpl:
+    """Get OAuth state repository for callback (uses service role, RLS bypass).
+
+    OAuth callback needs to access state created by any user.
+    """
+    client = get_supabase_client()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service unavailable",
+        )
+    return OAuthStateRepositoryImpl(client)
+
+
 @router.get("/auth", response_model=SlackOAuthStartResponse)
 async def start_slack_oauth(
     user_id: UUID = Depends(get_current_user_id),
+    oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_oauth_state_repository),
 ) -> SlackOAuthStartResponse:
     """Slack OAuth認証を開始する.
 
     Returns:
         SlackOAuthStartResponse with authorize_url.
     """
-    use_case = StartSlackOAuthUseCase()
+    use_case = StartSlackOAuthUseCase(oauth_state_repository)
     try:
-        result = use_case.execute(user_id)
+        result = await use_case.execute(user_id)
         return SlackOAuthStartResponse(authorize_url=result.authorize_url)
     except ValueError as e:
         raise HTTPException(
@@ -80,6 +105,7 @@ async def slack_oauth_callback(
     code: str = Query(...),
     state: str = Query(...),
     repository: SlackIntegrationRepositoryImpl = Depends(get_callback_repository),
+    oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_callback_oauth_state_repository),
 ) -> RedirectResponse:
     """Slack OAuthコールバックを処理する.
 
@@ -87,11 +113,12 @@ async def slack_oauth_callback(
         code: OAuth認可コード.
         state: CSRFトークン.
         repository: Slack連携リポジトリ（DI）.
+        oauth_state_repository: OAuth stateリポジトリ（DI）.
 
     Returns:
         Redirect to frontend success page.
     """
-    use_case = HandleSlackCallbackUseCase(repository)
+    use_case = HandleSlackCallbackUseCase(repository, oauth_state_repository)
 
     try:
         integration = await use_case.execute(code=code, state=state)
