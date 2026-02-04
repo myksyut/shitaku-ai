@@ -19,6 +19,9 @@ from src.infrastructure.external.supabase_client import get_supabase_client
 from src.infrastructure.repositories.google_integration_repository_impl import (
     GoogleIntegrationRepositoryImpl,
 )
+from src.infrastructure.repositories.oauth_state_repository_impl import (
+    OAuthStateRepositoryImpl,
+)
 from src.presentation.api.v1.dependencies import (
     get_current_user_id,
     get_user_supabase_client,
@@ -54,18 +57,40 @@ def get_callback_repository() -> GoogleIntegrationRepositoryImpl:
     return GoogleIntegrationRepositoryImpl(client)
 
 
+def get_oauth_state_repository(
+    client: Client = Depends(get_user_supabase_client),
+) -> OAuthStateRepositoryImpl:
+    """Get OAuth state repository instance with user context."""
+    return OAuthStateRepositoryImpl(client)
+
+
+def get_callback_oauth_state_repository() -> OAuthStateRepositoryImpl:
+    """Get OAuth state repository for callback (uses service role, no user context).
+
+    OAuth callback is called by Google, not authenticated user.
+    """
+    client = get_supabase_client()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service unavailable",
+        )
+    return OAuthStateRepositoryImpl(client)
+
+
 @router.get("/auth", response_model=GoogleOAuthStartResponse)
 async def start_google_oauth(
     user_id: UUID = Depends(get_current_user_id),
+    oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_oauth_state_repository),
 ) -> GoogleOAuthStartResponse:
     """Google OAuth認証を開始する.
 
     Returns:
         GoogleOAuthStartResponse with authorize_url.
     """
-    use_case = StartGoogleOAuthUseCase()
+    use_case = StartGoogleOAuthUseCase(oauth_state_repository)
     try:
-        result = use_case.execute(user_id)
+        result = await use_case.execute(user_id)
         return GoogleOAuthStartResponse(authorize_url=result.authorize_url)
     except ValueError as e:
         raise HTTPException(
@@ -80,6 +105,7 @@ async def google_oauth_callback(
     state: str = Query(...),
     error: str | None = Query(None),
     repository: GoogleIntegrationRepositoryImpl = Depends(get_callback_repository),
+    oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_callback_oauth_state_repository),
 ) -> RedirectResponse:
     """Google OAuthコールバックを処理する.
 
@@ -88,6 +114,7 @@ async def google_oauth_callback(
         state: CSRFトークン.
         error: Googleからのエラー（ユーザーが拒否した場合等）.
         repository: Google連携リポジトリ（DI）.
+        oauth_state_repository: OAuth stateリポジトリ（DI）.
 
     Returns:
         Redirect to frontend success/error page.
@@ -101,7 +128,7 @@ async def google_oauth_callback(
             status_code=status.HTTP_302_FOUND,
         )
 
-    use_case = HandleGoogleCallbackUseCase(repository)
+    use_case = HandleGoogleCallbackUseCase(repository, oauth_state_repository)
 
     try:
         integration = await use_case.execute(code=code, state=state)
@@ -162,6 +189,7 @@ async def start_additional_scopes_oauth(
     integration_id: UUID = Query(..., description="連携ID"),
     user_id: UUID = Depends(get_current_user_id),
     repository: GoogleIntegrationRepositoryImpl = Depends(get_repository),
+    oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_oauth_state_repository),
 ) -> GoogleOAuthStartResponse:
     """追加スコープの認証URLを取得する（Incremental Authorization）.
 
@@ -171,11 +199,12 @@ async def start_additional_scopes_oauth(
         integration_id: 連携ID.
         user_id: ユーザーID（DI）.
         repository: Google連携リポジトリ（DI）.
+        oauth_state_repository: OAuth stateリポジトリ（DI）.
 
     Returns:
         GoogleOAuthStartResponse with authorize_url.
     """
-    use_case = StartAdditionalScopesUseCase(repository)
+    use_case = StartAdditionalScopesUseCase(repository, oauth_state_repository)
     try:
         result = await use_case.execute(user_id, integration_id)
         return GoogleOAuthStartResponse(authorize_url=result.authorize_url)

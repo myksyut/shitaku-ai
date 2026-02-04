@@ -2,14 +2,16 @@
 
 import secrets
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 import httpx
 
 from src.config import settings
+from src.domain.entities.oauth_state import OAuthState
 from src.domain.entities.slack_integration import SlackIntegration
+from src.domain.repositories.oauth_state_repository import OAuthStateRepository
 from src.domain.repositories.slack_integration_repository import (
     SlackIntegrationRepository,
 )
@@ -19,9 +21,6 @@ from src.infrastructure.external.slack_client import (
     SlackClient,
     SlackMessageData,
 )
-
-# stateを一時保存するためのストア（本番ではRedis等を使用）
-_state_store: dict[str, tuple[UUID, datetime]] = {}
 
 
 @dataclass
@@ -35,7 +34,18 @@ class OAuthStartResult:
 class StartSlackOAuthUseCase:
     """Slack OAuth開始ユースケース."""
 
-    def execute(self, user_id: UUID) -> OAuthStartResult:
+    # OAuth stateの有効期限（5分）
+    STATE_EXPIRES_MINUTES = 5
+
+    def __init__(self, oauth_state_repository: OAuthStateRepository) -> None:
+        """Initialize use case with repository.
+
+        Args:
+            oauth_state_repository: OAuth state repository.
+        """
+        self.oauth_state_repository = oauth_state_repository
+
+    async def execute(self, user_id: UUID) -> OAuthStartResult:
         """OAuth認証URLを生成する.
 
         Args:
@@ -52,14 +62,27 @@ class StartSlackOAuthUseCase:
 
         # state生成（CSRF対策）
         state = secrets.token_urlsafe(32)
+        now = datetime.now(UTC)
 
-        # stateをユーザーIDと紐付けて保存（5分間有効）
-        _state_store[state] = (user_id, datetime.now())
+        # Slack OAuth scopes
+        scopes = ["channels:read", "channels:history", "groups:read", "groups:history", "users:read"]
+
+        # OAuthStateエンティティを作成してリポジトリに保存
+        oauth_state = OAuthState(
+            id=uuid4(),
+            state=state,
+            user_id=user_id,
+            provider="slack",
+            scopes=scopes,
+            expires_at=now + timedelta(minutes=self.STATE_EXPIRES_MINUTES),
+            created_at=now,
+        )
+        await self.oauth_state_repository.create(oauth_state)
 
         # Slack OAuth URLを構築
         params = {
             "client_id": settings.SLACK_CLIENT_ID,
-            "scope": "channels:read,channels:history,groups:read,groups:history,users:read",
+            "scope": ",".join(scopes),
             "redirect_uri": settings.SLACK_REDIRECT_URI,
             "state": state,
         }
@@ -72,9 +95,19 @@ class StartSlackOAuthUseCase:
 class HandleSlackCallbackUseCase:
     """Slack OAuthコールバックユースケース."""
 
-    def __init__(self, repository: SlackIntegrationRepository) -> None:
-        """Initialize use case with repository."""
+    def __init__(
+        self,
+        repository: SlackIntegrationRepository,
+        oauth_state_repository: OAuthStateRepository,
+    ) -> None:
+        """Initialize use case with repositories.
+
+        Args:
+            repository: Slack integration repository.
+            oauth_state_repository: OAuth state repository.
+        """
         self.repository = repository
+        self.oauth_state_repository = oauth_state_repository
 
     async def execute(
         self,
@@ -93,15 +126,20 @@ class HandleSlackCallbackUseCase:
         Raises:
             ValueError: If state is invalid or expired.
         """
-        # state検証（CSRF対策）
-        if state not in _state_store:
+        # state検証（CSRF対策）- リポジトリから取得と同時に削除
+        oauth_state = await self.oauth_state_repository.get_and_delete(state)
+
+        if oauth_state is None:
             raise ValueError("Invalid state parameter")
 
-        user_id, created_at = _state_store.pop(state)
-
-        # 5分以上経過していたら無効
-        if (datetime.now() - created_at).seconds > 300:
+        # 有効期限チェック
+        if oauth_state.is_expired():
             raise ValueError("State expired")
+
+        user_id = oauth_state.user_id
+
+        # 期限切れstateのクリーンアップ（非同期で実行）
+        await self.oauth_state_repository.cleanup_expired()
 
         # アクセストークンを取得
         token_response = await self._exchange_code(code)

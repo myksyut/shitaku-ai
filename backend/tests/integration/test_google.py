@@ -10,22 +10,27 @@ Google Workspace連携機能の統合テスト
 """
 
 from collections.abc import Generator
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
-from src.application.use_cases import google_auth_use_cases
 from src.domain.entities.google_integration import GoogleIntegration
+from src.domain.entities.oauth_state import OAuthState
 from src.infrastructure.external.google_oauth_client import (
     GoogleTokenResponse,
     GoogleUserInfo,
 )
 from src.main import app
 from src.presentation.api.v1.dependencies import get_current_user_id
-from src.presentation.api.v1.endpoints.google import get_callback_repository, get_repository
+from src.presentation.api.v1.endpoints.google import (
+    get_callback_oauth_state_repository,
+    get_callback_repository,
+    get_oauth_state_repository,
+    get_repository,
+)
 
 # テスト用の固定UUID
 TEST_USER_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -45,14 +50,6 @@ def authenticated_client() -> Generator[TestClient, None, None]:
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
-
-
-@pytest.fixture(autouse=True)
-def clear_state_store() -> Generator[None, None, None]:
-    """各テスト前後で_state_storeをクリア（テスト間分離）."""
-    google_auth_use_cases._state_store.clear()
-    yield
-    google_auth_use_cases._state_store.clear()
 
 
 @pytest.fixture
@@ -107,6 +104,16 @@ def mock_repository() -> MagicMock:
 
 
 @pytest.fixture
+def mock_oauth_state_repository() -> MagicMock:
+    """OAuthStateRepositoryをモック化."""
+    mock_repo = MagicMock()
+    mock_repo.create = AsyncMock(side_effect=lambda x: x)
+    mock_repo.get_and_delete = AsyncMock(return_value=None)
+    mock_repo.cleanup_expired = AsyncMock(return_value=0)
+    return mock_repo
+
+
+@pytest.fixture
 def mock_repository_with_integration(mock_repository: MagicMock) -> MagicMock:
     """既存の連携があるリポジトリをモック化."""
     integration = GoogleIntegration(
@@ -145,12 +152,14 @@ class TestGoogleIntegration:
         authenticated_client: TestClient,
         mock_google_oauth_client: MagicMock,
         mock_repository: MagicMock,
+        mock_oauth_state_repository: MagicMock,
     ) -> None:
         """AC2: OAuthコールバックでstateを検証しCSRF攻撃を防止する"""
-        # Arrange: OAuth開始でstateを生成しStateStoreに保存
+        # Arrange: リポジトリをモックに差し替え
         app.dependency_overrides[get_repository] = lambda: mock_repository
-        # コールバック用リポジトリもオーバーライド（OAuthコールバックはget_callback_repositoryを使用）
         app.dependency_overrides[get_callback_repository] = lambda: mock_repository
+        app.dependency_overrides[get_oauth_state_repository] = lambda: mock_oauth_state_repository
+        app.dependency_overrides[get_callback_oauth_state_repository] = lambda: mock_oauth_state_repository
 
         # 新しい連携を作成するモック設定
         new_integration = GoogleIntegration(
@@ -176,6 +185,19 @@ class TestGoogleIntegration:
             call_args = mock_google_oauth_client.get_authorization_url.call_args
             valid_state = call_args[1]["state"]
 
+            # oauth_state_repositoryから返却されるOAuthStateをモック
+            now = datetime.now(UTC)
+            oauth_state = OAuthState(
+                id=uuid4(),
+                state=valid_state,
+                user_id=TEST_USER_ID,
+                provider="google",
+                scopes=["openid", "email", "profile"],
+                expires_at=now + timedelta(minutes=5),
+                created_at=now,
+            )
+            mock_oauth_state_repository.get_and_delete = AsyncMock(return_value=oauth_state)
+
             # Act & Assert (正常系): 正しいstateでコールバック
             response = authenticated_client.get(
                 f"/api/v1/google/callback?code=test_code&state={valid_state}",
@@ -189,6 +211,8 @@ class TestGoogleIntegration:
             assert "email=test@example.com" in response.headers["location"]
 
         # Act & Assert (異常系): 不正なstateでコールバック
+        # 無効なstateの場合、get_and_deleteがNoneを返す
+        mock_oauth_state_repository.get_and_delete = AsyncMock(return_value=None)
         response_invalid = authenticated_client.get(
             "/api/v1/google/callback?code=test_code&state=invalid_state",
             follow_redirects=False,
@@ -203,6 +227,8 @@ class TestGoogleIntegration:
 
         app.dependency_overrides.pop(get_repository, None)
         app.dependency_overrides.pop(get_callback_repository, None)
+        app.dependency_overrides.pop(get_oauth_state_repository, None)
+        app.dependency_overrides.pop(get_callback_oauth_state_repository, None)
 
     # AC: "When ユーザーがGoogle連携ボタンをクリックすると、
     #      システムは一意のstateパラメータを生成しStateStoreに保存した上で、
@@ -221,34 +247,51 @@ class TestGoogleIntegration:
         self,
         authenticated_client: TestClient,
         mock_google_oauth_client: MagicMock,
+        mock_oauth_state_repository: MagicMock,
     ) -> None:
         """AC1: Google連携開始でstateを生成しOAuth URLを返す"""
-        # Arrange: 認証済みユーザー（authenticated_clientで準備済み）
+        # Arrange: OAuth stateリポジトリをモックに差し替え
+        app.dependency_overrides[get_oauth_state_repository] = lambda: mock_oauth_state_repository
 
-        # Act: GET /api/v1/google/auth
-        response = authenticated_client.get("/api/v1/google/auth")
+        # 保存されたOAuthStateをキャプチャ
+        captured_oauth_state: OAuthState | None = None
 
-        # Assert: 200レスポンス
-        assert response.status_code == 200
+        async def capture_create(oauth_state: OAuthState) -> OAuthState:
+            nonlocal captured_oauth_state
+            captured_oauth_state = oauth_state
+            return oauth_state
 
-        # Assert: レスポンスにauthorize_urlが含まれる
-        data = response.json()
-        assert "authorize_url" in data
-        authorize_url = data["authorize_url"]
+        mock_oauth_state_repository.create = AsyncMock(side_effect=capture_create)
 
-        # Assert: URLにstateパラメータが含まれる
-        assert "state=" in authorize_url
+        try:
+            # Act: GET /api/v1/google/auth
+            response = authenticated_client.get("/api/v1/google/auth")
 
-        # Assert: stateがStateStoreに保存されている
-        # モックが呼ばれた際に渡されたstateを確認
-        assert mock_google_oauth_client.get_authorization_url.called
-        call_args = mock_google_oauth_client.get_authorization_url.call_args
-        actual_state = call_args[1]["state"]
-        assert actual_state in google_auth_use_cases._state_store
+            # Assert: 200レスポンス
+            assert response.status_code == 200
 
-        # Assert: stateに紐づくユーザーIDが正しい
-        user_id, _, _ = google_auth_use_cases._state_store[actual_state]
-        assert user_id == TEST_USER_ID
+            # Assert: レスポンスにauthorize_urlが含まれる
+            data = response.json()
+            assert "authorize_url" in data
+            authorize_url = data["authorize_url"]
+
+            # Assert: URLにstateパラメータが含まれる
+            assert "state=" in authorize_url
+
+            # Assert: stateがリポジトリに保存されている
+            assert mock_oauth_state_repository.create.called
+            assert captured_oauth_state is not None
+
+            # モックが呼ばれた際に渡されたstateを確認
+            call_args = mock_google_oauth_client.get_authorization_url.call_args
+            actual_state = call_args[1]["state"]
+            assert captured_oauth_state.state == actual_state
+
+            # Assert: stateに紐づくユーザーIDが正しい
+            assert captured_oauth_state.user_id == TEST_USER_ID
+            assert captured_oauth_state.provider == "google"
+        finally:
+            app.dependency_overrides.pop(get_oauth_state_repository, None)
 
     # AC: "When ユーザーがGoogle連携一覧を取得すると、
     #      システムは該当ユーザーの全連携情報を返す"
@@ -386,10 +429,12 @@ class TestGoogleIntegration:
         authenticated_client: TestClient,
         mock_google_oauth_client: MagicMock,
         mock_repository_with_integration: MagicMock,
+        mock_oauth_state_repository: MagicMock,
     ) -> None:
         """AC5: 追加スコープ要求でIncremental Authorization URLを返す"""
         # Arrange: リポジトリをモックに差し替え
         app.dependency_overrides[get_repository] = lambda: mock_repository_with_integration
+        app.dependency_overrides[get_oauth_state_repository] = lambda: mock_oauth_state_repository
 
         try:
             # Act: GET /api/v1/google/auth/additional-scopes?integration_id=xxx
@@ -411,17 +456,20 @@ class TestGoogleIntegration:
             assert call_kwargs[1].get("include_granted_scopes") is True
         finally:
             app.dependency_overrides.pop(get_repository, None)
+            app.dependency_overrides.pop(get_oauth_state_repository, None)
 
     def test_additional_scopes_returns_400_when_integration_not_found(
         self,
         authenticated_client: TestClient,
         mock_google_oauth_client: MagicMock,
         mock_repository: MagicMock,
+        mock_oauth_state_repository: MagicMock,
     ) -> None:
         """既存連携がない場合、400エラーが返却される"""
         # Arrange: 連携が見つからないリポジトリ
         mock_repository.get_by_id = AsyncMock(return_value=None)
         app.dependency_overrides[get_repository] = lambda: mock_repository
+        app.dependency_overrides[get_oauth_state_repository] = lambda: mock_oauth_state_repository
 
         try:
             # Act: GET /api/v1/google/auth/additional-scopes?integration_id=xxx
@@ -435,6 +483,7 @@ class TestGoogleIntegration:
             assert "not found" in response.json()["detail"].lower()
         finally:
             app.dependency_overrides.pop(get_repository, None)
+            app.dependency_overrides.pop(get_oauth_state_repository, None)
 
     # AC: "When ユーザーがOAuth認可をキャンセルすると、
     #      システムはエラーページにリダイレクトする"
@@ -451,6 +500,7 @@ class TestGoogleIntegration:
         self,
         authenticated_client: TestClient,
         mock_repository: MagicMock,
+        mock_oauth_state_repository: MagicMock,
     ) -> None:
         """AC6: ユーザーが認可をキャンセルした場合エラーページにリダイレクト"""
         # Arrange: エラーパラメータを含むコールバックURLを準備
@@ -461,6 +511,8 @@ class TestGoogleIntegration:
         # コールバック用リポジトリもオーバーライド（OAuthコールバックはget_callback_repositoryを使用）
         app.dependency_overrides[get_repository] = lambda: mock_repository
         app.dependency_overrides[get_callback_repository] = lambda: mock_repository
+        app.dependency_overrides[get_oauth_state_repository] = lambda: mock_oauth_state_repository
+        app.dependency_overrides[get_callback_oauth_state_repository] = lambda: mock_oauth_state_repository
 
         try:
             # Act: GET /api/v1/google/callback?error=access_denied&state=xxx&code=dummy
@@ -481,3 +533,5 @@ class TestGoogleIntegration:
         finally:
             app.dependency_overrides.pop(get_repository, None)
             app.dependency_overrides.pop(get_callback_repository, None)
+            app.dependency_overrides.pop(get_oauth_state_repository, None)
+            app.dependency_overrides.pop(get_callback_oauth_state_repository, None)

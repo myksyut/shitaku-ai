@@ -1,17 +1,20 @@
 """Use cases for Google OAuth and integration operations.
 
 Following ADR-0003 authentication pattern with Incremental Authorization support.
+Following ADR-0004 RLS-based authorization architecture for OAuth state management.
 """
 
 import secrets
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from src.domain.entities.google_integration import GoogleIntegration
+from src.domain.entities.oauth_state import OAuthState
 from src.domain.repositories.google_integration_repository import (
     GoogleIntegrationRepository,
 )
+from src.domain.repositories.oauth_state_repository import OAuthStateRepository
 from src.infrastructure.external.encryption import (
     decrypt_google_token,
     encrypt_google_token,
@@ -21,9 +24,6 @@ from src.infrastructure.external.google_oauth_client import (
     TRANSCRIPT_SCOPES,
     GoogleOAuthClient,
 )
-
-# State store for CSRF protection (use Redis in production)
-_state_store: dict[str, tuple[UUID, datetime, list[str]]] = {}
 
 
 @dataclass
@@ -37,7 +37,18 @@ class OAuthStartResult:
 class StartGoogleOAuthUseCase:
     """Google OAuth開始ユースケース."""
 
-    def execute(
+    # OAuth stateの有効期限（5分）
+    STATE_EXPIRES_MINUTES = 5
+
+    def __init__(self, oauth_state_repository: OAuthStateRepository) -> None:
+        """Initialize use case with repository.
+
+        Args:
+            oauth_state_repository: OAuth state repository.
+        """
+        self.oauth_state_repository = oauth_state_repository
+
+    async def execute(
         self,
         user_id: UUID,
         scopes: list[str] | None = None,
@@ -58,12 +69,22 @@ class StartGoogleOAuthUseCase:
 
         # state生成（CSRF対策）
         state = secrets.token_urlsafe(32)
+        now = datetime.now(UTC)
 
         # 要求するスコープを決定
         request_scopes = scopes if scopes is not None else DEFAULT_SCOPES
 
-        # stateをユーザーIDとスコープに紐付けて保存（5分間有効）
-        _state_store[state] = (user_id, datetime.now(), request_scopes)
+        # OAuthStateエンティティを作成してリポジトリに保存
+        oauth_state = OAuthState(
+            id=uuid4(),
+            state=state,
+            user_id=user_id,
+            provider="google",
+            scopes=request_scopes,
+            expires_at=now + timedelta(minutes=self.STATE_EXPIRES_MINUTES),
+            created_at=now,
+        )
+        await self.oauth_state_repository.create(oauth_state)
 
         authorize_url = client.get_authorization_url(
             state=state,
@@ -77,9 +98,19 @@ class StartGoogleOAuthUseCase:
 class HandleGoogleCallbackUseCase:
     """Google OAuthコールバックユースケース."""
 
-    def __init__(self, repository: GoogleIntegrationRepository) -> None:
-        """Initialize use case with repository."""
+    def __init__(
+        self,
+        repository: GoogleIntegrationRepository,
+        oauth_state_repository: OAuthStateRepository,
+    ) -> None:
+        """Initialize use case with repositories.
+
+        Args:
+            repository: Google integration repository.
+            oauth_state_repository: OAuth state repository.
+        """
         self.repository = repository
+        self.oauth_state_repository = oauth_state_repository
 
     async def execute(
         self,
@@ -98,15 +129,20 @@ class HandleGoogleCallbackUseCase:
         Raises:
             ValueError: If state is invalid, expired, or token exchange fails.
         """
-        # state検証（CSRF対策）
-        if state not in _state_store:
+        # state検証（CSRF対策）- リポジトリから取得と同時に削除
+        oauth_state = await self.oauth_state_repository.get_and_delete(state)
+
+        if oauth_state is None:
             raise ValueError("Invalid state parameter")
 
-        user_id, created_at, requested_scopes = _state_store.pop(state)
-
-        # 5分以上経過していたら無効
-        if (datetime.now() - created_at).seconds > 300:
+        # 有効期限チェック
+        if oauth_state.is_expired():
             raise ValueError("State expired")
+
+        user_id = oauth_state.user_id
+
+        # 期限切れstateのクリーンアップ（非同期で実行）
+        await self.oauth_state_repository.cleanup_expired()
 
         # トークンを取得
         client = GoogleOAuthClient()
@@ -188,9 +224,19 @@ class DeleteGoogleIntegrationUseCase:
 class StartAdditionalScopesUseCase:
     """追加スコープ認証ユースケース（Incremental Authorization）."""
 
-    def __init__(self, repository: GoogleIntegrationRepository) -> None:
-        """Initialize use case with repository."""
+    def __init__(
+        self,
+        repository: GoogleIntegrationRepository,
+        oauth_state_repository: OAuthStateRepository,
+    ) -> None:
+        """Initialize use case with repositories.
+
+        Args:
+            repository: Google integration repository.
+            oauth_state_repository: OAuth state repository.
+        """
         self.repository = repository
+        self.oauth_state_repository = oauth_state_repository
 
     async def execute(
         self,
@@ -223,8 +269,8 @@ class StartAdditionalScopesUseCase:
         all_scopes = list(set(integration.granted_scopes + scopes_to_request))
 
         # OAuth開始
-        start_use_case = StartGoogleOAuthUseCase()
-        return start_use_case.execute(user_id, scopes=all_scopes)
+        start_use_case = StartGoogleOAuthUseCase(self.oauth_state_repository)
+        return await start_use_case.execute(user_id, scopes=all_scopes)
 
 
 class RefreshGoogleTokenUseCase:
