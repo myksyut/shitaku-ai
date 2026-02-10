@@ -2,7 +2,7 @@
  * Agent detail page - Shows agent info, meeting notes, and Slack integration
  */
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatar, Button, Card, EmptyState, Modal, SlackIcon } from '../../components/ui'
 import { AgendaGeneratePage } from '../agendas'
 import { DictionarySection } from '../dictionary/DictionarySection'
@@ -1022,7 +1022,10 @@ export function AgentDetailPage() {
                         borderRadius: 'var(--radius-md)',
                       }}
                     >
-                      <div>
+                      <Link
+                        to={`/meetings/${meeting.id}/transcripts`}
+                        style={{ textDecoration: 'none', color: 'inherit' }}
+                      >
                         <div style={{ fontWeight: 600, color: 'var(--color-warm-gray-700)' }}>{meeting.title}</div>
                         <div
                           style={{
@@ -1036,8 +1039,12 @@ export function AgentDetailPage() {
                           {meeting.frequency === 'monthly' && '毎月'}
                           {' • '}
                           {meeting.attendees.length}名参加
+                          {' • '}
+                          <span style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
+                            議事録を表示
+                          </span>
                         </div>
-                      </div>
+                      </Link>
                       <Button
                         variant="ghost"
                         onClick={() => handleUnlinkMeeting(meeting.id)}

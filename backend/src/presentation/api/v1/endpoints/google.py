@@ -82,15 +82,21 @@ def get_callback_oauth_state_repository() -> OAuthStateRepositoryImpl:
 async def start_google_oauth(
     user_id: UUID = Depends(get_current_user_id),
     oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_oauth_state_repository),
+    redirect_origin: str | None = Query(None, description="callback後のリダイレクト先オリジン"),
 ) -> GoogleOAuthStartResponse:
     """Google OAuth認証を開始する.
 
     Returns:
         GoogleOAuthStartResponse with authorize_url.
     """
+    # redirect_originをBACKEND_CORS_ORIGINSでバリデーション（オープンリダイレクト防止）
+    validated_origin: str | None = None
+    if redirect_origin and redirect_origin in settings.BACKEND_CORS_ORIGINS:
+        validated_origin = redirect_origin
+
     use_case = StartGoogleOAuthUseCase(oauth_state_repository)
     try:
-        result = await use_case.execute(user_id)
+        result = await use_case.execute(user_id, redirect_origin=validated_origin)
         return GoogleOAuthStartResponse(authorize_url=result.authorize_url)
     except ValueError as e:
         raise HTTPException(
@@ -119,27 +125,28 @@ async def google_oauth_callback(
     Returns:
         Redirect to frontend success/error page.
     """
-    frontend_url = settings.BACKEND_CORS_ORIGINS[0] if settings.BACKEND_CORS_ORIGINS else ""
+    fallback_url = settings.BACKEND_CORS_ORIGINS[0] if settings.BACKEND_CORS_ORIGINS else ""
 
-    # ユーザーが認可をキャンセルした場合
+    # ユーザーが認可をキャンセルした場合（stateからredirect_originを取得できないためフォールバック使用）
     if error:
         return RedirectResponse(
-            url=f"{frontend_url}/google/error?error={error}",
+            url=f"{fallback_url}/google/error?error={error}",
             status_code=status.HTTP_302_FOUND,
         )
 
     use_case = HandleGoogleCallbackUseCase(repository, oauth_state_repository)
 
     try:
-        integration = await use_case.execute(code=code, state=state)
-        # 成功時はフロントエンドのGoogle設定ページにリダイレクト
+        integration, oauth_state = await use_case.execute(code=code, state=state)
+        # stateに保存されたredirect_originを使用、なければフォールバック
+        frontend_url = oauth_state.redirect_origin or fallback_url
         return RedirectResponse(
             url=f"{frontend_url}/settings/google?success=true&email={integration.email}",
             status_code=status.HTTP_302_FOUND,
         )
     except ValueError as e:
         return RedirectResponse(
-            url=f"{frontend_url}/settings/google?error={str(e)}",
+            url=f"{fallback_url}/settings/google?error={str(e)}",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -190,6 +197,7 @@ async def start_additional_scopes_oauth(
     user_id: UUID = Depends(get_current_user_id),
     repository: GoogleIntegrationRepositoryImpl = Depends(get_repository),
     oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_oauth_state_repository),
+    redirect_origin: str | None = Query(None, description="callback後のリダイレクト先オリジン"),
 ) -> GoogleOAuthStartResponse:
     """追加スコープの認証URLを取得する（Incremental Authorization）.
 
@@ -200,13 +208,19 @@ async def start_additional_scopes_oauth(
         user_id: ユーザーID（DI）.
         repository: Google連携リポジトリ（DI）.
         oauth_state_repository: OAuth stateリポジトリ（DI）.
+        redirect_origin: callback後のリダイレクト先オリジン.
 
     Returns:
         GoogleOAuthStartResponse with authorize_url.
     """
+    # redirect_originをBACKEND_CORS_ORIGINSでバリデーション（オープンリダイレクト防止）
+    validated_origin: str | None = None
+    if redirect_origin and redirect_origin in settings.BACKEND_CORS_ORIGINS:
+        validated_origin = redirect_origin
+
     use_case = StartAdditionalScopesUseCase(repository, oauth_state_repository)
     try:
-        result = await use_case.execute(user_id, integration_id)
+        result = await use_case.execute(user_id, integration_id, redirect_origin=validated_origin)
         return GoogleOAuthStartResponse(authorize_url=result.authorize_url)
     except ValueError as e:
         raise HTTPException(

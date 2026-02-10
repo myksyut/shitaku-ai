@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
+from slack_sdk.errors import SlackApiError
 from supabase import Client
 
 from src.application.use_cases.slack_use_cases import (
@@ -83,15 +84,21 @@ def get_callback_oauth_state_repository() -> OAuthStateRepositoryImpl:
 async def start_slack_oauth(
     user_id: UUID = Depends(get_current_user_id),
     oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_oauth_state_repository),
+    redirect_origin: str | None = Query(None, description="callback後のリダイレクト先オリジン"),
 ) -> SlackOAuthStartResponse:
     """Slack OAuth認証を開始する.
 
     Returns:
         SlackOAuthStartResponse with authorize_url.
     """
+    # redirect_originをBACKEND_CORS_ORIGINSでバリデーション（オープンリダイレクト防止）
+    validated_origin: str | None = None
+    if redirect_origin and redirect_origin in settings.BACKEND_CORS_ORIGINS:
+        validated_origin = redirect_origin
+
     use_case = StartSlackOAuthUseCase(oauth_state_repository)
     try:
-        result = await use_case.execute(user_id)
+        result = await use_case.execute(user_id, redirect_origin=validated_origin)
         return SlackOAuthStartResponse(authorize_url=result.authorize_url)
     except ValueError as e:
         raise HTTPException(
@@ -118,12 +125,13 @@ async def slack_oauth_callback(
     Returns:
         Redirect to frontend success page.
     """
+    fallback_url = settings.BACKEND_CORS_ORIGINS[0] if settings.BACKEND_CORS_ORIGINS else ""
     use_case = HandleSlackCallbackUseCase(repository, oauth_state_repository)
 
     try:
-        integration = await use_case.execute(code=code, state=state)
-        # 成功時はフロントエンドのSlack設定ページにリダイレクト
-        frontend_url = settings.BACKEND_CORS_ORIGINS[0] if settings.BACKEND_CORS_ORIGINS else ""
+        integration, oauth_state = await use_case.execute(code=code, state=state)
+        # stateに保存されたredirect_originを使用、なければフォールバック
+        frontend_url = oauth_state.redirect_origin or fallback_url
         redirect_url = f"{frontend_url}/settings/slack?success=true&workspace={integration.workspace_name}"
         return RedirectResponse(url=redirect_url)
     except ValueError as e:
@@ -193,6 +201,16 @@ async def get_slack_channels(
     try:
         channels = await use_case.execute(user_id, integration_id)
         return [SlackChannelResponse(id=c.id, name=c.name) for c in channels]
+    except SlackApiError as e:
+        if e.response.get("error") == "ratelimited":
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Slack API rate limit exceeded. Please try again later.",
+            ) from e
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Slack API error: {e.response.get('error', 'unknown')}",
+        ) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
@@ -240,5 +258,15 @@ async def get_slack_messages(
             )
             for m in messages
         ]
+    except SlackApiError as e:
+        if e.response.get("error") == "ratelimited":
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Slack API rate limit exceeded. Please try again later.",
+            ) from e
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Slack API error: {e.response.get('error', 'unknown')}",
+        ) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e

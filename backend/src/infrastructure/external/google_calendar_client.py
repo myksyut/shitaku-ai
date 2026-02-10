@@ -36,6 +36,7 @@ class CalendarEvent:
     attendees: list[CalendarAttendee]
     start_datetime: datetime
     organizer_email: str | None = None
+    status: str = "confirmed"
 
 
 class GoogleCalendarClient:
@@ -77,50 +78,78 @@ class GoogleCalendarClient:
         time_max = now + timedelta(days=90)  # Look ahead 3 months for next occurrence
 
         events: list[CalendarEvent] = []
+        page_token: str | None = None
 
         async with httpx.AsyncClient() as client:
-            # Fetch primary calendar events
-            # singleEvents=false returns recurring event definitions with RRULE
-            response = await client.get(
-                f"{CALENDAR_API_URL}/calendars/primary/events",
-                headers={"Authorization": f"Bearer {self._access_token}"},
-                params={
+            while True:
+                # Fetch primary calendar events
+                # singleEvents=false returns recurring event definitions with RRULE
+                params: dict[str, str | int] = {
                     "timeMin": time_min.isoformat(),
                     "timeMax": time_max.isoformat(),
                     "singleEvents": "false",  # Get recurring event definitions
                     "maxResults": 250,
                     "orderBy": "updated",
-                },
-            )
+                }
+                if page_token:
+                    params["pageToken"] = page_token
 
-            if response.status_code == 401:
-                raise ValueError("Google Calendar access token expired or invalid")
+                response = await client.get(
+                    f"{CALENDAR_API_URL}/calendars/primary/events",
+                    headers={"Authorization": f"Bearer {self._access_token}"},
+                    params=params,
+                )
 
-            if response.status_code != 200:
-                error_msg = f"Google Calendar API error: {response.status_code}"
-                logger.error(f"{error_msg} - {response.text}")
-                raise ValueError(error_msg)
+                if response.status_code == 401:
+                    raise ValueError("Google Calendar access token expired or invalid")
 
-            data = response.json()
-            items = data.get("items", [])
+                if response.status_code != 200:
+                    error_msg = f"Google Calendar API error: {response.status_code}"
+                    logger.error(f"{error_msg} - {response.text}")
+                    raise ValueError(error_msg)
 
-            for item in items:
-                event = self._parse_event(item)
-                if event is None:
-                    continue
+                data = response.json()
+                items = data.get("items", [])
 
-                # Filter: must have RRULE
-                if not event.rrule:
-                    continue
+                for item in items:
+                    event = self._filter_and_parse(item, min_attendees)
+                    if event is not None:
+                        events.append(event)
 
-                # Filter: minimum attendees
-                if len(event.attendees) < min_attendees:
-                    continue
-
-                events.append(event)
+                page_token = data.get("nextPageToken")
+                if not page_token:
+                    break
 
         logger.info(f"Found {len(events)} recurring events meeting criteria")
         return events
+
+    def _filter_and_parse(self, item: dict[str, Any], min_attendees: int) -> CalendarEvent | None:
+        """Filter and parse a Calendar API event item.
+
+        Returns None if the item should be excluded.
+        """
+        # Skip exception instances of recurring events
+        # (individual modified occurrences, not the series definition)
+        if item.get("recurringEventId"):
+            return None
+
+        event = self._parse_event(item)
+        if event is None:
+            return None
+
+        # Skip cancelled events
+        if event.status == "cancelled":
+            return None
+
+        # Must have RRULE
+        if not event.rrule:
+            return None
+
+        # Minimum attendees
+        if len(event.attendees) < min_attendees:
+            return None
+
+        return event
 
     def _parse_event(self, item: dict[str, Any]) -> CalendarEvent | None:
         """Parse a Calendar API event item into CalendarEvent.
@@ -172,6 +201,8 @@ class GoogleCalendarClient:
             organizer = item.get("organizer", {})
             organizer_email = organizer.get("email")
 
+            status = item.get("status", "confirmed")
+
             return CalendarEvent(
                 event_id=event_id,
                 summary=summary,
@@ -179,6 +210,7 @@ class GoogleCalendarClient:
                 attendees=attendees,
                 start_datetime=start_datetime,
                 organizer_email=organizer_email,
+                status=status,
             )
 
         except Exception as e:

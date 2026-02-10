@@ -45,11 +45,12 @@ class StartSlackOAuthUseCase:
         """
         self.oauth_state_repository = oauth_state_repository
 
-    async def execute(self, user_id: UUID) -> OAuthStartResult:
+    async def execute(self, user_id: UUID, redirect_origin: str | None = None) -> OAuthStartResult:
         """OAuth認証URLを生成する.
 
         Args:
             user_id: ユーザーID.
+            redirect_origin: callback後のリダイレクト先オリジン.
 
         Returns:
             OAuthStartResult with authorize_url and state.
@@ -74,6 +75,7 @@ class StartSlackOAuthUseCase:
             user_id=user_id,
             provider="slack",
             scopes=scopes,
+            redirect_origin=redirect_origin,
             expires_at=now + timedelta(minutes=self.STATE_EXPIRES_MINUTES),
             created_at=now,
         )
@@ -113,7 +115,7 @@ class HandleSlackCallbackUseCase:
         self,
         code: str,
         state: str,
-    ) -> SlackIntegration:
+    ) -> tuple[SlackIntegration, OAuthState]:
         """OAuthコールバックを処理する.
 
         Args:
@@ -121,7 +123,7 @@ class HandleSlackCallbackUseCase:
             state: CSRFトークン.
 
         Returns:
-            SlackIntegration entity.
+            Tuple of (SlackIntegration entity, OAuthState with redirect_origin).
 
         Raises:
             ValueError: If state is invalid or expired.
@@ -164,7 +166,7 @@ class HandleSlackCallbackUseCase:
         if existing:
             # 既存の連携を更新
             existing.update_token(encrypted_token)
-            return await self.repository.update(existing)
+            return await self.repository.update(existing), oauth_state
 
         # 新規作成
         integration = SlackIntegration(
@@ -176,7 +178,7 @@ class HandleSlackCallbackUseCase:
             created_at=datetime.now(),
             updated_at=None,
         )
-        return await self.repository.create(integration)
+        return await self.repository.create(integration), oauth_state
 
     async def _exchange_code(self, code: str) -> dict[str, object]:
         """認可コードをアクセストークンに交換する."""

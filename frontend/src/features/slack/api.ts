@@ -4,7 +4,8 @@ import type { SlackChannel, SlackIntegration, SlackMessage, SlackOAuthStartRespo
 const BASE_PATH = '/api/v1/slack'
 
 export async function startSlackOAuth(): Promise<SlackOAuthStartResponse> {
-  return apiClient<SlackOAuthStartResponse>(`${BASE_PATH}/auth`)
+  const params = new URLSearchParams({ redirect_origin: window.location.origin })
+  return apiClient<SlackOAuthStartResponse>(`${BASE_PATH}/auth?${params.toString()}`)
 }
 
 export async function getSlackIntegrations(): Promise<SlackIntegration[]> {

@@ -47,12 +47,13 @@ class OAuthStateRepositoryImpl:
             oauth_state.user_id,
         )
 
-        data = {
+        data: dict[str, Any] = {
             "id": str(oauth_state.id),
             "state": oauth_state.state,
             "user_id": str(oauth_state.user_id),
             "provider": oauth_state.provider,
             "scopes": oauth_state.scopes,
+            "redirect_origin": oauth_state.redirect_origin,
             "expires_at": oauth_state.expires_at.isoformat(),
             "created_at": oauth_state.created_at.isoformat(),
         }
@@ -120,12 +121,16 @@ class OAuthStateRepositoryImpl:
         # scopesの型変換: DBからはlist | Noneが返る
         scopes: list[str] | None = [str(s) for s in scopes_raw] if isinstance(scopes_raw, list) else None
 
+        redirect_origin_raw = data.get("redirect_origin")
+        redirect_origin: str | None = str(redirect_origin_raw) if redirect_origin_raw is not None else None
+
         return OAuthState(
             id=UUID(str(data["id"])),
             state=str(data["state"]),
             user_id=UUID(str(data["user_id"])),
             provider=str(data["provider"]),
             scopes=scopes,
+            redirect_origin=redirect_origin,
             expires_at=(
                 datetime.fromisoformat(str(expires_at_str)) if isinstance(expires_at_str, str) else datetime.now()
             ),

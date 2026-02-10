@@ -31,6 +31,7 @@ class OAuthState:
     user_id: UUID
     provider: str  # 'slack' | 'google'
     scopes: list[str] | None
+    redirect_origin: str | None
     expires_at: datetime
     created_at: datetime
 

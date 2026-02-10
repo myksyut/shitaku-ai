@@ -161,6 +161,7 @@ class TestHandleGoogleCallbackUseCase:
             user_id=user_id,
             provider="google",
             scopes=DEFAULT_SCOPES,
+            redirect_origin=None,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
         )
@@ -197,12 +198,13 @@ class TestHandleGoogleCallbackUseCase:
             use_case = HandleGoogleCallbackUseCase(mock_repository, mock_oauth_state_repository)
 
             # Act
-            result = await use_case.execute(code, state)
+            integration, returned_state = await use_case.execute(code, state)
 
             # Assert
-            assert result.email == "test@example.com"
-            assert result.user_id == user_id
-            assert result.encrypted_refresh_token == "encrypted_token"
+            assert integration.email == "test@example.com"
+            assert integration.user_id == user_id
+            assert integration.encrypted_refresh_token == "encrypted_token"
+            assert returned_state.redirect_origin is None
             mock_repository.create.assert_called_once()
             mock_oauth_state_repository.cleanup_expired.assert_called_once()
 
@@ -221,6 +223,7 @@ class TestHandleGoogleCallbackUseCase:
             user_id=user_id,
             provider="google",
             scopes=DEFAULT_SCOPES,
+            redirect_origin=None,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
         )
@@ -267,10 +270,10 @@ class TestHandleGoogleCallbackUseCase:
             use_case = HandleGoogleCallbackUseCase(mock_repository, mock_oauth_state_repository)
 
             # Act
-            result = await use_case.execute(code, state)
+            integration, _ = await use_case.execute(code, state)
 
             # Assert
-            assert result.encrypted_refresh_token == "new_encrypted_token"
+            assert integration.encrypted_refresh_token == "new_encrypted_token"
             mock_repository.update.assert_called_once()
             mock_repository.create.assert_not_called()
 
@@ -303,6 +306,7 @@ class TestHandleGoogleCallbackUseCase:
             user_id=user_id,
             provider="google",
             scopes=DEFAULT_SCOPES,
+            redirect_origin=None,
             expires_at=now - timedelta(minutes=1),  # Already expired
             created_at=now - timedelta(minutes=6),
         )
@@ -331,6 +335,7 @@ class TestHandleGoogleCallbackUseCase:
             user_id=user_id,
             provider="google",
             scopes=DEFAULT_SCOPES,
+            redirect_origin=None,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
         )

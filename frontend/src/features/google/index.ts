@@ -1,9 +1,9 @@
 export { GoogleIntegrationPage } from './GoogleIntegrationPage'
 export {
   googleKeys,
+  hasDriveScopes,
   useAgentRecurringMeetings,
   useDeleteGoogleIntegration,
-  useDriveScopes,
   useGoogleIntegrations,
   useLinkRecurringMeeting,
   useLinkTranscript,
@@ -20,7 +20,6 @@ export { TranscriptViewer } from './TranscriptViewer'
 export type {
   AgentRecurringMeetingsResponse,
   Attendee,
-  DriveScopesResponse,
   GoogleIntegration,
   GoogleOAuthStartResponse,
   LinkRecurringMeetingRequest,
@@ -28,8 +27,8 @@ export type {
   MeetingFrequency,
   MeetingTranscript,
   RecurringMeeting,
+  SyncResultResponse,
   TranscriptEntry,
   TranscriptStructuredData,
-  TranscriptsResponse,
   UnlinkRecurringMeetingResponse,
 } from './types'
