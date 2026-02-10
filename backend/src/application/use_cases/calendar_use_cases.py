@@ -93,7 +93,7 @@ class SyncRecurringMeetingsUseCase:
         calendar_client = GoogleCalendarClient(token_response.access_token)
         try:
             events = await calendar_client.get_recurring_events(
-                min_attendees=2,
+                min_attendees=1,
                 months_back=3,
             )
         except ValueError as e:
@@ -135,6 +135,14 @@ class SyncRecurringMeetingsUseCase:
 
             synced_meeting = await self._recurring_meeting_repo.upsert(meeting)
             synced_meetings.append(synced_meeting)
+
+        # Delete meetings that no longer exist in Google Calendar
+        synced_google_event_ids = [m.google_event_id for m in synced_meetings]
+        deleted_count = await self._recurring_meeting_repo.delete_by_user_except_google_event_ids(
+            user_id, synced_google_event_ids
+        )
+        if deleted_count > 0:
+            logger.info(f"Deleted {deleted_count} stale recurring meetings for user {user_id}")
 
         logger.info(f"Synced {len(synced_meetings)} recurring meetings for user {user_id}")
         return synced_meetings

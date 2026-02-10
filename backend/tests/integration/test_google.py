@@ -193,6 +193,7 @@ class TestGoogleIntegration:
                 user_id=TEST_USER_ID,
                 provider="google",
                 scopes=["openid", "email", "profile"],
+                redirect_origin=None,
                 expires_at=now + timedelta(minutes=5),
                 created_at=now,
             )

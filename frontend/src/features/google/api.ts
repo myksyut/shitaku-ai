@@ -1,6 +1,5 @@
 import { apiClient } from '../../lib/api-client'
 import type {
-  DriveScopesResponse,
   GoogleIntegration,
   GoogleOAuthStartResponse,
   LinkRecurringMeetingResponse,
@@ -8,14 +7,15 @@ import type {
   RecurringMeeting,
   SyncProviderTokenRequest,
   SyncProviderTokenResponse,
-  TranscriptsResponse,
+  SyncResultResponse,
   UnlinkRecurringMeetingResponse,
 } from './types'
 
 const BASE_PATH = '/api/v1/google'
 
 export async function startGoogleOAuth(): Promise<GoogleOAuthStartResponse> {
-  return apiClient<GoogleOAuthStartResponse>(`${BASE_PATH}/auth`)
+  const params = new URLSearchParams({ redirect_origin: window.location.origin })
+  return apiClient<GoogleOAuthStartResponse>(`${BASE_PATH}/auth?${params.toString()}`)
 }
 
 export async function getGoogleIntegrations(): Promise<GoogleIntegration[]> {
@@ -36,26 +36,26 @@ export async function syncProviderToken(request: SyncProviderTokenRequest): Prom
 }
 
 export async function startAdditionalScopes(integrationId: string): Promise<GoogleOAuthStartResponse> {
-  return apiClient<GoogleOAuthStartResponse>(`${BASE_PATH}/auth/additional-scopes?integration_id=${integrationId}`)
+  const params = new URLSearchParams({
+    integration_id: integrationId,
+    redirect_origin: window.location.origin,
+  })
+  return apiClient<GoogleOAuthStartResponse>(`${BASE_PATH}/auth/additional-scopes?${params.toString()}`)
 }
 
-export async function checkDriveScopes(integrationId: string): Promise<DriveScopesResponse> {
-  return apiClient<DriveScopesResponse>(`${BASE_PATH}/auth/check-drive-scopes?integration_id=${integrationId}`)
+// Transcript API functions
+const TRANSCRIPTS_PATH = '/api/v1/transcripts'
+
+export async function getTranscripts(recurringMeetingId: string): Promise<MeetingTranscript[]> {
+  return apiClient<MeetingTranscript[]>(`${TRANSCRIPTS_PATH}?recurring_meeting_id=${recurringMeetingId}`)
 }
 
-export async function getTranscripts(recurringMeetingId: string): Promise<TranscriptsResponse> {
-  return apiClient<TranscriptsResponse>(`${BASE_PATH}/transcripts?recurring_meeting_id=${recurringMeetingId}`)
-}
-
-export async function syncTranscripts(integrationId: string, recurringMeetingId: string): Promise<TranscriptsResponse> {
-  return apiClient<TranscriptsResponse>(
-    `${BASE_PATH}/transcripts/sync?integration_id=${integrationId}&recurring_meeting_id=${recurringMeetingId}`,
-    { method: 'POST' },
-  )
+export async function syncTranscripts(): Promise<SyncResultResponse> {
+  return apiClient<SyncResultResponse>(`${TRANSCRIPTS_PATH}/sync`, { method: 'POST' })
 }
 
 export async function linkTranscript(transcriptId: string, recurringMeetingId: string): Promise<MeetingTranscript> {
-  return apiClient<MeetingTranscript>(`${BASE_PATH}/transcripts/${transcriptId}/link`, {
+  return apiClient<MeetingTranscript>(`${TRANSCRIPTS_PATH}/${transcriptId}/link`, {
     method: 'POST',
     body: JSON.stringify({ recurring_meeting_id: recurringMeetingId }),
   })

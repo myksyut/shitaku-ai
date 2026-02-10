@@ -187,6 +187,22 @@ class RecurringMeetingRepositoryImpl(RecurringMeetingRepository):
         )
         return len(result.data) > 0
 
+    async def delete_by_user_except_google_event_ids(
+        self,
+        user_id: UUID,
+        google_event_ids: list[str],
+    ) -> int:
+        """指定されたgoogle_event_ids以外のレコードを削除する."""
+        query = self._client.table("recurring_meetings").delete().eq("user_id", str(user_id))
+
+        if google_event_ids:
+            # Use NOT IN filter instead of chaining multiple neq() calls
+            # to avoid PostgREST URL length limits
+            query = query.not_.in_("google_event_id", google_event_ids)
+
+        result = query.execute()
+        return len(result.data)
+
     async def upsert(self, meeting: RecurringMeeting) -> RecurringMeeting:
         """定例MTGを作成または更新する."""
         existing = await self.get_by_google_event_id(meeting.user_id, meeting.google_event_id)

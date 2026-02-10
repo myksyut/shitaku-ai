@@ -35,14 +35,12 @@ export interface MeetingTranscript {
   needs_manual_confirmation: boolean
 }
 
-/** トランスクリプト一覧レスポンス */
-export interface TranscriptsResponse {
-  transcripts: MeetingTranscript[]
-}
-
-/** Driveスコープ確認レスポンス */
-export interface DriveScopesResponse {
-  has_drive_scopes: boolean
+/** 同期結果レスポンス */
+export interface SyncResultResponse {
+  synced_count: number
+  skipped_count: number
+  error_count: number
+  synced_transcripts: MeetingTranscript[]
 }
 
 /** 参加者情報 */

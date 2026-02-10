@@ -153,6 +153,24 @@ class RecurringMeetingRepository(ABC):
         """
 
     @abstractmethod
+    async def delete_by_user_except_google_event_ids(
+        self,
+        user_id: UUID,
+        google_event_ids: list[str],
+    ) -> int:
+        """Delete recurring meetings not in the given google_event_ids list.
+
+        Used during sync to remove meetings that no longer exist in Google Calendar.
+
+        Args:
+            user_id: The user ID for RLS filtering.
+            google_event_ids: List of google_event_ids to keep.
+
+        Returns:
+            Number of deleted records.
+        """
+
+    @abstractmethod
     async def upsert(self, meeting: RecurringMeeting) -> RecurringMeeting:
         """Create or update a recurring meeting based on google_event_id.
 

@@ -6,7 +6,7 @@
  */
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Card } from '../../components/ui'
-import { useDriveScopes, useGoogleIntegrations, useLinkTranscript, useSyncTranscripts, useTranscripts } from './hooks'
+import { hasDriveScopes, useGoogleIntegrations, useLinkTranscript, useSyncTranscripts, useTranscripts } from './hooks'
 import type { MeetingTranscript } from './types'
 
 function formatConfidence(confidence: number): string {
@@ -152,18 +152,15 @@ export function TranscriptViewer() {
   const { data: integrations, isLoading: integrationsLoading } = useGoogleIntegrations()
   const selectedIntegration = integrations?.[0]
 
-  const { data: driveScopes, isLoading: scopesLoading } = useDriveScopes(selectedIntegration?.id ?? null)
+  const hasScopes = selectedIntegration ? hasDriveScopes(selectedIntegration.granted_scopes) : false
   const { data: transcripts, isLoading: transcriptsLoading } = useTranscripts(meetingId ?? null)
 
   const syncMutation = useSyncTranscripts()
   const linkMutation = useLinkTranscript()
 
   const handleSync = () => {
-    if (!selectedIntegration?.id || !meetingId) return
-    syncMutation.mutate({
-      integrationId: selectedIntegration.id,
-      recurringMeetingId: meetingId,
-    })
+    if (!meetingId) return
+    syncMutation.mutate()
   }
 
   const handleLink = (transcriptId: string) => {
@@ -195,7 +192,7 @@ export function TranscriptViewer() {
     )
   }
 
-  const isLoading = integrationsLoading || scopesLoading || transcriptsLoading
+  const isLoading = integrationsLoading || transcriptsLoading
 
   if (isLoading) {
     return (
@@ -216,7 +213,7 @@ export function TranscriptViewer() {
   }
 
   // AC10: Drive/Docsスコープが未許可の場合
-  if (driveScopes && !driveScopes.has_drive_scopes) {
+  if (selectedIntegration && !hasScopes) {
     return (
       <div style={{ maxWidth: '720px', margin: '0 auto' }}>
         <Button variant="ghost" onClick={handleBack} style={{ marginBottom: 'var(--space-4)' }}>

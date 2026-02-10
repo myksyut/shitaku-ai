@@ -52,12 +52,14 @@ class StartGoogleOAuthUseCase:
         self,
         user_id: UUID,
         scopes: list[str] | None = None,
+        redirect_origin: str | None = None,
     ) -> OAuthStartResult:
         """OAuth認証URLを生成する.
 
         Args:
             user_id: ユーザーID.
             scopes: 要求するスコープ（省略時はデフォルトスコープ）.
+            redirect_origin: callback後のリダイレクト先オリジン.
 
         Returns:
             OAuthStartResult with authorize_url and state.
@@ -81,6 +83,7 @@ class StartGoogleOAuthUseCase:
             user_id=user_id,
             provider="google",
             scopes=request_scopes,
+            redirect_origin=redirect_origin,
             expires_at=now + timedelta(minutes=self.STATE_EXPIRES_MINUTES),
             created_at=now,
         )
@@ -116,7 +119,7 @@ class HandleGoogleCallbackUseCase:
         self,
         code: str,
         state: str,
-    ) -> GoogleIntegration:
+    ) -> tuple[GoogleIntegration, OAuthState]:
         """OAuthコールバックを処理する.
 
         Args:
@@ -124,7 +127,7 @@ class HandleGoogleCallbackUseCase:
             state: CSRFトークン.
 
         Returns:
-            GoogleIntegration entity.
+            Tuple of (GoogleIntegration entity, OAuthState with redirect_origin).
 
         Raises:
             ValueError: If state is invalid, expired, or token exchange fails.
@@ -167,7 +170,7 @@ class HandleGoogleCallbackUseCase:
             # 既存の連携を更新
             existing.update_token(encrypted_token)
             existing.add_scopes(granted_scopes)
-            return await self.repository.update(existing)
+            return await self.repository.update(existing), oauth_state
 
         # 新規作成
         integration = GoogleIntegration(
@@ -179,7 +182,7 @@ class HandleGoogleCallbackUseCase:
             created_at=datetime.now(),
             updated_at=None,
         )
-        return await self.repository.create(integration)
+        return await self.repository.create(integration), oauth_state
 
 
 class GetGoogleIntegrationsUseCase:
@@ -243,6 +246,7 @@ class StartAdditionalScopesUseCase:
         user_id: UUID,
         integration_id: UUID,
         additional_scopes: list[str] | None = None,
+        redirect_origin: str | None = None,
     ) -> OAuthStartResult:
         """追加スコープの認証URLを生成する.
 
@@ -250,6 +254,7 @@ class StartAdditionalScopesUseCase:
             user_id: ユーザーID.
             integration_id: 連携ID.
             additional_scopes: 追加で要求するスコープ（省略時はトランスクリプトスコープ）.
+            redirect_origin: callback後のリダイレクト先オリジン.
 
         Returns:
             OAuthStartResult with authorize_url and state.
@@ -270,7 +275,7 @@ class StartAdditionalScopesUseCase:
 
         # OAuth開始
         start_use_case = StartGoogleOAuthUseCase(self.oauth_state_repository)
-        return await start_use_case.execute(user_id, scopes=all_scopes)
+        return await start_use_case.execute(user_id, scopes=all_scopes, redirect_origin=redirect_origin)
 
 
 class RefreshGoogleTokenUseCase:

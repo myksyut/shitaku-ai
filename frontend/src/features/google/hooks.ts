@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  checkDriveScopes,
   deleteGoogleIntegration,
   getAgentRecurringMeetings,
   getGoogleIntegrations,
@@ -20,7 +19,6 @@ export const googleKeys = {
   all: ['google'] as const,
   integrations: () => [...googleKeys.all, 'integrations'] as const,
   transcripts: (recurringMeetingId: string) => [...googleKeys.all, 'transcripts', recurringMeetingId] as const,
-  driveScopes: (integrationId: string) => [...googleKeys.all, 'driveScopes', integrationId] as const,
   recurringMeetings: () => [...googleKeys.all, 'recurringMeetings'] as const,
   unlinkedMeetings: () => [...googleKeys.all, 'unlinkedMeetings'] as const,
   agentMeetings: (agentId: string) => [...googleKeys.all, 'agentMeetings', agentId] as const,
@@ -62,15 +60,12 @@ export function useStartAdditionalScopes() {
   })
 }
 
-export function useDriveScopes(integrationId: string | null) {
-  return useQuery({
-    queryKey: googleKeys.driveScopes(integrationId ?? ''),
-    queryFn: () => {
-      if (!integrationId) throw new Error('integrationId is required')
-      return checkDriveScopes(integrationId)
-    },
-    enabled: !!integrationId,
-  })
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+const DOCS_SCOPE = 'https://www.googleapis.com/auth/documents.readonly'
+
+/** integrationのgranted_scopesからDrive/Docsスコープの有無を判定する */
+export function hasDriveScopes(grantedScopes: string[]): boolean {
+  return grantedScopes.includes(DRIVE_SCOPE) && grantedScopes.includes(DOCS_SCOPE)
 }
 
 export function useTranscripts(recurringMeetingId: string | null) {
@@ -81,7 +76,6 @@ export function useTranscripts(recurringMeetingId: string | null) {
       return getTranscripts(recurringMeetingId)
     },
     enabled: !!recurringMeetingId,
-    select: (data) => data.transcripts,
   })
 }
 
@@ -89,10 +83,9 @@ export function useSyncTranscripts() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ integrationId, recurringMeetingId }: { integrationId: string; recurringMeetingId: string }) =>
-      syncTranscripts(integrationId, recurringMeetingId),
-    onSuccess: (data, variables) => {
-      queryClient.setQueryData(googleKeys.transcripts(variables.recurringMeetingId), data)
+    mutationFn: () => syncTranscripts(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: googleKeys.all })
     },
   })
 }
