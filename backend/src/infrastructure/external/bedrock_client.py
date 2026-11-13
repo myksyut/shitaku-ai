@@ -4,6 +4,7 @@ import json
 import logging
 
 import httpx
+from pydantic import BaseModel, Field
 
 from src.config import settings
 from src.infrastructure.external.llm_logger import log_llm_invocation
@@ -83,3 +84,45 @@ def is_bedrock_configured() -> bool:
         True if AWS_BEARER_TOKEN_BEDROCK is set, False otherwise.
     """
     return settings.AWS_BEARER_TOKEN_BEDROCK is not None
+
+
+class ToolBlock(BaseModel):
+    """Validate tool-use output before extraction-specific parsing."""
+
+    type: str
+    name: str | None = None
+    input: dict[str, object] | None = None
+
+
+class ToolResponse(BaseModel):
+    """Claude content blocks."""
+
+    content: list[ToolBlock] = Field(default_factory=list)
+
+
+def invoke_claude_tool(prompt: str, tool: dict[str, object], max_tokens: int = 4096) -> dict[str, object] | None:
+    """Force one named tool and return only its structured input."""
+    headers = _get_headers()
+    if headers is None:
+        return None
+    body = {
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+        "tools": [tool],
+        "tool_choice": {"type": "tool", "name": tool["name"]},
+    }
+    try:
+        with httpx.Client(timeout=30) as client:
+            response = client.post(
+                f"{settings.AWS_BEDROCK_ENDPOINT}/model/{CLAUDE_HAIKU_MODEL_ID}/invoke", headers=headers, json=body
+            )
+            response.raise_for_status()
+        parsed = ToolResponse.model_validate(response.json())
+        result = next((b.input for b in parsed.content if b.type == "tool_use" and b.name == tool["name"]), None)
+        log_llm_invocation(prompt, json.dumps(result, ensure_ascii=False) if result is not None else None)
+        return result
+    except (httpx.HTTPError, ValueError) as error:
+        logger.error("Bedrock tool invocation failed: %s", error)
+        log_llm_invocation(prompt, None)
+        return None

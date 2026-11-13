@@ -335,3 +335,96 @@ def test_snapshot_revocation_freshness_and_disconnect(world: World, service_clie
     service_client.table("google_integrations").delete().eq("id", world.integration).execute()
     series = world.users["A"].client.table("series").select("google_integration_id").eq("id", world.sid).execute().data
     assert series == [{"google_integration_id": None}]
+
+
+def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, service_client: Client) -> None:
+    owner = world.users["A"].client
+    input_at = datetime.now(UTC)
+    items = [
+        {"kind": "action_item", "body": "Extracted action", "extraction_key": "action-key"},
+        {"kind": "open_issue", "body": "Temporary issue", "extraction_key": "issue-key"},
+    ]
+    arguments = {"p_occurrence_id": world.past, "p_items": items, "p_closures": [], "p_input_at": input_at.isoformat()}
+    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 2, "closed": 0}
+    before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 0, "closed": 0}
+    assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
+    owner.table("memory_items").update({"body": "Human correction", "human_updated_at": input_at.isoformat()}).eq(
+        "series_id", world.sid
+    ).eq("extraction_key", "action-key").execute()
+    owner.rpc("apply_extraction", {**arguments, "p_items": []}).execute()
+    assert owner.table("memory_items").select("body").eq("series_id", world.sid).eq(
+        "extraction_key", "action-key"
+    ).execute().data == [{"body": "Human correction"}]
+    assert (
+        owner.table("memory_items")
+        .select("id")
+        .eq("series_id", world.sid)
+        .eq("extraction_key", "issue-key")
+        .execute()
+        .data
+        == []
+    )
+    service_client.table("knowledge").insert(
+        {
+            "series_id": world.sid,
+            "occurrence_id": world.past,
+            "source": "upload",
+            "original_text": "Concurrent",
+            "normalized_text": "Concurrent",
+            "created_at": (input_at + timedelta(seconds=1)).isoformat(),
+        }
+    ).execute()
+    overview = (
+        owner.table("occurrence_overview")
+        .select("extracted_at,latest_knowledge_at")
+        .eq("series_id", world.sid)
+        .eq("id", world.past)
+        .execute()
+        .data
+    )
+    assert overview == [
+        {"extracted_at": input_at.isoformat(), "latest_knowledge_at": (input_at + timedelta(seconds=1)).isoformat()}
+    ]
+
+
+@pytest.mark.parametrize("tag", ["B", "C"])
+def test_member_and_outsider_extraction_cannot_change_any_state(world: World, tag: str, service_client: Client) -> None:
+    before_items = (
+        service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    )
+    before_occurrences = (
+        service_client.table("occurrences").select("*").eq("series_id", world.sid).order("id").execute().data
+    )
+    denied(
+        lambda: world.users[tag]
+        .client.rpc(
+            "apply_extraction",
+            {
+                "p_occurrence_id": world.past,
+                "p_items": [{"kind": "decision", "body": "Forged", "extraction_key": "forged"}],
+                "p_closures": [{"item_id": str(world.rows["memory_items"]["id"]), "resolution": "done"}],
+                "p_input_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        .execute(),
+        "P0002",
+    )
+    assert (
+        service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+        == before_items
+    )
+    assert (
+        service_client.table("occurrences").select("*").eq("series_id", world.sid).order("id").execute().data
+        == before_occurrences
+    )
+
+
+async def test_memory_repository_maps_real_composite_origin_join(world: World) -> None:
+    from uuid import UUID
+
+    from src.infrastructure.repositories.team_memory_repository_impl import TeamMemoryRepositoryImpl
+
+    items = await TeamMemoryRepositoryImpl(world.users["B"].client).list_items(UUID(world.sid))
+    assert len(items) == 1 and items[0].kind == "action_item"
+    assert items[0].origin_occurrence_id == UUID(world.past)

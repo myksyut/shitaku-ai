@@ -17,7 +17,7 @@ class TestDictionaryEntry:
 
         entry = DictionaryEntry(
             id=entry_id,
-            user_id=user_id,
+            series_id=user_id,
             canonical_name="金沢太郎",
             description="フロントエンド担当、チームA所属",
             created_at=now,
@@ -25,7 +25,7 @@ class TestDictionaryEntry:
         )
 
         assert entry.id == entry_id
-        assert entry.user_id == user_id
+        assert entry.series_id == user_id
         assert entry.canonical_name == "金沢太郎"
         assert entry.description == "フロントエンド担当、チームA所属"
         assert entry.created_at == now
@@ -35,7 +35,7 @@ class TestDictionaryEntry:
         """descriptionなしでDictionaryEntryが作成できる"""
         entry = DictionaryEntry(
             id=uuid4(),
-            user_id=uuid4(),
+            series_id=uuid4(),
             canonical_name="sitaku.ai",
             description=None,
             created_at=datetime.now(),
@@ -53,7 +53,7 @@ class TestDictionaryEntry:
 
         entry1 = DictionaryEntry(
             id=entry_id,
-            user_id=user_id,
+            series_id=user_id,
             canonical_name="テスト",
             description=None,
             created_at=now,
@@ -61,7 +61,7 @@ class TestDictionaryEntry:
         )
         entry2 = DictionaryEntry(
             id=entry_id,
-            user_id=user_id,
+            series_id=user_id,
             canonical_name="テスト",
             description=None,
             created_at=now,

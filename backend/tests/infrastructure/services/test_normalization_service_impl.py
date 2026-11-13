@@ -41,7 +41,7 @@ class TestNormalizationServiceImpl:
         dictionary = [
             DictionaryEntry(
                 id=uuid4(),
-                user_id=uuid4(),
+                series_id=uuid4(),
                 canonical_name="金沢太郎",
                 description="フロントエンド担当",
                 created_at=datetime.now(),
@@ -70,7 +70,7 @@ class TestNormalizationServiceImpl:
         dictionary = [
             DictionaryEntry(
                 id=uuid4(),
-                user_id=uuid4(),
+                series_id=uuid4(),
                 canonical_name="テスト",
                 description=None,
                 created_at=datetime.now(),
@@ -91,7 +91,7 @@ class TestNormalizationServiceImpl:
         dictionary = [
             DictionaryEntry(
                 id=uuid4(),
-                user_id=uuid4(),
+                series_id=uuid4(),
                 canonical_name="テスト",
                 description=None,
                 created_at=datetime.now(),
@@ -114,7 +114,7 @@ class TestNormalizationServiceImpl:
         dictionary = [
             DictionaryEntry(
                 id=uuid4(),
-                user_id=uuid4(),
+                series_id=uuid4(),
                 canonical_name="金沢太郎",
                 description=None,
                 created_at=datetime.now(),
@@ -138,7 +138,7 @@ class TestNormalizationServiceImpl:
         dictionary = [
             DictionaryEntry(
                 id=uuid4(),
-                user_id=uuid4(),
+                series_id=uuid4(),
                 canonical_name="テスト",
                 description=None,
                 created_at=datetime.now(),
@@ -157,7 +157,7 @@ class TestNormalizationServiceImpl:
         dictionary = [
             DictionaryEntry(
                 id=uuid4(),
-                user_id=uuid4(),
+                series_id=uuid4(),
                 canonical_name="金沢太郎",
                 description="フロントエンド担当",
                 created_at=datetime.now(),
