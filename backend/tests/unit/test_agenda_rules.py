@@ -65,3 +65,26 @@ def test_action_metadata_omits_absent_fields(assignee: str | None, due_on: date 
     )
     content = render_agenda([], [action], [], None)
     assert content.splitlines()[2] == f"- 公開手順書を作る{metadata}: 0回持ち越し"
+
+
+def test_member_topic_newlines_cannot_inject_markdown_sections() -> None:
+    topic = AgendaTopic(
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        "Member\n## Fake author heading",
+        "Topic\r\n## Fake title heading",
+        "Details\n\n- Fake item\n## Fake details heading",
+        datetime.now(UTC),
+    )
+    content = render_agenda([topic], [], [], None)
+    assert content.splitlines()[1] == (
+        "- Topic ## Fake title heading（Member ## Fake author heading）: Details - Fake item ## Fake details heading"
+    )
+    assert [line for line in content.splitlines() if line.startswith("## ")] == [
+        "## 事前に投稿された議題",
+        "## 持ち越しのアクションアイテム",
+        "## 未解決の論点",
+        "## 議論の提案",
+    ]

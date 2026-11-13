@@ -183,6 +183,7 @@ def test_table_crud_matrix(world: World, tag: str) -> None:
             row["canonical_name"] = "New term"
         if table == "agenda_topics":
             row["submitted_by"] = str(world.users[tag].id)
+            row.pop("id", None)
         can_insert = tag == "A" or (tag == "B" and table == "agenda_topics")
         if can_insert:
             assert client.table(table).insert(row).execute().data
@@ -279,6 +280,8 @@ def test_resolution_rpc_and_service_only_functions(world: World, tag: str, servi
 
 
 def test_topics_timing_authorship_and_delete(world: World) -> None:
+    from pydantic import TypeAdapter
+
     member = world.users["B"]
     for oid in (world.past, world.cancelled):
         denied(
@@ -298,12 +301,10 @@ def test_topics_timing_authorship_and_delete(world: World) -> None:
         )
         .execute()
     )
-    topic_id = str(uuid4())
     topic = (
         member.client.table("agenda_topics")
         .insert(
             {
-                "id": topic_id,
                 "series_id": world.sid,
                 "occurrence_id": world.oid,
                 "submitted_by": str(member.id),
@@ -314,6 +315,7 @@ def test_topics_timing_authorship_and_delete(world: World) -> None:
         .data[0]
     )
     assert topic
+    topic_id = str(TypeAdapter(dict[str, JSON]).validate_python(topic)["id"])
     assert member.client.table("agenda_topics").delete().eq("id", topic_id).execute().data
 
 
@@ -1149,3 +1151,38 @@ def test_reextraction_is_additive_and_never_deletes_omitted_items(world: World) 
         assert owner.table("memory_items").select("body").eq("series_id", world.sid).eq(
             "extraction_key", key
         ).execute().data == [{"body": key}]
+
+
+def test_topic_author_uses_calendar_name_then_verified_email_and_blocks_forgery(
+    world: World, service_client: Client
+) -> None:
+    from pydantic import TypeAdapter
+
+    member = world.users["B"]
+    verified_email = world.users["D"].email.lower()
+    payload = {"series_id": world.sid, "occurrence_id": world.oid, "submitted_by": str(member.id), "title": "Topic"}
+    denied(member.client.table("agenda_topics").insert({**payload, "author_label": "Forged author"}).execute)
+    service_client.table("series_attendees").update({"display_name": "Trusted calendar name"}).eq(
+        "series_id", world.sid
+    ).eq("email", verified_email).execute()
+    rows = member.client.table("agenda_topics").insert(payload).execute().data
+    assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == "Trusted calendar name"
+    assert member.email.lower() != verified_email
+    service_client.table("series_attendees").update({"display_name": None}).eq("series_id", world.sid).eq(
+        "email", verified_email
+    ).execute()
+    rows = member.client.table("agenda_topics").insert(payload).execute().data
+    assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == verified_email
+    rows = (
+        world.users["A"]
+        .client.table("agenda_topics")
+        .insert(
+            {
+                **payload,
+                "submitted_by": str(world.users["A"].id),
+            }
+        )
+        .execute()
+        .data
+    )
+    assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == "メンバー"
