@@ -90,6 +90,7 @@ async def save_settings(
         access,
         SeriesSettings(request.description, request.minutes_count, request.slack_message_days),
         credentials,
+        request.google_integration_id,
         request.slack.integration_id if request.slack else None,
         request.slack.channel_ids if request.slack else [],
     )

@@ -74,7 +74,13 @@ class SeriesRepositoryImpl(SeriesRepository):
         )
         return result.count or 0
 
-    async def save_settings(self, access: CreatorAccess, settings: SeriesSettings, slack: SlackSource | None) -> None:
+    async def save_settings(
+        self,
+        access: CreatorAccess,
+        settings: SeriesSettings,
+        slack: SlackSource | None,
+        google_integration_id: UUID | None,
+    ) -> None:
         """Limit updates to the creator's settings columns."""
         (
             self._client.table("series")
@@ -83,6 +89,7 @@ class SeriesRepositoryImpl(SeriesRepository):
                     "description": settings.description,
                     "minutes_count": settings.minutes_count,
                     "slack_message_days": settings.slack_message_days,
+                    "google_integration_id": str(google_integration_id) if google_integration_id else None,
                     "slack_integration_id": str(slack.integration_id) if slack else None,
                     "slack_channels": [{"id": c.id, "name": c.name} for c in slack.channels] if slack else [],
                     "updated_at": datetime.now(UTC).isoformat(),

@@ -42,7 +42,10 @@ class SeriesUseCases:
             SeriesSettings(series.description, series.minutes_count, series.slack_message_days),
             series.slack,
             CalendarStatus(
-                series.calendar_synced_at, series.calendar_sync_error, series.google_integration_id is not None
+                series.calendar_synced_at,
+                series.calendar_sync_error,
+                series.google_integration_id is not None,
+                series.google_integration_id,
             ),
         )
 
@@ -78,10 +81,13 @@ class SeriesUseCases:
         access: CreatorAccess,
         settings: SeriesSettings,
         credentials: SeriesCredentials,
+        google_integration_id: UUID | None,
         integration_id: UUID | None,
         channel_ids: list[str],
     ) -> SeriesDetail:
         """Resolve selected channel names from the creator's own Slack."""
+        if google_integration_id is not None:
+            await credentials.validate_calendar_integration(access.user_id, google_integration_id)
         slack = None
         if integration_id is not None:
             client = await credentials.slack_for_user(access.user_id, integration_id)
@@ -91,7 +97,7 @@ class SeriesUseCases:
             slack = SlackSource(
                 integration_id, tuple(SlackChannelRef(cid, channels[cid]) for cid in dict.fromkeys(channel_ids))
             )
-        await self.repository.save_settings(access, settings, slack)
+        await self.repository.save_settings(access, settings, slack, google_integration_id)
         return await self.detail(access)
 
 

@@ -36,7 +36,13 @@ class SeriesRepository(ABC):
         """Count unresolved actions."""
 
     @abstractmethod
-    async def save_settings(self, access: CreatorAccess, settings: SeriesSettings, slack: SlackSource | None) -> None:
+    async def save_settings(
+        self,
+        access: CreatorAccess,
+        settings: SeriesSettings,
+        slack: SlackSource | None,
+        google_integration_id: UUID | None,
+    ) -> None:
         """Write only creator-owned columns."""
 
     @abstractmethod

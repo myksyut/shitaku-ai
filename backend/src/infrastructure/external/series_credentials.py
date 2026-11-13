@@ -5,6 +5,7 @@ from uuid import UUID
 import httpx
 from cryptography.fernet import InvalidToken
 
+from src.domain.entities.google_integration import GoogleIntegration
 from src.domain.entities.series import Series, SeriesError
 from src.domain.repositories.google_integration_repository import GoogleIntegrationRepository
 from src.domain.repositories.slack_integration_repository import SlackIntegrationRepository
@@ -64,10 +65,12 @@ class SeriesCredentials:
         except (ValueError, httpx.HTTPError) as error:
             raise CredentialUnavailableError("calendar_unavailable") from error
 
-    async def google_for_user(
-        self, user_id: UUID, integration_id: UUID, need: Literal["calendar", "drive"]
-    ) -> GoogleApis:
-        """Open the caller's selected integration."""
+    async def _google_integration(
+        self,
+        user_id: UUID,
+        integration_id: UUID,
+        need: Literal["calendar", "drive"],
+    ) -> GoogleIntegration:
         integration = await self._google.get_by_id(integration_id, user_id)
         if integration is None:
             raise CredentialUnavailableError("not_connected")
@@ -81,6 +84,20 @@ class SeriesCredentials:
         )
         if not scopes.issubset(integration.granted_scopes):
             raise CredentialUnavailableError("scope_missing")
+        return integration
+
+    async def validate_calendar_integration(self, user_id: UUID, integration_id: UUID) -> None:
+        """Validate ownership and scopes without refreshing credentials."""
+        await self._google_integration(user_id, integration_id, "calendar")
+
+    async def google_for_user(
+        self,
+        user_id: UUID,
+        integration_id: UUID,
+        need: Literal["calendar", "drive"],
+    ) -> GoogleApis:
+        """Open the caller's selected integration."""
+        integration = await self._google_integration(user_id, integration_id, need)
         token, refresh_token = await self._google_token(integration.encrypted_refresh_token)
         if token.refresh_token and refresh_token != token.refresh_token:
             integration.update_token(encrypt_google_token(token.refresh_token))

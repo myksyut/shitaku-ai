@@ -173,6 +173,7 @@ class CalendarStatus:
     synced_at: datetime
     error: CalendarErrorCode | None
     google_connected: bool
+    integration_id: UUID | None
 
 
 @dataclass(frozen=True, slots=True)

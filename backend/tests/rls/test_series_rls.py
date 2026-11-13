@@ -1075,3 +1075,61 @@ async def test_missing_creator_calendar_event_cancels_all_future_occurrences(
     assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
         "id", world.past
     ).execute().data == [{"is_cancelled": False}]
+
+
+def test_creator_relinks_google_after_disconnect_with_owned_calendar_scope(
+    world: World, service_client: Client
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    service_client.table("google_integrations").delete().eq("id", world.integration).execute()
+    reconnected, foreign, no_scope = (str(uuid4()) for _ in range(3))
+    for iid, tag, scopes in (
+        (reconnected, "A", ["https://www.googleapis.com/auth/calendar.readonly"]),
+        (foreign, "C", ["https://www.googleapis.com/auth/calendar.readonly"]),
+        (no_scope, "A", []),
+    ):
+        service_client.table("google_integrations").insert(
+            {
+                "id": iid,
+                "user_id": str(world.users[tag].id),
+                "email": f"{iid}@example.com",
+                "encrypted_refresh_token": "not-needed-for-scope-validation",
+                "granted_scopes": scopes,
+            }
+        ).execute()
+    settings = {
+        "description": None,
+        "minutes_count": 3,
+        "slack_message_days": 7,
+        "slack": None,
+        "google_integration_id": reconnected,
+    }
+    headers = {tag: {"Authorization": f"Bearer {user.access_token}"} for tag, user in world.users.items()}
+    base = f"/api/v1/series/{world.sid}"
+    with TestClient(app) as api:
+        before = api.get(base, headers=headers["B"]).json()["calendar"]
+        assert before["integration_id"] is None and before["google_connected"] is False
+        assert api.put(f"{base}/settings", json=settings, headers=headers["B"]).status_code == 403
+        assert api.put(f"{base}/settings", json=settings, headers=headers["C"]).status_code == 404
+        missing_scope = api.put(
+            f"{base}/settings", json={**settings, "google_integration_id": no_scope}, headers=headers["A"]
+        )
+        assert missing_scope.status_code == 409 and missing_scope.json()["detail"] == "scope_missing"
+        foreign_binding = api.put(
+            f"{base}/settings", json={**settings, "google_integration_id": foreign}, headers=headers["A"]
+        )
+        assert foreign_binding.status_code == 409 and foreign_binding.json()["detail"] == "not_connected"
+        relinked = api.put(f"{base}/settings", json=settings, headers=headers["A"])
+        assert relinked.status_code == 200, relinked.text
+        assert relinked.json()["calendar"]["integration_id"] == reconnected
+        assert relinked.json()["calendar"]["google_connected"] is True
+        cleared = api.put(f"{base}/settings", json={**settings, "google_integration_id": None}, headers=headers["A"])
+        assert cleared.status_code == 200
+        assert cleared.json()["calendar"]["integration_id"] is None
+        assert cleared.json()["calendar"]["google_connected"] is False
+    with pytest.raises(APIError) as error:
+        world.users["A"].client.table("series").update({"google_integration_id": foreign}).eq("id", world.sid).execute()
+    assert error.value.code == "23503"
