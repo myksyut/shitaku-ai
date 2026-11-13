@@ -57,6 +57,7 @@ class NormalizationServiceImpl(NormalizationService):
             {
                 "canonical_name": entry.canonical_name,
                 "description": entry.description or "",
+                "aliases": entry.aliases,
             }
             for entry in dictionary
         ]
@@ -120,9 +121,9 @@ JSONのみを返してください。説明は不要です。"""
 
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             logger.warning(f"Failed to parse LLM response: {e}")
-            # パースに失敗した場合は元テキストをそのまま返す
             return NormalizationResult(
                 original_text=original_text,
                 normalized_text=original_text,
                 replacements=[],
+                warning="Normalization response could not be parsed; original text retained",
             )

@@ -107,11 +107,20 @@ AI実行精度最大化のための中核ルール。全ての指示はこのフ
 
 ```
 認可は必ず2層で実施する:
-1. アプリケーション層: user_idフィルタ（明示的）
-2. データベース層: RLSポリシー（暗黙的・最終防衛線）
+1. アプリケーション層: 権限チェック（MemberAccess / CreatorAccess）と、全SQL文への series_id / user_id 条件
+2. データベース層: RLSポリシー（最終防衛線）
 ```
 
 **理由**: 片方に実装漏れがあっても、もう片方で防御できる
+
+### データの持ち主は2種類
+
+| 種類 | テーブル | 持ち主 | 判定 |
+|------|---------|-------|------|
+| シリーズのデータ | `series` とその子（`series_attendees`, `occurrences`, `agenda_topics`, `memory_items`, `knowledge`, `agendas`, `dictionary_entries`） | 定例シリーズ | `public.my_series_roles()` |
+| 個人の資格情報 | `google_integrations`, `slack_integrations`, `oauth_states` | ユーザー | `auth.uid() = user_id` |
+
+参加者の定義は `public.my_series_roles()` の1か所だけ。RLSポリシーもアプリ層の権限チェック（`member_access` / `creator_access`）もこの関数を使う。詳細は [ADR-0008](docs/adr/ADR-0008-team-owned-meeting-series.md) と [設計書](docs/design/team-owned-meeting-series.md)。
 
 ---
 
@@ -121,38 +130,39 @@ AI実行精度最大化のための中核ルール。全ての指示はこのフ
 
 | 用途 | クライアント | RLS | 使用場面 |
 |------|-------------|-----|---------|
-| 通常API | `get_user_supabase_client` | ✅ 適用 | 認証済みユーザーの操作 |
+| 通常API | `get_user_supabase_client` | ✅ 適用 | 認証済みユーザーの操作すべて |
+| カレンダーミラー | `SeriesCalendarMirror`（内部で `get_supabase_client`） | ❌ バイパス | シリーズの作成、招待客と回の反映、参加時の招待客の読み直し。カレンダー由来のデータを書くのはここだけ |
 | OAuth callback | `get_supabase_client` | ❌ バイパス | 外部サービスからのコールバック |
 | バッチ処理 | `get_supabase_client` | ❌ バイパス | 管理タスク、マイグレーション |
 
-```python
-# ✅ 正しい: 認証済みAPIではユーザーコンテキスト付きクライアント
-def get_repository(
-    client: Client = Depends(get_user_supabase_client),
-) -> AgentRepositoryImpl:
-    return AgentRepositoryImpl(client)
+上の表にない場所で `get_supabase_client` を使わない。2つのクライアントは型でも区別する（`supabase_client.py` の `UserClient` と `ServiceClient`）。リポジトリは受け取るクライアントの型を宣言し、取り違えは mypy と ty が検出する。
 
-# ✅ 正しい: OAuth callbackはservice_roleクライアント
-def get_callback_repository() -> SlackIntegrationRepositoryImpl:
-    client = get_supabase_client()  # service_role
-    return SlackIntegrationRepositoryImpl(client)
-```
-
-#### 2. 全CRUD操作でのuser_idフィルタ（必須）
+#### 2. シリーズのエンドポイントは権限チェックを依存関係で受け取る
 
 ```python
-# ✅ 正しい: 全操作でuser_idフィルタを明示
-def get_by_id(self, id: UUID, user_id: UUID):
-    return self.client.table("items").select("*").eq("id", str(id)).eq("user_id", str(user_id)).execute()
+# ✅ 正しい: 参加者なら MemberAccess、作成者限定なら CreatorAccess
+@router.get("/{series_id}/memory")
+async def get_memory(access: MemberAccess = Depends(member_access), ...) -> TeamMemoryResponse: ...
 
-def update(self, item: Item):
-    return self.client.table("items").update(data).eq("id", str(item.id)).eq("user_id", str(item.user_id)).execute()
-
-def delete(self, id: UUID, user_id: UUID):
-    return self.client.table("items").delete().eq("id", str(id)).eq("user_id", str(user_id)).execute()
+@router.post("/{series_id}/occurrences/{occurrence_id}/agenda")
+async def generate(access: CreatorAccess = Depends(creator_access), ...) -> GenerateAgendaResponse: ...
 ```
 
-#### 3. リポジトリのDIパターン
+- パスの `series_id` をそのままユースケースに渡さない。必ず `access.series_id` を使う。
+- 作成者限定のユースケースは型で `CreatorAccess` を要求する。
+- 権限がなければ 404（存在を隠す）、参加者だが作成者でなければ 403。
+
+#### 3. 全SQL文に持ち主の条件を付ける
+
+```python
+# ✅ シリーズのデータ: series_id で絞る
+self._client.table("knowledge").select("*").eq("id", str(knowledge_id)).eq("series_id", str(access.series_id)).execute()
+
+# ✅ 個人の資格情報: user_id で絞る
+self._client.table("google_integrations").select("*").eq("id", str(integration_id)).eq("user_id", str(user_id)).execute()
+```
+
+#### 4. リポジトリのDIパターン
 
 ```python
 # ✅ 正しい: コンストラクタでClientを受け取る
@@ -170,87 +180,74 @@ class MyRepositoryImpl:
 
 ### 禁止パターン（アンチパターン）
 
-#### ❌ 1. UPDATE/DELETEでuser_idフィルタなし
+#### ❌ 1. UPDATE/DELETEで持ち主の条件なし
 
 ```python
-# ❌ 危険: 他ユーザーのデータを更新可能
-self.client.table("items").update(data).eq("id", str(id)).execute()
+# ❌ 危険: 条件が id だけ
+self._client.table("agendas").update(data).eq("occurrence_id", str(occurrence_id)).execute()
 
-# ✅ 安全: user_idでフィルタ
-self.client.table("items").update(data).eq("id", str(id)).eq("user_id", str(user_id)).execute()
+# ✅ 安全: series_id でも絞る
+self._client.table("agendas").update(data).eq("occurrence_id", str(occurrence_id)).eq("series_id", str(access.series_id)).execute()
 ```
 
 #### ❌ 2. service_roleクライアントを認証済みAPIで使用
 
-```python
-# ❌ 危険: RLSがバイパスされる
-def get_repository() -> MyRepositoryImpl:
-    return MyRepositoryImpl(get_supabase_client())  # service_role
+カレンダーミラーとOAuth callback以外では禁止。
 
-# ✅ 安全: ユーザーコンテキスト付きクライアント
-def get_repository(client: Client = Depends(get_user_supabase_client)) -> MyRepositoryImpl:
-    return MyRepositoryImpl(client)
-```
-
-#### ❌ 3. エンティティのuser_idを信頼する
+#### ❌ 3. リクエストの値を持ち主として信用する
 
 ```python
-# ❌ 危険: クライアントから渡されたuser_idを信頼
-def create(self, item: Item):
-    # item.user_idが改ざんされている可能性
-    self.client.table("items").insert({"user_id": str(item.user_id), ...}).execute()
-
-# ✅ 安全: 認証済みuser_idを使用
-def create(self, item: Item, authenticated_user_id: UUID):
-    self.client.table("items").insert({"user_id": str(authenticated_user_id), ...}).execute()
+# ❌ 危険: リクエストボディの user_id / series_id / email を信用する
+# ✅ 安全: user_id は JWT から、series_id は access から、参加者の判定は my_series_roles() から
 ```
+
+#### ❌ 4. メールアドレスを本人確認に使う
+
+`auth.users.email`、JWT の `email` クレーム、`google_integrations.email` は参加者の判定に使わない。使うのは `auth.identities` の Google 確認済みメールだけ（`my_series_roles()` の中に閉じている）。
 
 ---
 
+### 新しいテーブルを足すとき
+
+- シリーズのデータなら `series_id` 列と、`occurrences` への複合外部キー `(occurrence_id, series_id)` を持たせる。
+- ポリシーは「参加者が読む」「作成者が書く」の2本を基本にする。参加者が書ける例外は、本人が作る行（`agenda_topics`）か SECURITY DEFINER の RPC（`set_memory_item_resolution`）に限る。
+- カレンダー由来の列や表には `authenticated` への書き込み GRANT を与えない。
+- SECURITY DEFINER 関数は `set search_path = ''` にし、`anon` と `public` から EXECUTE を取り消す。
+
 ### レビューチェックリスト
 
-新規リポジトリ/エンドポイント作成時に必ず確認:
-
 - [ ] リポジトリはコンストラクタで`Client`を受け取っているか
-- [ ] エンドポイントは`get_user_supabase_client`を使用しているか
-- [ ] SELECT操作に`user_id`フィルタがあるか
-- [ ] UPDATE操作に`user_id`フィルタがあるか
-- [ ] DELETE操作に`user_id`フィルタがあるか
-- [ ] INSERT操作で認証済み`user_id`を使用しているか
-- [ ] OAuth callbackは`get_callback_repository`を使用しているか
+- [ ] エンドポイントは`get_user_supabase_client`と`member_access` / `creator_access`を使っているか
+- [ ] 全SQL文に`series_id`（シリーズのデータ）または`user_id`（個人の資格情報）の条件があるか
+- [ ] INSERTで使う`user_id`はJWT由来か
+- [ ] `get_supabase_client`を上の表以外で使っていないか
+- [ ] 新しいテーブルの全操作を`backend/tests/rls/`で検証したか
 
 ---
 
 ### テスト要件
 
-#### 必須テストケース
+認可のテストはモックではなく、ローカルの Supabase で実ユーザーと実 JWT を使う（`backend/tests/rls/`）。
 
-```python
-# 1. 他ユーザーのデータにアクセスできないこと
-async def test_cannot_access_other_user_data():
-    # user_aのデータを作成
-    # user_bでアクセス試行
-    # 結果が空またはエラーであることを確認
-
-# 2. 他ユーザーのデータを更新できないこと
-async def test_cannot_update_other_user_data():
-    # user_aのデータを作成
-    # user_bで更新試行
-    # 影響行数が0であることを確認
-
-# 3. 他ユーザーのデータを削除できないこと
-async def test_cannot_delete_other_user_data():
-    # user_aのデータを作成
-    # user_bで削除試行
-    # データが残っていることを確認
+```bash
+make test-rls   # ローカルSupabaseが起動している必要がある
 ```
+
+新しいテーブルや RPC には、少なくとも次を確かめるテストを書く。
+
+1. 作成者、参加者、部外者のそれぞれが読めるもの
+2. 部外者と参加者の UPDATE / DELETE が 0 行になる、またはエラーになること
+3. 他人になりすました INSERT が拒否されること
+4. 参加者が作成者の資格情報を読めないこと
 
 ---
 
 ### 関連ドキュメント
 
+- [ADR-0008: 定例シリーズをチームの持ち物にする](docs/adr/ADR-0008-team-owned-meeting-series.md)
 - [ADR-0004: RLSベースの認可アーキテクチャ](docs/adr/ADR-0004-rls-based-authorization.md)
-- [Design Doc: RLS認可アーキテクチャ](docs/design/rls-authorization-architecture.md)
+- [Design Doc: 定例シリーズのチーム共有化](docs/design/team-owned-meeting-series.md)
+- [RLSポリシーパターン](docs/design/rls-policy-patterns.md)
 
 ---
 

@@ -56,9 +56,7 @@ max-complexity = 10
 "os.getenv".msg = "Use pydantic-settings instead"
 
 [tool.ty.rules]
-# Starlette add_middleware との互換性問題（ty が対応したら再有効化）
-# ref: https://github.com/encode/starlette/discussions/2423
-invalid-argument-type = "ignore"
+invalid-argument-type = "error"
 # mypyとの互換性のためtype: ignoreコメントを許可
 unused-ignore-comment = "ignore"
 

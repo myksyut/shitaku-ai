@@ -98,16 +98,15 @@ def update(self, agent: Agent) -> Agent:
 - [x] **If** 他ユーザーのデータIDを指定してUPDATEを試みた場合、**then** 影響を受ける行数は0となる
   - **Property**: `affected_rows == 0 when target.user_id != authenticated_user_id`
 
-### AC3: httpxクライアントのシングルトン化
+### AC3: httpxクライアントのシングルトン化（取り下げ）
 
-- [x] システムはアプリケーション起動時に1つのhttpxクライアントインスタンスを生成する
-- [x] **While** アプリケーションが稼働している間、全リクエストは同一のhttpxクライアントインスタンスを共有する
-- [x] **When** アプリケーションがシャットダウンすると、httpxクライアントが適切にクローズされる
+共有クライアント `get_shared_httpx_client` はどこからも呼ばれていなかったため削除した。ユーザーごとのクライアントは `create_user_supabase_client` がリクエストごとに作る。
 
 ### AC4: 依存性注入の統一
 
 - [x] 全リポジトリ実装はコンストラクタでSupabaseクライアントを受け取る
 - [x] **When** エンドポイントが呼び出されると、FastAPIの依存性注入によりユーザーコンテキスト付きクライアントが注入される
+  - 例外は [ADR-0008](../adr/ADR-0008-team-owned-meeting-series.md) の `SeriesCalendarMirror` と OAuth コールバックだけ
 
 ## 既存コードベース分析
 

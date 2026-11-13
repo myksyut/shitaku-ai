@@ -1,73 +1,40 @@
-# React + TypeScript + Vite
+# Shitaku.ai フロントエンド
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19・TypeScript・Vite・Tailwind CSS v4。APIの契約は[定例シリーズのチーム共有化設計書](../docs/design/team-owned-meeting-series.md)を参照してください。
 
-Currently, two official plugins are available:
+## 開発
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+`.env.example` を参考に Supabase と API の接続先を設定し、`npm install`、`npm run dev` を実行します。ログインは Supabase の Google 認証を使用します。
 
-## React Compiler
+## 画面
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| URL | 内容 |
+|---|---|
+| `/` | 参加中の定例一覧と、Googleカレンダーからの追加 |
+| `/series/:seriesId` | 回・チームメモリ・辞書・作成者向け設定 |
+| `/series/:seriesId/occurrences/:occurrenceId` | 議題の投稿、アジェンダ、議事録・ナレッジ |
+| `/settings/google` | 自分のGoogle連携 |
+| `/settings/slack` | 自分のSlack連携 |
 
-## Expanding the ESLint configuration
+参加者は閲覧、未来のキャンセルされていない回への議題の投稿、自分の議題の取り下げ、アクションアイテムの完了・取り下げ・再オープンができます。その他の編集・生成・抽出・削除は作成者だけに表示します。認可の最終判断はAPIが行います。
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+開始済みの回では議事録の追加後にメモリ抽出を続けて実行します。未来の回では議事録だけを保存し、開始後に抽出できます。抽出が失敗しても議事録は残ります。一時的なエラーや競合は再抽出でき、既存メモリが多すぎる場合は不要な項目の解決・削除を案内します。文字数制限による切り詰めと用語正規化の結果も画面に表示します。
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Google連携を解除すると、その連携で作成した定例のカレンダー同期が停止します。作成者は定例の設定でGoogleアカウントを選び直して保存すると再連携できます。カレンダー用途では `calendar.readonly` の権限が必要で、それ以外の連携は選択できません。旧エージェント向けの画面やAPIは使用しません。
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+アジェンダ生成では、AIの提案を生成できなくても必須セクションを表示します。入力の文字数制限で一部を省略した場合も画面に通知します。
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## データとテスト
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+- `src/features/series/types.ts` はシリーズAPIのレスポンス型です。辞書の型は `src/features/dictionary/types.ts` にあります。
+- クエリキーは `seriesKeys` / `calendarKeys` に集約しています。メモリ変更は返却されたボードを即時反映し、定例詳細と一覧だけを無効化します。その他の変更も対象の回・辞書・設定だけを無効化し、無関係なメモリやライブのMeet候補を再取得しません。
+- 認証済みユーザーごとに独立したQueryClientを作成します。ユーザー切り替え・ログアウト時には以前のクライアントを切り離し、進行中の変更が別ユーザーのキャッシュに反映されることを防ぎます。同じユーザーのトークン更新ではクライアントを維持します。
+- APIの400〜499エラーはクエリを再試行しません。サーバー・ネットワークエラーの再試行回数と待機時間はReact Queryの既定値を維持します。
+- カレンダー・Slackのエラーコードは共通の対応表で日本語に変換します。カレンダーエラーは、参加者には作成者への確認を案内し、作成者には具体的な原因を表示します。
+- Vitest・React Testing Library・MSWで、実際のコンポーネントからHTTP境界までを検証します。
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+品質確認:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm run check && npm run type-check && npm run test -- --run && npm run build
 ```

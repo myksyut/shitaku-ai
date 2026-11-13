@@ -1,151 +1,54 @@
-"""Use cases for dictionary operations."""
-
-from datetime import datetime
+from dataclasses import replace
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from src.domain.entities.dictionary_entry import DictionaryEntry
+from src.domain.entities.dictionary_entry import DictionaryCategory, DictionaryChanges, DictionaryEntry
+from src.domain.entities.series import CreatorAccess, MemberAccess, SeriesError
 from src.domain.repositories.dictionary_repository import DictionaryRepository
 
 
-class CreateDictionaryEntryUseCase:
-    """Use case for creating a dictionary entry."""
+class DictionaryUseCases:
+    """Creator-owned writes to member-visible series vocabulary."""
 
     def __init__(self, repository: DictionaryRepository) -> None:
-        """Initialize use case with repository."""
         self.repository = repository
 
-    async def execute(
+    def list_entries(self, access: MemberAccess) -> list[DictionaryEntry]:
+        """Read only the checked series' entries."""
+        return self.repository.list_entries(access.series_id)
+
+    def create(
         self,
-        user_id: UUID,
+        access: CreatorAccess,
         canonical_name: str,
+        category: DictionaryCategory | None,
+        aliases: list[str],
         description: str | None,
     ) -> DictionaryEntry:
-        """Create a new dictionary entry.
-
-        Args:
-            user_id: The user ID.
-            canonical_name: The canonical name.
-            description: Optional description.
-
-        Returns:
-            The created DictionaryEntry.
-
-        Raises:
-            ValueError: If canonical_name already exists for this user.
-        """
-        if await self.repository.exists_by_canonical_name(user_id, canonical_name):
-            raise ValueError(f"Entry with canonical_name '{canonical_name}' already exists")
-
+        """Create a vocabulary entry in the series."""
         entry = DictionaryEntry(
-            id=uuid4(),
-            user_id=user_id,
-            canonical_name=canonical_name,
-            description=description,
-            created_at=datetime.now(),
-            updated_at=None,
+            uuid4(),
+            access.series_id,
+            canonical_name,
+            description,
+            datetime.now(UTC),
+            category=category,
+            aliases=aliases,
         )
+        self.repository.create(access, entry)
+        return entry
 
-        return await self.repository.create(entry)
+    def update(self, access: CreatorAccess, entry_id: UUID, changes: DictionaryChanges) -> DictionaryEntry:
+        """Apply partial changes to a vocabulary entry."""
+        entry = self.repository.get(access.series_id, entry_id)
+        if entry is None:
+            raise SeriesError(404, "Dictionary entry not found")
+        updated = replace(entry, **changes, updated_at=datetime.now(UTC))
+        self.repository.save(access, updated)
+        return updated
 
-
-class GetDictionaryEntriesUseCase:
-    """Use case for getting all dictionary entries."""
-
-    def __init__(self, repository: DictionaryRepository) -> None:
-        """Initialize use case with repository."""
-        self.repository = repository
-
-    async def execute(self, user_id: UUID) -> list[DictionaryEntry]:
-        """Get all dictionary entries for a user.
-
-        Args:
-            user_id: The user ID.
-
-        Returns:
-            List of DictionaryEntry entities.
-        """
-        return await self.repository.get_all(user_id)
-
-
-class GetDictionaryEntryUseCase:
-    """Use case for getting a single dictionary entry."""
-
-    def __init__(self, repository: DictionaryRepository) -> None:
-        """Initialize use case with repository."""
-        self.repository = repository
-
-    async def execute(self, entry_id: UUID, user_id: UUID) -> DictionaryEntry | None:
-        """Get a dictionary entry by ID.
-
-        Args:
-            entry_id: The entry ID.
-            user_id: The user ID.
-
-        Returns:
-            DictionaryEntry if found, None otherwise.
-        """
-        return await self.repository.get_by_id(entry_id, user_id)
-
-
-class UpdateDictionaryEntryUseCase:
-    """Use case for updating a dictionary entry."""
-
-    def __init__(self, repository: DictionaryRepository) -> None:
-        """Initialize use case with repository."""
-        self.repository = repository
-
-    async def execute(
-        self,
-        entry_id: UUID,
-        user_id: UUID,
-        canonical_name: str | None,
-        description: str | None,
-    ) -> DictionaryEntry | None:
-        """Update a dictionary entry.
-
-        Args:
-            entry_id: The entry ID.
-            user_id: The user ID.
-            canonical_name: New canonical name (optional).
-            description: New description (optional).
-
-        Returns:
-            Updated DictionaryEntry if found, None otherwise.
-
-        Raises:
-            ValueError: If canonical_name already exists for this user.
-        """
-        entry = await self.repository.get_by_id(entry_id, user_id)
-        if not entry:
-            return None
-
-        if canonical_name and canonical_name != entry.canonical_name:
-            if await self.repository.exists_by_canonical_name(user_id, canonical_name, entry_id):
-                raise ValueError(f"Entry with canonical_name '{canonical_name}' already exists")
-            entry.canonical_name = canonical_name
-
-        if description is not None:
-            entry.description = description
-
-        entry.updated_at = datetime.now()
-        return await self.repository.update(entry)
-
-
-class DeleteDictionaryEntryUseCase:
-    """Use case for deleting a dictionary entry."""
-
-    def __init__(self, repository: DictionaryRepository) -> None:
-        """Initialize use case with repository."""
-        self.repository = repository
-
-    async def execute(self, entry_id: UUID, user_id: UUID) -> bool:
-        """Delete a dictionary entry.
-
-        Args:
-            entry_id: The entry ID.
-            user_id: The user ID.
-
-        Returns:
-            True if deleted, False if not found.
-        """
-        return await self.repository.delete(entry_id, user_id)
+    def delete(self, access: CreatorAccess, entry_id: UUID) -> None:
+        """Delete a vocabulary entry from the series."""
+        if self.repository.get(access.series_id, entry_id) is None:
+            raise SeriesError(404, "Dictionary entry not found")
+        self.repository.delete(access, entry_id)

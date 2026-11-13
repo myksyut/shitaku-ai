@@ -20,13 +20,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for backend changes
+      - name: Check for backend or Supabase changes
         id: changes
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '^backend/' || true)
+            CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '^(backend|supabase)/' || true)
           else
-            CHANGED=$(git diff --name-only HEAD~1 | grep -E '^backend/' || true)
+            CHANGED=$(git diff --name-only HEAD~1 | grep -E '^(backend|supabase)/' || true)
           fi
           if [ -n "$CHANGED" ]; then
             echo "backend=true" >> $GITHUB_OUTPUT
@@ -72,7 +72,61 @@ jobs:
 
       - name: Skip notification
         if: steps.changes.outputs.backend == 'false'
-        run: echo "No backend changes detected, skipping checks"
+        run: echo "No backend or Supabase changes detected, skipping checks"
+
+  rls:
+    name: Row-level security (real JWT)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for backend or Supabase changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '^(backend|supabase)/' || true)
+          else
+            CHANGED=$(git diff --name-only HEAD~1 | grep -E '^(backend|supabase)/' || true)
+          fi
+          if [ -n "$CHANGED" ]; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+          else
+            echo "backend=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install uv
+        if: steps.changes.outputs.backend == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        if: steps.changes.outputs.backend == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Supabase CLI
+        if: steps.changes.outputs.backend == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install backend dependencies
+        if: steps.changes.outputs.backend == 'true'
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Start local Supabase with Auth and PostgREST
+        if: steps.changes.outputs.backend == 'true'
+        run: supabase start -x studio,imgproxy,realtime,edge-runtime,logflare,vector,supavisor
+
+      - name: Run real-JWT row-level security tests
+        if: steps.changes.outputs.backend == 'true'
+        run: make test-rls
 
   frontend:
     name: Frontend (TypeScript)

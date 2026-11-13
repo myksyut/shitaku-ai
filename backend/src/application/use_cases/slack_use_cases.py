@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 import httpx
+from pydantic import TypeAdapter
 
 from src.config import settings
 from src.domain.entities.oauth_state import OAuthState
@@ -15,12 +16,9 @@ from src.domain.repositories.oauth_state_repository import OAuthStateRepository
 from src.domain.repositories.slack_integration_repository import (
     SlackIntegrationRepository,
 )
-from src.infrastructure.external.encryption import decrypt_token, encrypt_token
-from src.infrastructure.external.slack_client import (
-    SlackChannel,
-    SlackClient,
-    SlackMessageData,
-)
+from src.infrastructure.external.encryption import encrypt_token
+from src.infrastructure.external.series_credentials import SeriesCredentials
+from src.infrastructure.external.slack_client import SlackChannel
 
 
 @dataclass
@@ -45,7 +43,7 @@ class StartSlackOAuthUseCase:
         """
         self.oauth_state_repository = oauth_state_repository
 
-    async def execute(self, user_id: UUID, redirect_origin: str | None = None) -> OAuthStartResult:
+    def execute(self, user_id: UUID, redirect_origin: str | None = None) -> OAuthStartResult:
         """OAuth認証URLを生成する.
 
         Args:
@@ -79,7 +77,7 @@ class StartSlackOAuthUseCase:
             expires_at=now + timedelta(minutes=self.STATE_EXPIRES_MINUTES),
             created_at=now,
         )
-        await self.oauth_state_repository.create(oauth_state)
+        self.oauth_state_repository.create(oauth_state)
 
         # Slack OAuth URLを構築
         params = {
@@ -111,7 +109,7 @@ class HandleSlackCallbackUseCase:
         self.repository = repository
         self.oauth_state_repository = oauth_state_repository
 
-    async def execute(
+    def execute(
         self,
         code: str,
         state: str,
@@ -129,7 +127,7 @@ class HandleSlackCallbackUseCase:
             ValueError: If state is invalid or expired.
         """
         # state検証（CSRF対策）- リポジトリから取得と同時に削除
-        oauth_state = await self.oauth_state_repository.get_and_delete(state)
+        oauth_state = self.oauth_state_repository.get_and_delete(state)
 
         if oauth_state is None:
             raise ValueError("Invalid state parameter")
@@ -141,14 +139,15 @@ class HandleSlackCallbackUseCase:
         user_id = oauth_state.user_id
 
         # 期限切れstateのクリーンアップ（非同期で実行）
-        await self.oauth_state_repository.cleanup_expired()
+        self.oauth_state_repository.cleanup_expired()
 
         # アクセストークンを取得
-        token_response = await self._exchange_code(code)
+        token_response = self._exchange_code(code)
 
         team_data = token_response.get("team")
         if not isinstance(team_data, dict):
             raise ValueError("Invalid Slack response: team data missing")
+        team_data = TypeAdapter(dict[str, object]).validate_python(team_data)
 
         workspace_id = str(team_data.get("id") or "")
         workspace_name = str(team_data.get("name") or "")
@@ -161,12 +160,12 @@ class HandleSlackCallbackUseCase:
         encrypted_token = encrypt_token(access_token)
 
         # 既存の連携を確認
-        existing = await self.repository.get_by_workspace(user_id, workspace_id)
+        existing = self.repository.get_by_workspace(user_id, workspace_id)
 
         if existing:
             # 既存の連携を更新
             existing.update_token(encrypted_token)
-            return await self.repository.update(existing), oauth_state
+            return self.repository.update(existing), oauth_state
 
         # 新規作成
         integration = SlackIntegration(
@@ -178,15 +177,15 @@ class HandleSlackCallbackUseCase:
             created_at=datetime.now(),
             updated_at=None,
         )
-        return await self.repository.create(integration), oauth_state
+        return self.repository.create(integration), oauth_state
 
-    async def _exchange_code(self, code: str) -> dict[str, object]:
+    def _exchange_code(self, code: str) -> dict[str, object]:
         """認可コードをアクセストークンに交換する."""
         if not settings.SLACK_CLIENT_ID or not settings.SLACK_CLIENT_SECRET:
             raise ValueError("Slack OAuth is not configured")
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
+        with httpx.Client() as client:
+            response = client.post(
                 "https://slack.com/api/oauth.v2.access",
                 data={
                     "client_id": settings.SLACK_CLIENT_ID,
@@ -210,7 +209,7 @@ class GetSlackIntegrationsUseCase:
         """Initialize use case with repository."""
         self.repository = repository
 
-    async def execute(self, user_id: UUID) -> list[SlackIntegration]:
+    def execute(self, user_id: UUID) -> list[SlackIntegration]:
         """ユーザーの全Slack連携を取得する.
 
         Args:
@@ -219,7 +218,7 @@ class GetSlackIntegrationsUseCase:
         Returns:
             List of SlackIntegration entities.
         """
-        return await self.repository.get_all(user_id)
+        return self.repository.get_all(user_id)
 
 
 class DeleteSlackIntegrationUseCase:
@@ -229,7 +228,7 @@ class DeleteSlackIntegrationUseCase:
         """Initialize use case with repository."""
         self.repository = repository
 
-    async def execute(self, integration_id: UUID, user_id: UUID) -> bool:
+    def execute(self, integration_id: UUID, user_id: UUID) -> bool:
         """Slack連携を削除する.
 
         Args:
@@ -239,90 +238,16 @@ class DeleteSlackIntegrationUseCase:
         Returns:
             True if deleted, False if not found.
         """
-        return await self.repository.delete(integration_id, user_id)
+        return self.repository.delete(integration_id, user_id)
 
 
 class GetSlackChannelsUseCase:
-    """Slackチャンネル一覧取得ユースケース."""
+    """List channels from the explicitly selected personal integration."""
 
-    def __init__(self, repository: SlackIntegrationRepository) -> None:
-        """Initialize use case with repository."""
-        self.repository = repository
+    def __init__(self, credentials: SeriesCredentials) -> None:
+        self.credentials = credentials
 
-    async def execute(
-        self,
-        user_id: UUID,
-        integration_id: UUID,
-    ) -> list[SlackChannel]:
-        """Slackチャンネル一覧を取得する.
-
-        Args:
-            user_id: ユーザーID.
-            integration_id: 連携ID.
-
-        Returns:
-            List of SlackChannel objects.
-
-        Raises:
-            ValueError: If integration not found or token invalid.
-        """
-        integration = await self.repository.get_by_id(integration_id, user_id)
-        if not integration:
-            raise ValueError("Integration not found")
-
-        # トークンを復号
-        token = decrypt_token(integration.encrypted_access_token)
-
-        # Slackクライアントでチャンネル取得
-        client = SlackClient(token)
-
-        if not client.verify_token():
-            raise ValueError("Slack token is invalid. Please re-authenticate.")
-
+    def execute(self, user_id: UUID, integration_id: UUID) -> list[SlackChannel]:
+        """List channels of the caller's Slack integration."""
+        client = self.credentials.slack_for_user(user_id, integration_id)
         return client.get_channels()
-
-
-class GetSlackMessagesUseCase:
-    """Slackメッセージ取得ユースケース."""
-
-    def __init__(self, repository: SlackIntegrationRepository) -> None:
-        """Initialize use case with repository."""
-        self.repository = repository
-
-    async def execute(
-        self,
-        user_id: UUID,
-        integration_id: UUID,
-        channel_id: str,
-        oldest: datetime,
-        latest: datetime | None = None,
-    ) -> list[SlackMessageData]:
-        """期間指定でSlackメッセージを取得する.
-
-        Args:
-            user_id: ユーザーID.
-            integration_id: 連携ID.
-            channel_id: チャンネルID.
-            oldest: 取得開始日時.
-            latest: 取得終了日時（省略時は現在）.
-
-        Returns:
-            List of SlackMessageData objects.
-
-        Raises:
-            ValueError: If integration not found or token invalid.
-        """
-        integration = await self.repository.get_by_id(integration_id, user_id)
-        if not integration:
-            raise ValueError("Integration not found")
-
-        # トークンを復号
-        token = decrypt_token(integration.encrypted_access_token)
-
-        # Slackクライアントでメッセージ取得
-        client = SlackClient(token)
-
-        if not client.verify_token():
-            raise ValueError("Slack token is invalid. Please re-authenticate.")
-
-        return client.get_messages(channel_id, oldest, latest)

@@ -1,330 +1,163 @@
-"""Use cases for Agenda management.
-
-Application layer use cases following clean architecture principles.
-"""
-
-import asyncio
-import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from uuid import UUID, uuid4
+from datetime import UTC, datetime, timedelta
+from typing import Literal
+from uuid import UUID
 
-from slack_sdk.errors import SlackApiError
+from slack_sdk.errors import SlackApiError, SlackClientError
 
 from src.domain.entities.agenda import Agenda
-from src.domain.entities.agent import Agent
-from src.domain.entities.knowledge import Knowledge
-from src.domain.entities.meeting_transcript import MeetingTranscript
-from src.domain.repositories.agenda_repository import AgendaRepository
-from src.domain.repositories.agent_repository import AgentRepository
+from src.domain.entities.series import CalendarErrorCode, CreatorAccess, Occurrence, Series, SeriesError, SlackErrorCode
+from src.domain.entities.team_memory import ActionItem, Decision, OpenIssue
 from src.domain.repositories.dictionary_repository import DictionaryRepository
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
-from src.domain.repositories.meeting_transcript_repository import MeetingTranscriptRepository
-from src.domain.repositories.recurring_meeting_repository import RecurringMeetingRepository
-from src.domain.repositories.slack_integration_repository import SlackIntegrationRepository
-from src.infrastructure.external.encryption import decrypt_token
-from src.infrastructure.external.slack_client import SlackClient, SlackMessageData
-from src.infrastructure.services.agenda_generation_service import (
-    AgendaGenerationInput,
-    AgendaGenerationService,
-)
-
-logger = logging.getLogger(__name__)
+from src.domain.repositories.occurrence_repository import OccurrenceRepository
+from src.domain.repositories.series_repository import SeriesRepository
+from src.domain.repositories.team_memory_repository import TeamMemoryRepository
+from src.domain.services.agenda_rules import render_agenda
+from src.domain.services.team_memory_rules import with_carry_over
+from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
+from src.infrastructure.external.series_credentials import CredentialUnavailableError, SeriesCredentials
+from src.infrastructure.external.slack_client import SlackMessageData
+from src.infrastructure.services.agenda_generation_service import AgendaContext, AgendaGenerationService
 
 
-@dataclass
-class GenerateResult:
-    """アジェンダ生成結果."""
+def _slack_error_code(error: SlackApiError) -> SlackErrorCode:
+    codes: dict[str, SlackErrorCode] = {
+        "invalid_auth": "not_connected",
+        "not_authed": "not_connected",
+        "token_revoked": "not_connected",
+        "account_inactive": "not_connected",
+        "not_in_channel": "not_in_channel",
+        "channel_not_found": "not_in_channel",
+        "ratelimited": "rate_limited",
+    }
+    code = error.response.get("error")
+    return codes.get(code, "slack_unavailable") if isinstance(code, str) else "slack_unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class AgendaSources:
+    """Counts and visible errors for the exact persisted agenda inputs."""
+
+    topics: int
+    carried_action_items: int
+    open_issues: int
+    knowledge: int
+    slack_messages: int
+    slack_error: SlackErrorCode | None
+    calendar_error: CalendarErrorCode | None
+    truncated: bool
+    proposal_error: Literal["llm_unavailable"] | None
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedAgenda:
+    """Persisted agenda and its source report."""
 
     agenda: Agenda
-    has_knowledge: bool
-    has_slack_messages: bool
-    slack_message_count: int
-    dictionary_entry_count: int
-    has_transcripts: bool = False
-    transcript_count: int = 0
-    slack_error: str | None = None
+    sources: AgendaSources
 
 
-class GenerateAgendaUseCase:
-    """アジェンダ生成ユースケース."""
-
-    TIMEOUT_SECONDS = 30
+class GenerateAgenda:
+    """Generate and save an occurrence's agenda."""
 
     def __init__(
         self,
-        agenda_repository: AgendaRepository,
-        agent_repository: AgentRepository,
-        knowledge_repository: KnowledgeRepository,
-        dictionary_repository: DictionaryRepository,
-        slack_repository: SlackIntegrationRepository,
-        generation_service: AgendaGenerationService,
-        recurring_meeting_repository: RecurringMeetingRepository | None = None,
-        meeting_transcript_repository: MeetingTranscriptRepository | None = None,
+        series: SeriesRepository,
+        content: OccurrenceRepository,
+        memory: TeamMemoryRepository,
+        knowledge: KnowledgeRepository,
+        dictionary: DictionaryRepository,
+        credentials: SeriesCredentials,
+        mirror: SeriesCalendarMirror,
+        writer: AgendaGenerationService,
     ) -> None:
-        self.agenda_repository = agenda_repository
-        self.agent_repository = agent_repository
-        self.knowledge_repository = knowledge_repository
-        self.dictionary_repository = dictionary_repository
-        self.slack_repository = slack_repository
-        self.generation_service = generation_service
-        self.recurring_meeting_repository = recurring_meeting_repository
-        self.meeting_transcript_repository = meeting_transcript_repository
+        self.series, self.content, self.memory = series, content, memory
+        self.knowledge, self.dictionary = knowledge, dictionary
+        self.credentials, self.mirror, self.writer = credentials, mirror, writer
 
-    async def execute(self, user_id: UUID, agent_id: UUID) -> GenerateResult:
-        """アジェンダを生成する."""
-        # エージェント確認
-        agent = self.agent_repository.get_by_id(agent_id, user_id)
-        if not agent:
-            raise ValueError("Agent not found")
-
-        # データ収集
-        latest_knowledge = await self.knowledge_repository.get_latest_by_agent(agent_id, user_id)
-        dictionary = await self.dictionary_repository.get_all(user_id)
-
-        # 複数定例からトランスクリプトを収集
-        transcripts = await self._collect_transcripts(agent)
-        logger.info("Collected %d transcripts total", len(transcripts))
-
-        # Slack取得範囲を計算
-        slack_oldest = self._calculate_slack_oldest(agent, transcripts, latest_knowledge)
-
-        # Slackメッセージ取得
-        slack_messages = []
-        slack_error: str | None = None
-        if agent.slack_channel_id and slack_oldest:
-            try:
-                integrations = await self.slack_repository.get_all(user_id)
-                if integrations:
-                    integration = integrations[0]
-                    token = decrypt_token(integration.encrypted_access_token)
-                    client = SlackClient(token)
-                    slack_messages = client.get_messages(
-                        channel_id=agent.slack_channel_id,
-                        oldest=slack_oldest,
-                    )
-
-                    # スレッド返信を取得
-                    slack_messages = self._fetch_thread_replies(client, agent.slack_channel_id, slack_messages)
-            except SlackApiError as e:
-                error_code = e.response.get("error", "")
-                if error_code == "not_in_channel":
-                    slack_error = (
-                        "アプリがチャンネルに追加されていません。Slackでチャンネルにアプリを招待してください。"
-                    )
-                elif error_code == "ratelimited":
-                    slack_error = "Slack APIのレート制限に達しました。しばらく待ってから再試行してください。"
-                else:
-                    slack_error = f"Slackからメッセージを取得できませんでした: {error_code}"
-                logger.warning("Failed to get Slack messages: %s", e)
-            except Exception as e:
-                slack_error = "Slackからメッセージを取得できませんでした"
-                logger.warning("Failed to get Slack messages: %s", e)
-
-        # アジェンダ生成（タイムアウト付き）
-        input_data = AgendaGenerationInput(
-            latest_knowledge=latest_knowledge,
-            slack_messages=slack_messages,
-            dictionary=dictionary,
-            transcripts=transcripts,
-        )
-
+    def _slack(
+        self, series: Series, previous: Occurrence | None, target: Occurrence
+    ) -> tuple[list[SlackMessageData], SlackErrorCode | None]:
+        if series.slack is None:
+            return [], None
+        oldest = previous.start_at if previous else target.start_at - timedelta(days=series.slack_message_days)
+        now = datetime.now(UTC)
         try:
-            content = await asyncio.wait_for(
-                self.generation_service.generate(input_data),
-                timeout=self.TIMEOUT_SECONDS,
-            )
-        except TimeoutError as e:
-            raise TimeoutError("Agenda generation timed out") from e
+            client = self.credentials.slack_for_series(series)
+            if client is None:
+                return [], None
+            messages: list[SlackMessageData] = []
+            for channel in series.slack.channels:
+                messages.extend(client.get_messages(channel.id, oldest, now))
+            return sorted(
+                (m for m in messages if oldest <= m.posted_at <= now), key=lambda m: float(m.ts), reverse=True
+            )[:100], None
+        except CredentialUnavailableError as error:
+            return [], "not_connected" if error.code == "not_connected" else "slack_unavailable"
+        except SlackApiError as error:
+            return [], _slack_error_code(error)
+        except (SeriesError, SlackClientError):
+            return [], "slack_unavailable"
 
-        # アジェンダを保存
-        agenda = Agenda(
-            id=uuid4(),
-            agent_id=agent_id,
-            user_id=user_id,
-            content=content,
-            source_knowledge_id=latest_knowledge.id if latest_knowledge else None,
-            generated_at=datetime.now(),
-            created_at=datetime.now(),
+    def execute(self, access: CreatorAccess, occurrence_id: UUID) -> GeneratedAgenda:
+        """Refresh calendar best-effort, then persist deterministic sections and proposals."""
+        series = self.series.get(access.series_id)
+        if series is None:
+            raise SeriesError(404, "Series not found")
+        calendar_error = self.mirror.refresh(series)
+        series = self.series.get(access.series_id)
+        if series is None:
+            raise SeriesError(404, "Series not found")
+        occurrences = self.series.occurrences(access.series_id)
+        target = next((o for o in occurrences if o.id == occurrence_id), None)
+        if target is None:
+            raise SeriesError(404, "Occurrence not found")
+        if target.is_cancelled:
+            raise SeriesError(422, "Occurrence is cancelled")
+        now = datetime.now(UTC)
+        items = with_carry_over(self.memory.list_items(access.series_id), occurrences, target.start_at, now)
+        carried = sorted(
+            (i for i in items if i.closed_at is None and i.origin_start_at < target.start_at),
+            key=lambda i: i.origin_start_at,
         )
-
-        saved_agenda = await self.agenda_repository.create(agenda)
-
-        return GenerateResult(
-            agenda=saved_agenda,
-            has_knowledge=latest_knowledge is not None,
-            has_slack_messages=len(slack_messages) > 0,
-            slack_message_count=len(slack_messages),
-            dictionary_entry_count=len(dictionary),
-            has_transcripts=len(transcripts) > 0,
-            transcript_count=len(transcripts),
-            slack_error=slack_error,
+        actions = tuple(i for i in carried if isinstance(i, ActionItem))
+        issues = tuple(i for i in carried if isinstance(i, OpenIssue))
+        decisions = tuple(i for i in reversed(carried) if isinstance(i, Decision))[:10]
+        previous = [o for o in occurrences if not o.is_cancelled and o.start_at < target.start_at]
+        selected_ids = [o.id for o in previous] if series.minutes_count else []
+        knowledge = self.knowledge.for_occurrences(access.series_id, selected_ids)
+        starts = {o.id: o.start_at for o in previous}
+        knowledge.sort(key=lambda k: (starts[k.occurrence_id], k.created_at), reverse=True)
+        knowledge = knowledge[: series.minutes_count]
+        slack, slack_error = self._slack(series, previous[-1] if previous else None, target)
+        topics = self.content.topics(access.series_id, occurrence_id)
+        context = AgendaContext(
+            series.title,
+            series.description,
+            tuple(topics),
+            actions,
+            issues,
+            decisions,
+            tuple(knowledge),
+            tuple(slack),
+            tuple(self.dictionary.list_entries(access.series_id)),
         )
-
-    async def _collect_transcripts(self, agent: Agent) -> list[MeetingTranscript]:
-        """複数定例からトランスクリプトを収集する.
-
-        Args:
-            agent: エージェントエンティティ
-
-        Returns:
-            収集したトランスクリプトのリスト（日付降順）
-        """
-        if not self.recurring_meeting_repository or not self.meeting_transcript_repository:
-            return []
-
-        recurring_meetings = await self.recurring_meeting_repository.get_list_by_agent_id(agent.id, agent.user_id)
-        logger.info(
-            "Collecting transcripts from %d recurring meetings",
-            len(recurring_meetings),
+        proposal = self.writer.propose(context)
+        agenda = self.content.save_generated(
+            access, occurrence_id, render_agenda(topics, actions, issues, proposal.content)
         )
-
-        all_transcripts: list[MeetingTranscript] = []
-        for meeting in recurring_meetings:
-            try:
-                transcripts = await self.meeting_transcript_repository.get_by_recurring_meeting(
-                    meeting.id, limit=agent.transcript_count
-                )
-                # 定例会議名をトランスクリプトにセット
-                for transcript in transcripts:
-                    transcript.recurring_meeting_title = meeting.title
-                all_transcripts.extend(transcripts)
-            except Exception as e:
-                logger.warning(
-                    "Failed to collect transcripts for meeting %s: %s",
-                    meeting.id,
-                    e,
-                )
-                continue
-
-        # 日付降順でソート
-        all_transcripts.sort(key=lambda t: t.meeting_date, reverse=True)
-        return all_transcripts
-
-    def _calculate_slack_oldest(
-        self,
-        agent: Agent,
-        transcripts: list[MeetingTranscript],
-        latest_knowledge: Knowledge | None,
-    ) -> datetime | None:
-        """Slack取得範囲の開始日時を計算する.
-
-        Args:
-            agent: エージェントエンティティ
-            transcripts: 収集したトランスクリプト
-            latest_knowledge: 最新のナレッジ
-
-        Returns:
-            Slack取得開始日時。取得不要な場合はNone。
-        """
-        # 最新トランスクリプトの日付があればそれを使用
-        if transcripts:
-            return transcripts[0].meeting_date
-
-        # ナレッジがあればその日付を使用
-        if latest_knowledge:
-            return latest_knowledge.meeting_date
-
-        # なければslack_message_days前から
-        return datetime.now() - timedelta(days=agent.slack_message_days)
-
-    def _fetch_thread_replies(
-        self,
-        client: SlackClient,
-        channel_id: str,
-        messages: list[SlackMessageData],
-    ) -> list[SlackMessageData]:
-        """スレッドの返信メッセージを取得してメッセージリストに追加する.
-
-        Args:
-            client: SlackClientインスタンス
-            channel_id: チャンネルID
-            messages: 元のメッセージリスト
-
-        Returns:
-            返信を含むメッセージリスト（時系列順）
-        """
-        all_messages: list[SlackMessageData] = list(messages)
-
-        # スレッド親メッセージ（reply_count > 0）の返信を取得
-        for msg in messages:
-            if msg.reply_count > 0 and msg.thread_ts:
-                try:
-                    replies = client.get_thread_replies(channel_id, msg.thread_ts)
-                    all_messages.extend(replies)
-                    logger.info(
-                        "Fetched %d replies for thread %s",
-                        len(replies),
-                        msg.thread_ts,
-                    )
-                except SlackApiError as e:
-                    # 個別スレッドのエラーは警告のみ、処理継続
-                    logger.warning(
-                        "Failed to get thread replies for %s: %s",
-                        msg.thread_ts,
-                        e,
-                    )
-                    continue
-
-        # 時系列順にソート
-        all_messages.sort(key=lambda m: m.posted_at)
-        return all_messages
-
-
-class GetAgendasUseCase:
-    """アジェンダ一覧取得ユースケース."""
-
-    def __init__(self, repository: AgendaRepository) -> None:
-        self.repository = repository
-
-    async def execute(
-        self,
-        agent_id: UUID,
-        user_id: UUID,
-        limit: int | None = None,
-    ) -> list[Agenda]:
-        """エージェントのアジェンダ一覧を取得する."""
-        return await self.repository.get_by_agent(agent_id, user_id, limit)
-
-
-class GetAgendaUseCase:
-    """アジェンダ取得ユースケース."""
-
-    def __init__(self, repository: AgendaRepository) -> None:
-        self.repository = repository
-
-    async def execute(self, agenda_id: UUID, user_id: UUID) -> Agenda | None:
-        """IDでアジェンダを取得する."""
-        return await self.repository.get_by_id(agenda_id, user_id)
-
-
-class UpdateAgendaUseCase:
-    """アジェンダ更新ユースケース."""
-
-    def __init__(self, repository: AgendaRepository) -> None:
-        self.repository = repository
-
-    async def execute(
-        self,
-        agenda_id: UUID,
-        user_id: UUID,
-        content: str,
-    ) -> Agenda | None:
-        """アジェンダを更新する."""
-        agenda = await self.repository.get_by_id(agenda_id, user_id)
-        if not agenda:
-            return None
-
-        agenda.update_content(content)
-        return await self.repository.update(agenda)
-
-
-class DeleteAgendaUseCase:
-    """アジェンダ削除ユースケース."""
-
-    def __init__(self, repository: AgendaRepository) -> None:
-        self.repository = repository
-
-    async def execute(self, agenda_id: UUID, user_id: UUID) -> bool:
-        """アジェンダを削除する."""
-        return await self.repository.delete(agenda_id, user_id)
+        return GeneratedAgenda(
+            agenda,
+            AgendaSources(
+                len(topics),
+                len(actions),
+                len(issues),
+                len(knowledge),
+                len(slack),
+                slack_error,
+                calendar_error,
+                proposal.truncated,
+                "llm_unavailable" if proposal.content is None else None,
+            ),
+        )

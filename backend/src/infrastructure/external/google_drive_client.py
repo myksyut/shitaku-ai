@@ -47,16 +47,20 @@ class GoogleDriveClient:
             raise ValueError("access_token is required")
         self._access_token = access_token
 
-    async def search_transcript_files(
+    def search_transcript_files(
         self,
         folder_name: str = "Meet Recordings",
         max_results: int = 100,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
     ) -> list[DriveFile]:
         """Meet Recordingsフォルダからトランスクリプトファイルを検索する.
 
         Args:
             folder_name: 検索対象のフォルダ名。デフォルトは "Meet Recordings"。
             max_results: 取得する最大件数。
+            created_after: Inclusive occurrence-window start.
+            created_before: Inclusive occurrence-window end.
 
         Returns:
             DriveFileオブジェクトのリスト。
@@ -65,48 +69,15 @@ class GoogleDriveClient:
             ValueError: API呼び出しが失敗した場合。
         """
         # まずMeet Recordingsフォルダを検索
-        folder_id = await self._find_folder_by_name(folder_name)
+        folder_id = self._find_folder_by_name(folder_name)
         if not folder_id:
             logger.info("Folder '%s' not found", folder_name)
             return []
 
         # フォルダ内のGoogle Docsを検索
-        return await self._list_docs_in_folder(folder_id, max_results)
+        return self._list_docs_in_folder(folder_id, max_results, created_after, created_before)
 
-    async def get_file_by_id(self, file_id: str) -> DriveFile | None:
-        """ファイルIDでファイル情報を取得する.
-
-        Args:
-            file_id: Google DriveのファイルID。
-
-        Returns:
-            DriveFileオブジェクト。見つからない場合はNone。
-
-        Raises:
-            ValueError: API呼び出しが失敗した場合。
-        """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{DRIVE_API_BASE}/files/{file_id}",
-                headers={"Authorization": f"Bearer {self._access_token}"},
-                params={
-                    "fields": "id,name,mimeType,createdTime,modifiedTime,webViewLink",
-                },
-            )
-
-            if response.status_code == 404:
-                return None
-
-            if response.status_code != 200:
-                error_data = response.json()
-                error_msg = error_data.get("error", {}).get("message", "Unknown error")
-                logger.error("Failed to get file: %s", error_msg)
-                raise ValueError(f"Google Drive API error: {error_msg}")
-
-            data = response.json()
-            return self._to_drive_file(data)
-
-    async def _find_folder_by_name(self, folder_name: str) -> str | None:
+    def _find_folder_by_name(self, folder_name: str) -> str | None:
         """フォルダ名でフォルダIDを検索する.
 
         Args:
@@ -117,8 +88,8 @@ class GoogleDriveClient:
         """
         query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
+        with httpx.Client() as client:
+            response = client.get(
                 f"{DRIVE_API_BASE}/files",
                 headers={"Authorization": f"Bearer {self._access_token}"},
                 params={
@@ -140,22 +111,34 @@ class GoogleDriveClient:
                 return str(files[0]["id"])
             return None
 
-    async def _list_docs_in_folder(self, folder_id: str, max_results: int) -> list[DriveFile]:
+    def _list_docs_in_folder(
+        self,
+        folder_id: str,
+        max_results: int,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+    ) -> list[DriveFile]:
         """フォルダ内のGoogle Docsを一覧取得する.
 
         Args:
             folder_id: 検索対象のフォルダID。
             max_results: 取得する最大件数。
+            created_after: Inclusive creation-time lower bound.
+            created_before: Inclusive creation-time upper bound.
 
         Returns:
             DriveFileオブジェクトのリスト。
         """
         query = f"'{folder_id}' in parents and mimeType = '{GOOGLE_DOCS_MIME_TYPE}' and trashed = false"
+        if created_after:
+            query += f" and createdTime >= '{created_after.isoformat()}'"
+        if created_before:
+            query += f" and createdTime <= '{created_before.isoformat()}'"
 
         all_files: list[DriveFile] = []
         page_token: str | None = None
 
-        async with httpx.AsyncClient() as client:
+        with httpx.Client() as client:
             while len(all_files) < max_results:
                 params: dict[str, str | int] = {
                     "q": query,
@@ -166,7 +149,7 @@ class GoogleDriveClient:
                 if page_token:
                     params["pageToken"] = page_token
 
-                response = await client.get(
+                response = client.get(
                     f"{DRIVE_API_BASE}/files",
                     headers={"Authorization": f"Bearer {self._access_token}"},
                     params=params,

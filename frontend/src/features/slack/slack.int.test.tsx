@@ -167,19 +167,4 @@ describe('Slack Integration Test', () => {
       expect(screen.getByText(/連携済みのワークスペースはありません/)).toBeInTheDocument()
     })
   })
-
-  // AC: "When ユーザーがエージェントにSlackチャンネルを紐付けると、
-  //      システムは紐付け情報をDBに保存する"
-  // ROI: (implied) | ビジネス価値: 8 | 頻度: 5
-  // 振る舞い: チャンネル選択 -> 保存 -> API呼び出し -> 紐付け完了表示
-  // @category: core-functionality
-  // @dependency: ChannelSelector, useUpdateAgent hook, API Client
-  // @complexity: low
-  //
-  // 検証項目:
-  // - チャンネル選択でAPI呼び出しが実行される
-  // - 成功後、紐付け状態が更新される
-  // - エージェント詳細に選択チャンネルが表示される
-  it.todo('AC5: エージェントにSlackチャンネルを紐付けて保存できる')
-  // Note: エージェント機能との統合が必要なため、別タスクで実装予定
 })

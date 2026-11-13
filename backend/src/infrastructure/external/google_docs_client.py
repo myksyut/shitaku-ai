@@ -8,11 +8,13 @@ import logging
 from dataclasses import dataclass
 
 import httpx
+from pydantic import TypeAdapter
 
 logger = logging.getLogger(__name__)
 
 # Google Docs API endpoints
 DOCS_API_BASE = "https://docs.googleapis.com/v1"
+_DOC_OBJECT = TypeAdapter(dict[str, object])
 
 
 @dataclass
@@ -40,7 +42,7 @@ class GoogleDocsClient:
             raise ValueError("access_token is required")
         self._access_token = access_token
 
-    async def get_document_content(self, document_id: str) -> DocsDocument | None:
+    def get_document_content(self, document_id: str) -> DocsDocument | None:
         """ドキュメントIDでドキュメントコンテンツを取得する.
 
         Args:
@@ -52,8 +54,8 @@ class GoogleDocsClient:
         Raises:
             ValueError: API呼び出しが失敗した場合。
         """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
+        with httpx.Client() as client:
+            response = client.get(
                 f"{DOCS_API_BASE}/documents/{document_id}",
                 headers={"Authorization": f"Bearer {self._access_token}"},
             )
@@ -70,7 +72,7 @@ class GoogleDocsClient:
             data = response.json()
             return self._to_docs_document(data)
 
-    async def get_document_text(self, document_id: str) -> str | None:
+    def get_document_text(self, document_id: str) -> str | None:
         """ドキュメントIDでテキストコンテンツのみを取得する.
 
         Args:
@@ -82,7 +84,7 @@ class GoogleDocsClient:
         Raises:
             ValueError: API呼び出しが失敗した場合。
         """
-        doc = await self.get_document_content(document_id)
+        doc = self.get_document_content(document_id)
         if doc is None:
             return None
         return doc.body_text
@@ -120,6 +122,7 @@ class GoogleDocsClient:
         """
         if not isinstance(body, dict):
             return ""
+        body = _DOC_OBJECT.validate_python(body)
 
         text_parts: list[str] = []
         content = body.get("content") or []
@@ -130,7 +133,7 @@ class GoogleDocsClient:
         for element in content:
             if not isinstance(element, dict):
                 continue
-            text = self._extract_text_from_element(element)
+            text = self._extract_text_from_element(_DOC_OBJECT.validate_python(element))
             if text:
                 text_parts.append(text)
 
@@ -159,6 +162,7 @@ class GoogleDocsClient:
         """Paragraph要素からテキストを抽出する."""
         if not isinstance(paragraph, dict):
             return []
+        paragraph = _DOC_OBJECT.validate_python(paragraph)
 
         text_parts: list[str] = []
         elements = paragraph.get("elements") or []
@@ -168,8 +172,10 @@ class GoogleDocsClient:
         for para_element in elements:
             if not isinstance(para_element, dict):
                 continue
+            para_element = _DOC_OBJECT.validate_python(para_element)
             text_run = para_element.get("textRun")
             if isinstance(text_run, dict):
+                text_run = _DOC_OBJECT.validate_python(text_run)
                 content = text_run.get("content")
                 if isinstance(content, str):
                     text_parts.append(content)
@@ -180,6 +186,7 @@ class GoogleDocsClient:
         """Table要素からテキストを抽出する."""
         if not isinstance(table, dict):
             return []
+        table = _DOC_OBJECT.validate_python(table)
 
         text_parts: list[str] = []
         table_rows = table.get("tableRows") or []
@@ -189,7 +196,7 @@ class GoogleDocsClient:
         for row in table_rows:
             if not isinstance(row, dict):
                 continue
-            text_parts.extend(self._extract_text_from_table_row(row))
+            text_parts.extend(self._extract_text_from_table_row(_DOC_OBJECT.validate_python(row)))
 
         return text_parts
 
@@ -203,10 +210,11 @@ class GoogleDocsClient:
         for cell in cells:
             if not isinstance(cell, dict):
                 continue
+            cell = _DOC_OBJECT.validate_python(cell)
             cell_content = cell.get("content") or []
             if isinstance(cell_content, list):
                 text_parts.extend(
-                    self._extract_text_from_element(cell_element)
+                    self._extract_text_from_element(_DOC_OBJECT.validate_python(cell_element))
                     for cell_element in cell_content
                     if isinstance(cell_element, dict)
                 )

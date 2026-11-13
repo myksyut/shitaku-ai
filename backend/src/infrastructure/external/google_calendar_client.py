@@ -1,287 +1,145 @@
-"""Google Calendar API client for fetching recurring events.
-
-Handles Calendar API access with RRULE parsing and filtering.
-Following ADR-0003 authentication pattern.
-"""
-
-import logging
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from urllib.parse import quote
 
 import httpx
+from pydantic import BaseModel, Field
 
-logger = logging.getLogger(__name__)
+from src.domain.entities.series import Attendee, CalendarSnapshot, OccurrenceSlot, parse_email
 
-# Google Calendar API endpoint
 CALENDAR_API_URL = "https://www.googleapis.com/calendar/v3"
+MIRROR_WINDOW = timedelta(days=35)
 
 
-@dataclass
-class CalendarAttendee:
-    """Calendar event attendee."""
+class CalendarPerson(BaseModel):
+    """A Google Calendar attendee or organizer."""
 
-    email: str
-    display_name: str | None = None
-    response_status: str | None = None
+    email: str | None = None
+    display_name: str | None = Field(default=None, alias="displayName")
+    resource: bool = False
 
 
-@dataclass
-class CalendarEvent:
-    """Google Calendar event with recurrence info."""
+class CalendarTime(BaseModel):
+    """Google timed and all-day event timestamps."""
 
-    event_id: str
-    summary: str
-    rrule: str
-    attendees: list[CalendarAttendee]
-    start_datetime: datetime
-    organizer_email: str | None = None
+    date_time: datetime | None = Field(default=None, alias="dateTime")
+    date: str | None = None
+
+    def instant(self) -> datetime | None:
+        """Return the slot start as an aware datetime."""
+        return self.date_time or (datetime.fromisoformat(self.date).replace(tzinfo=UTC) if self.date else None)
+
+
+class CalendarEvent(BaseModel):
+    """Boundary schema for masters and instances."""
+
+    id: str
+    ical_uid: str = Field(default="", alias="iCalUID")
+    summary: str = "(無題)"
+    recurrence: list[str] = Field(default_factory=list)
+    organizer: CalendarPerson | None = None
+    attendees: list[CalendarPerson] = Field(default_factory=list)
+    attendees_omitted: bool = Field(default=False, alias="attendeesOmitted")
+    start: CalendarTime = Field(default_factory=CalendarTime)
+    original_start_time: CalendarTime = Field(default_factory=CalendarTime, alias="originalStartTime")
     status: str = "confirmed"
 
 
+class CalendarPage(BaseModel):
+    """A paginated Calendar response."""
+
+    items: list[CalendarEvent] = Field(default_factory=list)
+    next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
+def parse_snapshot(
+    master: CalendarEvent, instances: list[CalendarEvent], window_start: datetime, window_end: datetime
+) -> CalendarSnapshot:
+    """Drop rooms, normalize people, and retain stable instance identities."""
+    attendees: dict[str, Attendee] = {}
+    people = [(p, False) for p in master.attendees]
+    if master.organizer:
+        people.append((master.organizer, True))
+    for person, organizer in people:
+        email = parse_email(person.email)
+        if email and not person.resource and not email.endswith("@resource.calendar.google.com"):
+            attendees[email] = Attendee(email, person.display_name, organizer)
+    slots: list[OccurrenceSlot] = []
+    for instance in instances:
+        original = instance.original_start_time.instant()
+        start = instance.start.instant() or original
+        if original is not None and start is not None:
+            slots.append(OccurrenceSlot(original, start, instance.status == "cancelled"))
+    return CalendarSnapshot(
+        master.ical_uid,
+        master.id,
+        master.summary,
+        next((r for r in master.recurrence if r.startswith("RRULE:")), None),
+        tuple(attendees.values()),
+        master.attendees_omitted,
+        tuple(slots),
+        window_start,
+        window_end,
+    )
+
+
 class GoogleCalendarClient:
-    """Google Calendar API client for fetching recurring events."""
+    """Google Calendar API client for the primary calendar."""
 
     def __init__(self, access_token: str) -> None:
-        """Initialize the Calendar client.
+        self._headers = {"Authorization": f"Bearer {access_token}"}
 
-        Args:
-            access_token: A valid Google OAuth access token with calendar.readonly scope.
-        """
-        self._access_token = access_token
-
-    async def get_recurring_events(
-        self,
-        min_attendees: int = 2,
-        months_back: int = 3,
-    ) -> list[CalendarEvent]:
-        """Fetch recurring events from Google Calendar.
-
-        Filters:
-        - Events with RRULE (recurrence rule)
-        - At least min_attendees participants
-        - Events that have occurred within months_back months
-
-        Args:
-            min_attendees: Minimum number of attendees required (default: 2).
-            months_back: Only include events active within this many months (default: 3).
-
-        Returns:
-            List of CalendarEvent objects meeting the criteria.
-
-        Raises:
-            ValueError: If Calendar API request fails.
-        """
-        # Calculate time range
-        now = datetime.now(UTC)
-        time_min = now - timedelta(days=months_back * 30)
-        time_max = now + timedelta(days=90)  # Look ahead 3 months for next occurrence
-
-        events: list[CalendarEvent] = []
-        page_token: str | None = None
-
-        async with httpx.AsyncClient() as client:
+    def _pages(self, path: str, params: dict[str, str]) -> list[CalendarEvent]:
+        result: list[CalendarEvent] = []
+        with httpx.Client(timeout=30) as client:
             while True:
-                # Fetch primary calendar events
-                # singleEvents=false returns recurring event definitions with RRULE
-                params: dict[str, str | int] = {
-                    "timeMin": time_min.isoformat(),
-                    "timeMax": time_max.isoformat(),
-                    "singleEvents": "false",  # Get recurring event definitions
-                    "maxResults": 250,
-                    "orderBy": "updated",
-                }
-                if page_token:
-                    params["pageToken"] = page_token
+                response = client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers, params=params)
+                response.raise_for_status()
+                page = CalendarPage.model_validate(response.json())
+                result.extend(page.items)
+                if not page.next_page_token:
+                    return result
+                params = {**params, "pageToken": page.next_page_token}
 
-                response = await client.get(
-                    f"{CALENDAR_API_URL}/calendars/primary/events",
-                    headers={"Authorization": f"Bearer {self._access_token}"},
-                    params=params,
-                )
-
-                if response.status_code == 401:
-                    raise ValueError("Google Calendar access token expired or invalid")
-
-                if response.status_code != 200:
-                    error_msg = f"Google Calendar API error: {response.status_code}"
-                    logger.error(f"{error_msg} - {response.text}")
-                    raise ValueError(error_msg)
-
-                data = response.json()
-                items = data.get("items", [])
-
-                for item in items:
-                    event = self._filter_and_parse(item, min_attendees)
-                    if event is not None:
-                        events.append(event)
-
-                page_token = data.get("nextPageToken")
-                if not page_token:
-                    break
-
-        logger.info(f"Found {len(events)} recurring events meeting criteria")
-        return events
-
-    def _filter_and_parse(self, item: dict[str, Any], min_attendees: int) -> CalendarEvent | None:
-        """Filter and parse a Calendar API event item.
-
-        Returns None if the item should be excluded.
-        """
-        # Skip exception instances of recurring events
-        # (individual modified occurrences, not the series definition)
-        if item.get("recurringEventId"):
-            return None
-
-        event = self._parse_event(item)
-        if event is None:
-            return None
-
-        # Skip cancelled events
-        if event.status == "cancelled":
-            return None
-
-        # Must have RRULE
-        if not event.rrule:
-            return None
-
-        # Minimum attendees
-        if len(event.attendees) < min_attendees:
-            return None
-
-        return event
-
-    def _parse_event(self, item: dict[str, Any]) -> CalendarEvent | None:
-        """Parse a Calendar API event item into CalendarEvent.
-
-        Args:
-            item: Raw event data from Calendar API.
-
-        Returns:
-            CalendarEvent if valid, None if parsing fails.
-        """
-        try:
-            event_id = item.get("id", "")
-            summary = item.get("summary", "Untitled")
-
-            # Extract RRULE from recurrence array
-            recurrence = item.get("recurrence", [])
-            rrule = ""
-            for rule in recurrence:
-                if rule.startswith("RRULE:"):
-                    rrule = rule
-                    break
-
-            # Parse attendees
-            attendees_raw = item.get("attendees", [])
-            attendees: list[CalendarAttendee] = [
-                CalendarAttendee(
-                    email=a.get("email", ""),
-                    display_name=a.get("displayName"),
-                    response_status=a.get("responseStatus"),
-                )
-                for a in attendees_raw
-            ]
-
-            # Parse start datetime
-            start_data = item.get("start", {})
-            start_str = start_data.get("dateTime") or start_data.get("date")
-            if not start_str:
-                return None
-
-            # Handle both datetime and date-only formats
-            if "T" in start_str:
-                # Full datetime with timezone
-                start_datetime = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            else:
-                # Date only - assume midnight UTC
-                start_datetime = datetime.strptime(start_str, "%Y-%m-%d").replace(tzinfo=UTC)
-
-            # Get organizer
-            organizer = item.get("organizer", {})
-            organizer_email = organizer.get("email")
-
-            status = item.get("status", "confirmed")
-
-            return CalendarEvent(
-                event_id=event_id,
-                summary=summary,
-                rrule=rrule,
-                attendees=attendees,
-                start_datetime=start_datetime,
-                organizer_email=organizer_email,
-                status=status,
-            )
-
-        except Exception as e:
-            logger.warning(f"Failed to parse calendar event: {e}")
-            return None
-
-    @staticmethod
-    def parse_frequency_from_rrule(rrule: str) -> str:
-        """Extract frequency from RRULE string.
-
-        Args:
-            rrule: iCalendar RRULE string (e.g., "RRULE:FREQ=WEEKLY;BYDAY=MO").
-
-        Returns:
-            Frequency string: "weekly", "biweekly", or "monthly".
-        """
-        rrule_upper = rrule.upper()
-
-        if "FREQ=DAILY" in rrule_upper:
-            return "weekly"  # Treat daily as weekly for simplicity
-
-        if "FREQ=WEEKLY" in rrule_upper:
-            # Check for INTERVAL=2 (biweekly)
-            if "INTERVAL=2" in rrule_upper:
-                return "biweekly"
-            return "weekly"
-
-        if "FREQ=MONTHLY" in rrule_upper:
-            return "monthly"
-
-        if "FREQ=YEARLY" in rrule_upper:
-            return "monthly"  # Treat yearly as monthly for simplicity
-
-        # Default to weekly
-        return "weekly"
-
-    @staticmethod
-    def calculate_next_occurrence(rrule: str, start_datetime: datetime) -> datetime:
-        """Calculate the next occurrence based on RRULE.
-
-        This is a simplified implementation. For production, consider using
-        dateutil.rrule for full RRULE support.
-
-        Args:
-            rrule: iCalendar RRULE string.
-            start_datetime: The original start datetime of the event.
-
-        Returns:
-            The next occurrence datetime.
-        """
+    def list_recurring_masters(self) -> list[CalendarSnapshot]:
+        """Offer live recurring masters from the selected primary calendar."""
         now = datetime.now(UTC)
+        window_end = now + timedelta(days=365)
+        events = self._pages(
+            "calendars/primary/events",
+            {
+                "singleEvents": "false",
+                "maxResults": "2500",
+                "timeMin": now.isoformat(),
+                "timeMax": window_end.isoformat(),
+            },
+        )
+        return [
+            parse_snapshot(e, [], now, window_end)
+            for e in events
+            if e.recurrence and e.ical_uid and e.status != "cancelled"
+        ]
 
-        # If start is in the future, use it
-        if start_datetime > now:
-            return start_datetime
-
-        frequency = GoogleCalendarClient.parse_frequency_from_rrule(rrule)
-
-        # Simple calculation based on frequency
-        if frequency == "weekly":
-            days_since = (now - start_datetime).days
-            weeks_passed = days_since // 7
-            next_date = start_datetime + timedelta(weeks=weeks_passed + 1)
-        elif frequency == "biweekly":
-            days_since = (now - start_datetime).days
-            biweeks_passed = days_since // 14
-            next_date = start_datetime + timedelta(weeks=(biweeks_passed + 1) * 2)
-        else:  # monthly
-            # Simplified: add months by adding 30 days
-            days_since = (now - start_datetime).days
-            months_passed = days_since // 30
-            next_date = start_datetime + timedelta(days=(months_passed + 1) * 30)
-
-        return next_date
+    def snapshot(self, event_id: str, now: datetime) -> CalendarSnapshot | None:
+        """Fetch a recurring master and its instances around now."""
+        path = f"calendars/primary/events/{quote(event_id, safe='')}"
+        with httpx.Client(timeout=30) as client:
+            response = client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers)
+        if response.status_code in (404, 410):
+            return None
+        response.raise_for_status()
+        master = CalendarEvent.model_validate(response.json())
+        if master.status == "cancelled":
+            return None
+        if not master.recurrence or not master.ical_uid:
+            raise ValueError("Event is not recurring")
+        window_start, window_end = now - MIRROR_WINDOW, now + MIRROR_WINDOW
+        instances = self._pages(
+            f"{path}/instances",
+            {
+                "timeMin": window_start.isoformat(),
+                "timeMax": window_end.isoformat(),
+                "showDeleted": "true",
+                "maxResults": "2500",
+            },
+        )
+        return parse_snapshot(master, instances, window_start, window_end)

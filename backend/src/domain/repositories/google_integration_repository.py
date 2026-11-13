@@ -19,7 +19,7 @@ class GoogleIntegrationRepository(ABC):
     """
 
     @abstractmethod
-    async def create(self, integration: GoogleIntegration) -> GoogleIntegration:
+    def create(self, integration: GoogleIntegration) -> GoogleIntegration:
         """Create a new Google integration.
 
         Args:
@@ -30,7 +30,7 @@ class GoogleIntegrationRepository(ABC):
         """
 
     @abstractmethod
-    async def get_by_id(self, integration_id: UUID, user_id: UUID) -> GoogleIntegration | None:
+    def get_by_id(self, integration_id: UUID, user_id: UUID) -> GoogleIntegration | None:
         """Retrieve a Google integration by ID.
 
         Args:
@@ -42,7 +42,7 @@ class GoogleIntegrationRepository(ABC):
         """
 
     @abstractmethod
-    async def get_by_email(
+    def get_by_email(
         self,
         user_id: UUID,
         email: str,
@@ -58,7 +58,7 @@ class GoogleIntegrationRepository(ABC):
         """
 
     @abstractmethod
-    async def get_all(self, user_id: UUID) -> list[GoogleIntegration]:
+    def get_all(self, user_id: UUID) -> list[GoogleIntegration]:
         """Retrieve all Google integrations for a user.
 
         Args:
@@ -69,7 +69,7 @@ class GoogleIntegrationRepository(ABC):
         """
 
     @abstractmethod
-    async def update(self, integration: GoogleIntegration) -> GoogleIntegration:
+    def update(self, integration: GoogleIntegration) -> GoogleIntegration:
         """Update an existing Google integration.
 
         Args:
@@ -80,7 +80,7 @@ class GoogleIntegrationRepository(ABC):
         """
 
     @abstractmethod
-    async def delete(self, integration_id: UUID, user_id: UUID) -> bool:
+    def delete(self, integration_id: UUID, user_id: UUID) -> bool:
         """Delete a Google integration.
 
         Args:

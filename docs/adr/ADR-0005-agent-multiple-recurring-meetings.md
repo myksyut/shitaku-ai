@@ -2,7 +2,7 @@
 
 ## ステータス
 
-Proposed
+Superseded by [ADR-0008](ADR-0008-team-owned-meeting-series.md)。シリーズごとに参加者が異なるため、複数の定例をまたいだ集約はやめた。
 
 ## 経緯
 

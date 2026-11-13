@@ -1,8 +1,19 @@
+import logging
+from typing import cast
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from postgrest.exceptions import APIError
+from starlette.middleware import _MiddlewareFactory
+from starlette.requests import Request
+from starlette.types import ASGIApp
 
 from src.config import settings
+from src.domain.entities.series import SeriesError
 from src.presentation.api.v1.router import api_router
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -13,17 +24,27 @@ def create_app() -> FastAPI:
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
     )
 
-    # CORS設定
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.BACKEND_CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    origins = settings.BACKEND_CORS_ORIGINS
+
+    def _cors_middleware(app: ASGIApp) -> ASGIApp:
+        return CORSMiddleware(
+            app, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
+        )
+
+    app.add_middleware(cast(_MiddlewareFactory[[]], _cors_middleware))
 
     # ルーター登録
     app.include_router(api_router, prefix=settings.API_V1_STR)
+
+    @app.exception_handler(SeriesError)
+    def series_error_handler(request: Request, error: SeriesError) -> JSONResponse:
+        return JSONResponse({"detail": error.detail}, status_code=error.status)
+
+    @app.exception_handler(APIError)
+    def database_error_handler(request: Request, error: APIError) -> JSONResponse:
+        logger.warning("Database API error: code=%s message=%s details=%s", error.code, error.message, error.details)
+        code = {"P0002": 404, "42501": 403, "23503": 422, "23514": 422, "23505": 409}.get(error.code or "", 500)
+        return JSONResponse({"detail": "Database operation rejected"}, status_code=code)
 
     return app
 

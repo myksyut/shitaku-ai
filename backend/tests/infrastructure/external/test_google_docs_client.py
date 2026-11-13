@@ -1,6 +1,6 @@
 """GoogleDocsClient tests with mocked HTTP responses."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -23,8 +23,7 @@ class TestGoogleDocsClient:
         with pytest.raises(ValueError, match="access_token is required"):
             GoogleDocsClient(access_token="")
 
-    @pytest.mark.asyncio
-    async def test_get_document_content_success(self, client: GoogleDocsClient) -> None:
+    def test_get_document_content_success(self, client: GoogleDocsClient) -> None:
         """ドキュメントコンテンツを正しく取得できる"""
         # Arrange
         mock_response = MagicMock()
@@ -66,14 +65,14 @@ class TestGoogleDocsClient:
             },
         }
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.get.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = None
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.Client", return_value=mock_client):
             # Act
-            doc = await client.get_document_content("doc_001")
+            doc = client.get_document_content("doc_001")
 
         # Assert
         assert doc is not None
@@ -83,46 +82,43 @@ class TestGoogleDocsClient:
         assert "おはようございます。" in doc.body_text
         assert "鈴木 (10:01)" in doc.body_text
 
-    @pytest.mark.asyncio
-    async def test_get_document_content_not_found(self, client: GoogleDocsClient) -> None:
+    def test_get_document_content_not_found(self, client: GoogleDocsClient) -> None:
         """ドキュメントが見つからない場合はNoneを返す"""
         # Arrange
         mock_response = MagicMock()
         mock_response.status_code = 404
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.get.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = None
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.Client", return_value=mock_client):
             # Act
-            doc = await client.get_document_content("nonexistent")
+            doc = client.get_document_content("nonexistent")
 
         # Assert
         assert doc is None
 
-    @pytest.mark.asyncio
-    async def test_get_document_content_api_error(self, client: GoogleDocsClient) -> None:
+    def test_get_document_content_api_error(self, client: GoogleDocsClient) -> None:
         """APIエラー時に例外を発生させる"""
         # Arrange
         mock_response = MagicMock()
         mock_response.status_code = 403
         mock_response.json.return_value = {"error": {"message": "The caller does not have permission"}}
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.get.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = None
 
         with (
-            patch("httpx.AsyncClient", return_value=mock_client),
+            patch("httpx.Client", return_value=mock_client),
             pytest.raises(ValueError, match="Google Docs API error"),
         ):
-            await client.get_document_content("doc_001")
+            client.get_document_content("doc_001")
 
-    @pytest.mark.asyncio
-    async def test_get_document_text_success(self, client: GoogleDocsClient) -> None:
+    def test_get_document_text_success(self, client: GoogleDocsClient) -> None:
         """テキストコンテンツのみを取得できる"""
         # Arrange
         mock_response = MagicMock()
@@ -133,34 +129,33 @@ class TestGoogleDocsClient:
             "body": {"content": [{"paragraph": {"elements": [{"textRun": {"content": "テストテキスト\n"}}]}}]},
         }
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.get.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = None
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.Client", return_value=mock_client):
             # Act
-            text = await client.get_document_text("doc_001")
+            text = client.get_document_text("doc_001")
 
         # Assert
         assert text is not None
         assert "テストテキスト" in text
 
-    @pytest.mark.asyncio
-    async def test_get_document_text_not_found(self, client: GoogleDocsClient) -> None:
+    def test_get_document_text_not_found(self, client: GoogleDocsClient) -> None:
         """ドキュメントが見つからない場合はNoneを返す"""
         # Arrange
         mock_response = MagicMock()
         mock_response.status_code = 404
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.get.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = None
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.Client", return_value=mock_client):
             # Act
-            text = await client.get_document_text("nonexistent")
+            text = client.get_document_text("nonexistent")
 
         # Assert
         assert text is None

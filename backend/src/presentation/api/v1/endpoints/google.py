@@ -4,7 +4,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
-from supabase import Client
 
 from src.application.use_cases.google_auth_use_cases import (
     DeleteGoogleIntegrationUseCase,
@@ -15,7 +14,7 @@ from src.application.use_cases.google_auth_use_cases import (
     SyncProviderTokenUseCase,
 )
 from src.config import settings
-from src.infrastructure.external.supabase_client import get_supabase_client
+from src.infrastructure.external.supabase_client import UserClient, get_supabase_client
 from src.infrastructure.repositories.google_integration_repository_impl import (
     GoogleIntegrationRepositoryImpl,
 )
@@ -37,7 +36,7 @@ router = APIRouter(prefix="/google", tags=["google"])
 
 
 def get_repository(
-    client: Client = Depends(get_user_supabase_client),
+    client: UserClient = Depends(get_user_supabase_client),
 ) -> GoogleIntegrationRepositoryImpl:
     """Get Google integration repository instance with user context."""
     return GoogleIntegrationRepositoryImpl(client)
@@ -58,7 +57,7 @@ def get_callback_repository() -> GoogleIntegrationRepositoryImpl:
 
 
 def get_oauth_state_repository(
-    client: Client = Depends(get_user_supabase_client),
+    client: UserClient = Depends(get_user_supabase_client),
 ) -> OAuthStateRepositoryImpl:
     """Get OAuth state repository instance with user context."""
     return OAuthStateRepositoryImpl(client)
@@ -79,7 +78,7 @@ def get_callback_oauth_state_repository() -> OAuthStateRepositoryImpl:
 
 
 @router.get("/auth", response_model=GoogleOAuthStartResponse)
-async def start_google_oauth(
+def start_google_oauth(
     user_id: UUID = Depends(get_current_user_id),
     oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_oauth_state_repository),
     redirect_origin: str | None = Query(None, description="callback後のリダイレクト先オリジン"),
@@ -96,7 +95,7 @@ async def start_google_oauth(
 
     use_case = StartGoogleOAuthUseCase(oauth_state_repository)
     try:
-        result = await use_case.execute(user_id, redirect_origin=validated_origin)
+        result = use_case.execute(user_id, redirect_origin=validated_origin)
         return GoogleOAuthStartResponse(authorize_url=result.authorize_url)
     except ValueError as e:
         raise HTTPException(
@@ -106,7 +105,7 @@ async def start_google_oauth(
 
 
 @router.get("/callback")
-async def google_oauth_callback(
+def google_oauth_callback(
     code: str = Query(...),
     state: str = Query(...),
     error: str | None = Query(None),
@@ -137,7 +136,7 @@ async def google_oauth_callback(
     use_case = HandleGoogleCallbackUseCase(repository, oauth_state_repository)
 
     try:
-        integration, oauth_state = await use_case.execute(code=code, state=state)
+        integration, oauth_state = use_case.execute(code=code, state=state)
         # stateに保存されたredirect_originを使用、なければフォールバック
         frontend_url = oauth_state.redirect_origin or fallback_url
         return RedirectResponse(
@@ -152,7 +151,7 @@ async def google_oauth_callback(
 
 
 @router.get("/integrations", response_model=list[GoogleIntegrationResponse])
-async def get_google_integrations(
+def get_google_integrations(
     user_id: UUID = Depends(get_current_user_id),
     repository: GoogleIntegrationRepositoryImpl = Depends(get_repository),
 ) -> list[GoogleIntegrationResponse]:
@@ -162,7 +161,7 @@ async def get_google_integrations(
         List of GoogleIntegrationResponse.
     """
     use_case = GetGoogleIntegrationsUseCase(repository)
-    integrations = await use_case.execute(user_id)
+    integrations = use_case.execute(user_id)
     return [
         GoogleIntegrationResponse(
             id=i.id,
@@ -176,14 +175,14 @@ async def get_google_integrations(
 
 
 @router.delete("/integrations/{integration_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_google_integration(
+def delete_google_integration(
     integration_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
     repository: GoogleIntegrationRepositoryImpl = Depends(get_repository),
 ) -> None:
     """Google連携を削除する."""
     use_case = DeleteGoogleIntegrationUseCase(repository)
-    deleted = await use_case.execute(integration_id, user_id)
+    deleted = use_case.execute(integration_id, user_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -192,7 +191,7 @@ async def delete_google_integration(
 
 
 @router.get("/auth/additional-scopes", response_model=GoogleOAuthStartResponse)
-async def start_additional_scopes_oauth(
+def start_additional_scopes_oauth(
     integration_id: UUID = Query(..., description="連携ID"),
     user_id: UUID = Depends(get_current_user_id),
     repository: GoogleIntegrationRepositoryImpl = Depends(get_repository),
@@ -220,7 +219,7 @@ async def start_additional_scopes_oauth(
 
     use_case = StartAdditionalScopesUseCase(repository, oauth_state_repository)
     try:
-        result = await use_case.execute(user_id, integration_id, redirect_origin=validated_origin)
+        result = use_case.execute(user_id, integration_id, redirect_origin=validated_origin)
         return GoogleOAuthStartResponse(authorize_url=result.authorize_url)
     except ValueError as e:
         raise HTTPException(
@@ -230,7 +229,7 @@ async def start_additional_scopes_oauth(
 
 
 @router.post("/sync-token", response_model=SyncProviderTokenResponse)
-async def sync_provider_token(
+def sync_provider_token(
     request: SyncProviderTokenRequest,
     user_id: UUID = Depends(get_current_user_id),
     repository: GoogleIntegrationRepositoryImpl = Depends(get_repository),
@@ -249,7 +248,7 @@ async def sync_provider_token(
         SyncProviderTokenResponse.
     """
     use_case = SyncProviderTokenUseCase(repository)
-    result = await use_case.execute(
+    result = use_case.execute(
         user_id=user_id,
         email=request.email,
         provider_refresh_token=request.provider_refresh_token,

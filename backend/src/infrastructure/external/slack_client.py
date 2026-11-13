@@ -6,7 +6,7 @@ Provides methods for interacting with Slack workspace data.
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -124,7 +124,7 @@ class SlackClient:
             params: dict[str, str | int] = {
                 "channel": channel_id,
                 "oldest": str(oldest.timestamp()),
-                "limit": 1000,
+                "limit": 100,
             }
             if latest:
                 params["latest"] = str(latest.timestamp())
@@ -144,7 +144,7 @@ class SlackClient:
                             ts=ts,
                             user_name=user_name,
                             text=msg.get("text", ""),
-                            posted_at=datetime.fromtimestamp(float(ts)),
+                            posted_at=datetime.fromtimestamp(float(ts), tz=UTC),
                             thread_ts=msg.get("thread_ts"),
                             reply_count=int(msg.get("reply_count", 0)),
                         )
@@ -154,58 +154,6 @@ class SlackClient:
 
         except SlackApiError as e:
             logger.error("Failed to get messages: %s", e)
-            raise
-
-    def get_thread_replies(
-        self,
-        channel_id: str,
-        thread_ts: str,
-    ) -> list[SlackMessageData]:
-        """スレッドの返信メッセージを取得する.
-
-        Args:
-            channel_id: Slack channel ID.
-            thread_ts: Parent message timestamp (thread root).
-
-        Returns:
-            List of SlackMessageData objects (replies only, excludes parent).
-
-        Raises:
-            SlackApiError: If API call fails.
-        """
-        try:
-            result = self.client.conversations_replies(
-                channel=channel_id,
-                ts=thread_ts,
-                limit=1000,
-            )
-
-            messages: list[SlackMessageData] = []
-            raw_messages: list[dict[str, str]] = result.get("messages", [])
-
-            for msg in raw_messages:
-                # Skip the parent message (first message in thread)
-                if msg.get("ts") == thread_ts:
-                    continue
-
-                if msg.get("type") == "message" and "subtype" not in msg:
-                    user_name = self._get_user_name(msg.get("user", "unknown"))
-                    ts = msg["ts"]
-                    messages.append(
-                        SlackMessageData(
-                            ts=ts,
-                            user_name=user_name,
-                            text=msg.get("text", ""),
-                            posted_at=datetime.fromtimestamp(float(ts)),
-                            thread_ts=msg.get("thread_ts"),
-                            reply_count=0,
-                        )
-                    )
-
-            return messages
-
-        except SlackApiError as e:
-            logger.error("Failed to get thread replies: %s", e)
             raise
 
     def _get_user_name(self, user_id: str) -> str:
@@ -230,15 +178,3 @@ class SlackClient:
             return name
         except SlackApiError:
             return user_id
-
-    def verify_token(self) -> bool:
-        """トークンの有効性を確認する.
-
-        Returns:
-            True if token is valid, False otherwise.
-        """
-        try:
-            self.client.auth_test()
-            return True
-        except SlackApiError:
-            return False

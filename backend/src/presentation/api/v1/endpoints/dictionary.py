@@ -1,139 +1,58 @@
-"""Dictionary API endpoints."""
-
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 
-from src.application.use_cases.dictionary_use_cases import (
-    CreateDictionaryEntryUseCase,
-    DeleteDictionaryEntryUseCase,
-    GetDictionaryEntriesUseCase,
-    GetDictionaryEntryUseCase,
-    UpdateDictionaryEntryUseCase,
-)
-from src.domain.entities.dictionary_entry import DictionaryCategory, DictionaryEntry
-from src.infrastructure.external.supabase_client import get_supabase_client
-from src.infrastructure.repositories.dictionary_repository_impl import (
-    DictionaryRepositoryImpl,
-)
-from src.presentation.api.v1.dependencies import get_current_user_id
-from src.presentation.schemas.dictionary import (
-    DictionaryCategoryEnum,
-    DictionaryEntryCreate,
-    DictionaryEntryResponse,
-    DictionaryEntryUpdate,
-)
+from src.application.use_cases.dictionary_use_cases import DictionaryUseCases
+from src.domain.entities.series import CreatorAccess, MemberAccess
+from src.infrastructure.external.supabase_client import UserClient
+from src.infrastructure.repositories.dictionary_repository_impl import DictionaryRepositoryImpl
+from src.presentation.api.v1.dependencies import creator_access, get_user_supabase_client, member_access
+from src.presentation.schemas.dictionary import DictionaryEntryCreate, DictionaryEntryUpdate, DictionaryEntryView
 
-router = APIRouter(prefix="/dictionary", tags=["dictionary"])
+router = APIRouter(prefix="/series/{series_id}/dictionary", tags=["dictionary"])
 
 
-def _convert_category(category: DictionaryCategory | None) -> DictionaryCategoryEnum | None:
-    """Convert domain category literal to schema enum."""
-    if category is None:
-        return None
-    return DictionaryCategoryEnum(category)
+def get_dictionary(client: UserClient = Depends(get_user_supabase_client)) -> DictionaryUseCases:
+    """Use the caller's JWT for shared vocabulary persistence."""
+    return DictionaryUseCases(DictionaryRepositoryImpl(client))
 
 
-def _entry_to_response(entry: DictionaryEntry) -> DictionaryEntryResponse:
-    """Convert DictionaryEntry entity to response schema."""
-    return DictionaryEntryResponse(
-        id=entry.id,
-        agent_id=entry.agent_id,
-        canonical_name=entry.canonical_name,
-        category=_convert_category(entry.category),
-        aliases=entry.aliases,
-        description=entry.description,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
+@router.get("")
+def list_entries(
+    access: MemberAccess = Depends(member_access), use_cases: DictionaryUseCases = Depends(get_dictionary)
+) -> list[DictionaryEntryView]:
+    """Read the series' shared vocabulary."""
+    return [DictionaryEntryView.model_validate(e) for e in use_cases.list_entries(access)]
+
+
+@router.post("", status_code=201)
+def create_entry(
+    request: DictionaryEntryCreate,
+    access: CreatorAccess = Depends(creator_access),
+    use_cases: DictionaryUseCases = Depends(get_dictionary),
+) -> DictionaryEntryView:
+    """Create a series-scoped vocabulary entry."""
+    return DictionaryEntryView.model_validate(
+        use_cases.create(access, request.canonical_name, request.category, request.aliases, request.description)
     )
 
 
-def get_repository() -> DictionaryRepositoryImpl:
-    """Get dictionary repository instance."""
-    client = get_supabase_client()
-    if client is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database service unavailable",
-        )
-    return DictionaryRepositoryImpl(client)
-
-
-@router.post("", response_model=DictionaryEntryResponse, status_code=status.HTTP_201_CREATED)
-async def create_dictionary_entry(
-    data: DictionaryEntryCreate,
-    user_id: UUID = Depends(get_current_user_id),
-    repository: DictionaryRepositoryImpl = Depends(get_repository),
-) -> DictionaryEntryResponse:
-    """Create a new dictionary entry."""
-    use_case = CreateDictionaryEntryUseCase(repository)
-    try:
-        entry = await use_case.execute(
-            user_id=user_id,
-            canonical_name=data.canonical_name,
-            description=data.description,
-        )
-        return _entry_to_response(entry)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
-
-
-@router.get("", response_model=list[DictionaryEntryResponse])
-async def get_dictionary_entries(
-    user_id: UUID = Depends(get_current_user_id),
-    repository: DictionaryRepositoryImpl = Depends(get_repository),
-) -> list[DictionaryEntryResponse]:
-    """Get all dictionary entries for the authenticated user."""
-    use_case = GetDictionaryEntriesUseCase(repository)
-    entries = await use_case.execute(user_id)
-    return [_entry_to_response(e) for e in entries]
-
-
-@router.get("/{entry_id}", response_model=DictionaryEntryResponse)
-async def get_dictionary_entry(
+@router.put("/{entry_id}")
+def update_entry(
     entry_id: UUID,
-    user_id: UUID = Depends(get_current_user_id),
-    repository: DictionaryRepositoryImpl = Depends(get_repository),
-) -> DictionaryEntryResponse:
-    """Get a specific dictionary entry."""
-    use_case = GetDictionaryEntryUseCase(repository)
-    entry = await use_case.execute(entry_id, user_id)
-    if not entry:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
-    return _entry_to_response(entry)
+    request: DictionaryEntryUpdate,
+    access: CreatorAccess = Depends(creator_access),
+    use_cases: DictionaryUseCases = Depends(get_dictionary),
+) -> DictionaryEntryView:
+    """Apply only explicitly supplied vocabulary changes."""
+    return DictionaryEntryView.model_validate(use_cases.update(access, entry_id, request.changes()))
 
 
-@router.put("/{entry_id}", response_model=DictionaryEntryResponse)
-async def update_dictionary_entry(
+@router.delete("/{entry_id}", status_code=204)
+def delete_entry(
     entry_id: UUID,
-    data: DictionaryEntryUpdate,
-    user_id: UUID = Depends(get_current_user_id),
-    repository: DictionaryRepositoryImpl = Depends(get_repository),
-) -> DictionaryEntryResponse:
-    """Update a dictionary entry."""
-    use_case = UpdateDictionaryEntryUseCase(repository)
-    try:
-        entry = await use_case.execute(
-            entry_id=entry_id,
-            user_id=user_id,
-            canonical_name=data.canonical_name,
-            description=data.description,
-        )
-        if not entry:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
-        return _entry_to_response(entry)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
-
-
-@router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_dictionary_entry(
-    entry_id: UUID,
-    user_id: UUID = Depends(get_current_user_id),
-    repository: DictionaryRepositoryImpl = Depends(get_repository),
+    access: CreatorAccess = Depends(creator_access),
+    use_cases: DictionaryUseCases = Depends(get_dictionary),
 ) -> None:
-    """Delete a dictionary entry."""
-    use_case = DeleteDictionaryEntryUseCase(repository)
-    deleted = await use_case.execute(entry_id, user_id)
-    if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+    """Delete only the creator's selected series entry."""
+    use_cases.delete(access, entry_id)

@@ -2,174 +2,74 @@
 
 ## 概要
 
-Shitaku.ai MVPにおけるRow Level Security（RLS）ポリシーの設計パターンを定義する。
-全テーブルは`auth.users(id)`をUUIDで参照し、`auth.uid()`関数でユーザーを識別する。
+Shitaku.ai の RLS は2つのパターンだけで書く。どちらを使うかは、行の持ち主で決まる。
 
-## 基本原則
+| 持ち主 | パターン | テーブル |
+|-------|---------|---------|
+| 定例シリーズ | シリーズ参加者 | `series`, `series_attendees`, `occurrences`, `agenda_topics`, `memory_items`, `knowledge`, `agendas`, `dictionary_entries` |
+| ユーザー | 本人のみ | `google_integrations`, `slack_integrations`, `oauth_states` |
 
-1. **全テーブルでRLSを有効化**: `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`
-2. **ユーザー分離**: 各ユーザーは自分のデータのみアクセス可能
-3. **UUID型統一**: `user_id UUID NOT NULL REFERENCES auth.users(id)`
-4. **CASCADE削除**: ユーザー削除時に関連データも削除
+背景は [ADR-0008](../adr/ADR-0008-team-owned-meeting-series.md) と [設計書](./team-owned-meeting-series.md)。
 
-## RLSポリシーパターン
+## パターン1: シリーズ参加者
 
-### パターン1: 直接所有（Direct Ownership）
+参加者の定義は `public.my_series_roles()` だけ。呼び出したユーザーのロールを `(series_id, role)` で返す。`role` は `creator` か `member`。
 
-テーブルが直接`user_id`カラムを持つ場合に使用。
+- `creator`: `series.created_by = auth.uid()`
+- `member`: `series_attendees.email` が、呼び出し元の Google 確認済み `auth.identities` のメールと一致する
+
+ポリシーは「参加者が読む」「作成者が書く」の2本を基本にする。
 
 ```sql
--- テーブル定義
-CREATE TABLE public.{table_name} (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    -- ... other columns
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+create policy {table}_read_members on public.{table} for select to authenticated
+  using (series_id in (select r.series_id from public.my_series_roles() r));
 
--- RLS有効化
-ALTER TABLE public.{table_name} ENABLE ROW LEVEL SECURITY;
-
--- ポリシー定義（全操作を1つのポリシーで制御）
-CREATE POLICY "Users can manage own {table_name}" ON public.{table_name}
-    FOR ALL USING (auth.uid() = user_id);
+create policy {table}_write_creator on public.{table} for all to authenticated
+  using      (series_id in (select r.series_id from public.my_series_roles() r where r.role = 'creator'))
+  with check (series_id in (select r.series_id from public.my_series_roles() r where r.role = 'creator'));
 ```
 
-**適用テーブル:**
-| テーブル | 説明 |
+`my_series_roles()` は引数のない副問い合わせで、文ごとに1回だけ評価される。SECURITY DEFINER なので、ポリシーから呼んでも再帰しない。
+
+### 参加者が書ける例外
+
+| 書き込み | 方法 |
 |---------|------|
-| `agents` | MTGエージェント |
-| `dictionary_entries` | 辞書エントリ |
-| `meeting_notes` | 議事録 |
-| `slack_integrations` | Slack連携 |
-| `agendas` | アジェンダ |
+| 議題の投稿 | `agenda_topics` の INSERT ポリシー。`submitted_by = auth.uid()` かつ参加者で、未来のキャンセルされていない回に限る |
+| 自分の議題の取り下げ | `agenda_topics` の DELETE ポリシー。投稿者本人または作成者 |
+| アクションアイテムの解決状態 | `set_memory_item_resolution(item_id, resolution)`（SECURITY DEFINER）。参加者はアクションアイテムだけ、作成者は全種類 |
 
-### パターン2: 親テーブル経由（Parent Lookup）
+### カレンダー由来のデータ
 
-テーブルが親テーブルを介してユーザーに紐づく場合に使用。
+`series` の作成、カレンダー由来の列（`ical_uid`, `creator_event_id`, `title`, `rrule`, `calendar_synced_at`, `calendar_sync_error`）、`series_attendees`、`occurrences` には、`authenticated` への書き込み GRANT を与えない。書くのは `SeriesCalendarMirror`（service role）だけ。作成者の UPDATE は列単位の GRANT で設定列（説明、参照件数、Slack と Google の連携先、選んだチャンネル）に限る。連携先は下の複合外部キーで作成者本人の行に限られる。
+
+### 資格情報の参照
+
+シリーズから作成者の連携を参照するときは、複合外部キーで作成者本人の行に限る。
 
 ```sql
--- テーブル定義
-CREATE TABLE public.{child_table} (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    {parent_id} UUID NOT NULL REFERENCES public.{parent_table}(id) ON DELETE CASCADE,
-    -- ... other columns
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- RLS有効化
-ALTER TABLE public.{child_table} ENABLE ROW LEVEL SECURITY;
-
--- ポリシー定義（親テーブル経由でユーザーを確認）
-CREATE POLICY "Users can manage own {child_table}" ON public.{child_table}
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.{parent_table}
-            WHERE id = {parent_id} AND user_id = auth.uid()
-        )
-    );
+constraint series_google_owned_by_creator foreign key (google_integration_id, created_by)
+  references public.google_integrations (id, user_id) on delete set null (google_integration_id)
 ```
 
-**適用テーブル:**
-| テーブル | 親テーブル | 参照カラム |
-|---------|-----------|-----------|
-| `dictionary_variants` | `dictionary_entries` | `entry_id` |
-| `slack_messages` | `slack_integrations` | `integration_id` |
+外部キーのチェックには RLS が効かないため、この制約がないと他人の連携 ID を結び付けられる。
 
-## テーブル別RLSポリシー一覧
+## パターン2: 本人のみ
 
-### agents
 ```sql
-ALTER TABLE public.agents ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage own agents" ON public.agents
-    FOR ALL USING (auth.uid() = user_id);
+create policy "Users can manage own {table}" on public.{table}
+  for all using (auth.uid() = user_id);
 ```
 
-### dictionary_entries
-```sql
-ALTER TABLE public.dictionary_entries ENABLE ROW LEVEL SECURITY;
+参加者は作成者の資格情報を読めない。作成者の資格情報は、作成者本人の操作か `SeriesCalendarMirror` だけが使う。
 
-CREATE POLICY "Users can manage own dictionary entries" ON public.dictionary_entries
-    FOR ALL USING (auth.uid() = user_id);
-```
+## SECURITY DEFINER 関数の決まり
 
-### dictionary_variants
-```sql
-ALTER TABLE public.dictionary_variants ENABLE ROW LEVEL SECURITY;
+- `set search_path = ''` にし、参照はすべてスキーマ名付きで書く。
+- `public` と `anon` から EXECUTE を取り消し、必要なロールにだけ与える。
+- 呼び出し元のロールを返す関数は、引数を取らない。他人の情報を引けるようにしない。
+- service role 専用の関数（カレンダーのスナップショット反映など）は `authenticated` から EXECUTE を取り消す。
 
-CREATE POLICY "Users can manage own variants" ON public.dictionary_variants
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.dictionary_entries
-            WHERE id = entry_id AND user_id = auth.uid()
-        )
-    );
-```
+## 検証
 
-### meeting_notes
-```sql
-ALTER TABLE public.meeting_notes ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage own meeting notes" ON public.meeting_notes
-    FOR ALL USING (auth.uid() = user_id);
-```
-
-### slack_integrations
-```sql
-ALTER TABLE public.slack_integrations ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage own slack integrations" ON public.slack_integrations
-    FOR ALL USING (auth.uid() = user_id);
-```
-
-### slack_messages
-```sql
-ALTER TABLE public.slack_messages ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage own slack messages" ON public.slack_messages
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.slack_integrations
-            WHERE id = integration_id AND user_id = auth.uid()
-        )
-    );
-```
-
-### agendas
-```sql
-ALTER TABLE public.agendas ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage own agendas" ON public.agendas
-    FOR ALL USING (auth.uid() = user_id);
-```
-
-## 注意事項
-
-### auth.uid()の動作条件
-- `auth.uid()`はSupabase Auth経由のアクセスでのみ機能する
-- サービスロールキー使用時はRLSをバイパス可能
-- バックエンドからの直接DB接続時は、適切なJWT設定が必要
-
-### パフォーマンス考慮
-- パターン2（親テーブル経由）は`EXISTS`サブクエリを使用するため、インデックスが重要
-- 親テーブルの`id`と`user_id`にインデックスを設定すること
-
-### FOR ALL vs 個別操作
-- MVPでは`FOR ALL`で全操作を統一制御
-- 将来的に読み取り専用共有などが必要な場合は、`FOR SELECT`/`FOR INSERT`等に分離
-
-## マイグレーション作成時のチェックリスト
-
-新規テーブル作成時は以下を確認:
-
-- [ ] `user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE`（パターン1の場合）
-- [ ] 親テーブルへの外部キー`ON DELETE CASCADE`（パターン2の場合）
-- [ ] `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`
-- [ ] `CREATE POLICY`でRLSポリシー定義
-- [ ] 必要なインデックス作成（`user_id`、`{parent_id}`）
-
-## 参考資料
-
-- [Supabase RLS Best Practices](https://supabase.com/docs/guides/troubleshooting/rls-performance-and-best-practices-Z5Jjwv)
-- [Design Doc: MVP Core Features](./mvp-core-features.md)
+`make test-rls` が、ローカルの Supabase で実ユーザーと実 JWT を使って全テーブルと全 RPC を確かめる（`backend/tests/rls/`）。新しいテーブルを足したら、作成者・参加者・部外者の3人で SELECT / INSERT / UPDATE / DELETE を確かめるテストを足す。

@@ -1,12 +1,8 @@
-"""AWS Bedrock client module for Claude and Titan Embeddings invocations.
-
-Uses API Key (Bearer Token) authentication instead of IAM credentials.
-"""
-
 import json
 import logging
 
 import httpx
+from pydantic import BaseModel, Field
 
 from src.config import settings
 from src.infrastructure.external.llm_logger import log_llm_invocation
@@ -15,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 # Model IDs (using system-defined inference profiles)
 CLAUDE_HAIKU_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-TITAN_EMBEDDINGS_MODEL_ID = "amazon.titan-embed-text-v2:0"
 
 
 def _get_headers() -> dict[str, str] | None:
@@ -80,48 +75,6 @@ def invoke_claude(prompt: str, max_tokens: int = 512) -> str | None:
         return None
 
 
-def invoke_embeddings(text: str, dimensions: int = 1024) -> list[float] | None:
-    """Invoke Titan Embeddings V2 model via Bedrock.
-
-    Args:
-        text: The input text to generate embeddings for.
-        dimensions: The dimension of the output embeddings (256, 512, or 1024).
-
-    Returns:
-        List of embedding floats if successful, None otherwise.
-    """
-    headers = _get_headers()
-    if headers is None:
-        return None
-
-    if dimensions not in (256, 512, 1024):
-        return None
-
-    request_body = {
-        "inputText": text,
-        "dimensions": dimensions,
-        "normalize": True,
-    }
-
-    url = f"{settings.AWS_BEDROCK_ENDPOINT}/model/{TITAN_EMBEDDINGS_MODEL_ID}/invoke"
-
-    try:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(url, headers=headers, json=request_body)
-            response.raise_for_status()
-
-            response_body = response.json()
-            embedding = response_body.get("embedding")
-
-            if isinstance(embedding, list):
-                return [float(x) for x in embedding]
-
-            return None
-
-    except (httpx.HTTPError, json.JSONDecodeError, KeyError):
-        return None
-
-
 def is_bedrock_configured() -> bool:
     """Check if Bedrock API key is configured.
 
@@ -129,3 +82,45 @@ def is_bedrock_configured() -> bool:
         True if AWS_BEARER_TOKEN_BEDROCK is set, False otherwise.
     """
     return settings.AWS_BEARER_TOKEN_BEDROCK is not None
+
+
+class ToolBlock(BaseModel):
+    """A Claude response content block."""
+
+    type: str
+    name: str | None = None
+    input: dict[str, object] | None = None
+
+
+class ToolResponse(BaseModel):
+    """Claude content blocks."""
+
+    content: list[ToolBlock] = Field(default_factory=list)
+
+
+def invoke_claude_tool(prompt: str, tool: dict[str, object], max_tokens: int = 4096) -> dict[str, object] | None:
+    """Force one named tool and return only its structured input."""
+    headers = _get_headers()
+    if headers is None:
+        return None
+    body = {
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+        "tools": [tool],
+        "tool_choice": {"type": "tool", "name": tool["name"]},
+    }
+    try:
+        with httpx.Client(timeout=30) as client:
+            response = client.post(
+                f"{settings.AWS_BEDROCK_ENDPOINT}/model/{CLAUDE_HAIKU_MODEL_ID}/invoke", headers=headers, json=body
+            )
+            response.raise_for_status()
+        parsed = ToolResponse.model_validate(response.json())
+        result = next((b.input for b in parsed.content if b.type == "tool_use" and b.name == tool["name"]), None)
+        log_llm_invocation(prompt, json.dumps(result, ensure_ascii=False) if result is not None else None)
+        return result
+    except (httpx.HTTPError, ValueError) as error:
+        logger.error("Bedrock tool invocation failed: %s", error)
+        log_llm_invocation(prompt, None)
+        return None

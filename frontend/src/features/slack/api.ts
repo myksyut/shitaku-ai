@@ -1,5 +1,5 @@
 import { apiClient } from '../../lib/api-client'
-import type { SlackChannel, SlackIntegration, SlackMessage, SlackOAuthStartResponse } from './types'
+import type { SlackChannel, SlackIntegration, SlackOAuthStartResponse } from './types'
 
 const BASE_PATH = '/api/v1/slack'
 
@@ -20,19 +20,4 @@ export async function deleteSlackIntegration(integrationId: string): Promise<voi
 
 export async function getSlackChannels(integrationId: string): Promise<SlackChannel[]> {
   return apiClient<SlackChannel[]>(`${BASE_PATH}/integrations/${integrationId}/channels`)
-}
-
-export async function getSlackMessages(
-  integrationId: string,
-  channelId: string,
-  oldest: string,
-  latest?: string,
-): Promise<SlackMessage[]> {
-  const params = new URLSearchParams({ oldest })
-  if (latest) {
-    params.append('latest', latest)
-  }
-  return apiClient<SlackMessage[]>(
-    `${BASE_PATH}/integrations/${integrationId}/channels/${channelId}/messages?${params.toString()}`,
-  )
 }
