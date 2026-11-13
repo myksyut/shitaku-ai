@@ -18,13 +18,24 @@ export function SeriesSettingsPanel({ series }: { series: SeriesDetail }) {
   const [integrationId, setIntegrationId] = useState(series.slack?.integration_id ?? '')
   const [channelIds, setChannelIds] = useState(series.slack?.channels.map((channel) => channel.id) ?? [])
   const channels = useSlackChannels(integrationId)
+  const minutes = Number(minutesCount)
+  const days = Number(messageDays)
+  const minutesError =
+    minutesCount.trim() && Number.isInteger(minutes) && minutes >= 0 && minutes <= 10
+      ? undefined
+      : '参照する議事録の件数は0〜10の整数で入力してください'
+  const messageDaysError =
+    messageDays.trim() && Number.isInteger(days) && days >= 1 && days <= 30
+      ? undefined
+      : 'Slackの参照日数は1〜30の整数で入力してください'
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (minutesError || messageDaysError) return
     save.mutate({
       description: description.trim() || null,
-      minutes_count: Number(minutesCount),
-      slack_message_days: Number(messageDays),
+      minutes_count: minutes,
+      slack_message_days: days,
       slack: integrationId ? { integration_id: integrationId, channel_ids: channelIds } : null,
     })
   }
@@ -47,18 +58,24 @@ export function SeriesSettingsPanel({ series }: { series: SeriesDetail }) {
               label="参照する議事録の件数"
               type="number"
               min={0}
+              max={10}
               required
               value={minutesCount}
               onChange={(event) => setMinutesCount(event.target.value)}
+              error={minutesError}
+              aria-invalid={!!minutesError}
             />
             <Input
               id="slack-days"
               label="Slackの参照日数"
               type="number"
-              min={0}
+              min={1}
+              max={30}
               required
               value={messageDays}
               onChange={(event) => setMessageDays(event.target.value)}
+              error={messageDaysError}
+              aria-invalid={!!messageDaysError}
             />
           </div>
           <div className="space-y-2">
@@ -121,7 +138,7 @@ export function SeriesSettingsPanel({ series }: { series: SeriesDetail }) {
           )}
           {save.isError && <ErrorNotice>設定を保存できませんでした。入力内容を確認してください</ErrorNotice>}
           {save.isSuccess && <output>設定を保存しました</output>}
-          <Button type="submit" isLoading={save.isPending}>
+          <Button type="submit" isLoading={save.isPending} disabled={!!minutesError || !!messageDaysError}>
             設定を保存
           </Button>
         </form>
