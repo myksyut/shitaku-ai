@@ -2,17 +2,17 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.knowledge import Knowledge, KnowledgeDraft
 from src.domain.entities.series import CreatorAccess
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class KnowledgeRepositoryImpl(KnowledgeRepository):
     """Read and write only the explicitly selected series."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def for_occurrences(self, series_id: UUID, occurrence_ids: Sequence[UUID]) -> list[Knowledge]:

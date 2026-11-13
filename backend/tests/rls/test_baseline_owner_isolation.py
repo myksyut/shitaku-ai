@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 import pytest
-from supabase import Client
 
+from src.infrastructure.external.supabase_client import ServiceClient
 from tests.rls.conftest import RlsUser
 
 
@@ -15,7 +15,7 @@ class OwnedRow:
 
 
 @pytest.fixture(params=("google_integrations", "slack_integrations", "oauth_states"))
-def owned_row(request: pytest.FixtureRequest, service_client: Client, creator: RlsUser) -> OwnedRow:
+def owned_row(request: pytest.FixtureRequest, service_client: ServiceClient, creator: RlsUser) -> OwnedRow:
     row_id = str(uuid4())
     if request.param == "google_integrations":
         service_client.table("google_integrations").insert(

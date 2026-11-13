@@ -10,6 +10,7 @@ from src.domain.entities.google_integration import GoogleIntegration
 from src.infrastructure.repositories.google_integration_repository_impl import (
     GoogleIntegrationRepositoryImpl,
 )
+from tests.client_fakes import as_user_client
 
 
 class TestGoogleIntegrationRepositoryImpl:
@@ -23,7 +24,7 @@ class TestGoogleIntegrationRepositoryImpl:
     @pytest.fixture
     def repository(self, mock_supabase_client: MagicMock) -> GoogleIntegrationRepositoryImpl:
         """リポジトリインスタンスを返す"""
-        return GoogleIntegrationRepositoryImpl(mock_supabase_client)
+        return GoogleIntegrationRepositoryImpl(as_user_client(mock_supabase_client))
 
     @pytest.fixture
     def sample_integration(self) -> GoogleIntegration:
@@ -287,7 +288,7 @@ class TestToEntity:
     @pytest.fixture
     def repository(self, mock_supabase_client: MagicMock) -> GoogleIntegrationRepositoryImpl:
         """リポジトリインスタンスを返す"""
-        return GoogleIntegrationRepositoryImpl(mock_supabase_client)
+        return GoogleIntegrationRepositoryImpl(as_user_client(mock_supabase_client))
 
     def test_to_entity_with_all_fields(self, repository: GoogleIntegrationRepositoryImpl) -> None:
         """全フィールドが正しく変換される"""

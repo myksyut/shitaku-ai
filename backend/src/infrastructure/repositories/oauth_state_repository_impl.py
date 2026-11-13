@@ -9,9 +9,9 @@ from datetime import datetime
 
 from postgrest.types import JSON
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.oauth_state import OAuthState
+from src.infrastructure.external.supabase_client import ServiceClient, UserClient
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class OAuthStateRepositoryImpl:
     - Callback時: service_role（RLSバイパス）
     """
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient | ServiceClient) -> None:
         """リポジトリを初期化する.
 
         Args:

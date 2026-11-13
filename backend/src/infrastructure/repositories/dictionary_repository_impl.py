@@ -1,17 +1,17 @@
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.dictionary_entry import DictionaryEntry
 from src.domain.entities.series import CreatorAccess, SeriesError
 from src.domain.repositories.dictionary_repository import DictionaryRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class DictionaryRepositoryImpl(DictionaryRepository):
     """Supabase vocabulary queries bounded by series ID."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def list_entries(self, series_id: UUID) -> list[DictionaryEntry]:

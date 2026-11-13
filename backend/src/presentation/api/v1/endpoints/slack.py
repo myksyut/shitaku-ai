@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from slack_sdk.errors import SlackApiError
-from supabase import Client
 
 from src.application.use_cases.slack_use_cases import (
     DeleteSlackIntegrationUseCase,
@@ -16,7 +15,7 @@ from src.application.use_cases.slack_use_cases import (
 )
 from src.config import settings
 from src.infrastructure.external.series_credentials import SeriesCredentials
-from src.infrastructure.external.supabase_client import get_supabase_client
+from src.infrastructure.external.supabase_client import UserClient, get_supabase_client
 from src.infrastructure.repositories.oauth_state_repository_impl import (
     OAuthStateRepositoryImpl,
 )
@@ -38,7 +37,7 @@ router = APIRouter(prefix="/slack", tags=["slack"])
 
 
 def get_repository(
-    client: Client = Depends(get_user_supabase_client),
+    client: UserClient = Depends(get_user_supabase_client),
 ) -> SlackIntegrationRepositoryImpl:
     """Get Slack integration repository instance with user context."""
     return SlackIntegrationRepositoryImpl(client)
@@ -59,7 +58,7 @@ def get_callback_repository() -> SlackIntegrationRepositoryImpl:
 
 
 def get_oauth_state_repository(
-    client: Client = Depends(get_user_supabase_client),
+    client: UserClient = Depends(get_user_supabase_client),
 ) -> OAuthStateRepositoryImpl:
     """Get OAuth state repository with user context for /auth endpoint."""
     return OAuthStateRepositoryImpl(client)

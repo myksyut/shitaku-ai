@@ -2,16 +2,16 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.google_integration import GoogleIntegration
 from src.domain.repositories.google_integration_repository import GoogleIntegrationRepository
+from src.infrastructure.external.supabase_client import ServiceClient, UserClient
 
 
 class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
     """Personal Google credentials with explicit integration-owner predicates."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient | ServiceClient) -> None:
         self._client = client
 
     def create(self, integration: GoogleIntegration) -> GoogleIntegration:

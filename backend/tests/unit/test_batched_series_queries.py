@@ -12,6 +12,7 @@ from src.domain.repositories.series_repository import SeriesRepository
 from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
 from src.infrastructure.external.series_credentials import GoogleApis, SeriesCredentials
 from src.infrastructure.repositories.series_repository_impl import SeriesRepositoryImpl
+from tests.client_fakes import as_service_client, as_user_client
 
 
 def query_client() -> tuple[MagicMock, MagicMock]:
@@ -39,7 +40,7 @@ def test_series_summaries_use_one_query_independent_of_series_count(count: int) 
         }
         for i in range(count)
     ]
-    summaries = SeriesRepositoryImpl(client).list_summaries(uid)
+    summaries = SeriesRepositoryImpl(as_user_client(client)).list_summaries(uid)
     assert len(summaries) == count and summaries[0].role == "creator"
     assert all(summary.role == "member" for summary in summaries[1:])
     client.table.assert_called_once_with("series_summary")
@@ -81,7 +82,7 @@ def test_occurrence_lookup_is_one_series_and_id_scoped_query() -> None:
     occurrence = Occurrence(oid, sid, now, now, False, None, 0, None, 0, False)
     client, query = query_client()
     query.execute.return_value.data = [TypeAdapter(Occurrence).dump_python(occurrence, mode="json")]
-    assert SeriesRepositoryImpl(client).get_occurrence(sid, oid) == occurrence
+    assert SeriesRepositoryImpl(as_user_client(client)).get_occurrence(sid, oid) == occurrence
     assert [call.args for call in query.eq.call_args_list] == [("series_id", str(sid)), ("id", str(oid))]
     query.execute.assert_called_once()
 
@@ -94,6 +95,8 @@ def test_mirror_claim_always_returns_existing_or_created_series_identity(created
     snapshot = CalendarSnapshot(
         "uid", "event", "Weekly", "RRULE:FREQ=WEEKLY", (), False, (), now, now + timedelta(days=35)
     )
-    result = SeriesCalendarMirror(client, MagicMock(spec=SeriesCredentials)).claim(snapshot, uuid4(), uuid4(), now)
+    result = SeriesCalendarMirror(as_service_client(client), MagicMock(spec=SeriesCredentials)).claim(
+        snapshot, uuid4(), uuid4(), now
+    )
     assert result.series_id == sid and result.created is created
     query.execute.assert_called_once()

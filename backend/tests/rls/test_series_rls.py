@@ -6,8 +6,9 @@ from uuid import uuid4
 import pytest
 from postgrest.exceptions import APIError
 from postgrest.types import JSON
-from supabase import Client, create_client
+from supabase import create_client
 
+from src.infrastructure.external.supabase_client import ServiceClient
 from tests.rls.conftest import RlsEnvironment, RlsUser
 
 
@@ -26,7 +27,9 @@ class World:
 
 @pytest.fixture
 def world(
-    make_user: Callable[[str], RlsUser], add_identity: Callable[[RlsUser, str, bool, str], None], service_client: Client
+    make_user: Callable[[str], RlsUser],
+    add_identity: Callable[[RlsUser, str, bool, str], None],
+    service_client: ServiceClient,
 ) -> Iterator[World]:
     users = {tag: make_user(tag) for tag in "ABCDE"}
     add_identity(users["B"], users["D"].email.upper(), True, "google")
@@ -214,7 +217,7 @@ def test_table_crud_matrix(world: World, tag: str) -> None:
 
 
 @pytest.mark.parametrize("tag", list("ABCDE"))
-def test_resolution_rpc_and_service_only_functions(world: World, tag: str, service_client: Client) -> None:
+def test_resolution_rpc_and_service_only_functions(world: World, tag: str, service_client: ServiceClient) -> None:
     client = world.users[tag].client
     denied(
         client.rpc(
@@ -336,7 +339,7 @@ def test_credentials_private_and_composite_binding(world: World) -> None:
     assert error.value.code == "23503"
 
 
-def test_snapshot_revocation_freshness_and_disconnect(world: World, service_client: Client) -> None:
+def test_snapshot_revocation_freshness_and_disconnect(world: World, service_client: ServiceClient) -> None:
     newer = datetime.now(UTC) + timedelta(seconds=2)
     snapshot: dict[str, JSON] = {**world.snapshot, "attendees": []}
     service_client.rpc(
@@ -357,7 +360,7 @@ def test_snapshot_revocation_freshness_and_disconnect(world: World, service_clie
     assert series == [{"google_integration_id": None}]
 
 
-def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, service_client: Client) -> None:
+def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, service_client: ServiceClient) -> None:
     from pydantic import TypeAdapter
 
     owner = world.users["A"].client
@@ -417,7 +420,9 @@ def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, servi
 
 
 @pytest.mark.parametrize("tag", ["B", "C"])
-def test_member_and_outsider_extraction_cannot_change_any_state(world: World, tag: str, service_client: Client) -> None:
+def test_member_and_outsider_extraction_cannot_change_any_state(
+    world: World, tag: str, service_client: ServiceClient
+) -> None:
     before_items = (
         service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
     )
@@ -529,7 +534,7 @@ def bedrock_stub(
 
 def test_real_http_member_topic_creator_agenda_memory_and_dictionary(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     bedrock_stub: str,
 ) -> None:
     from fastapi.testclient import TestClient
@@ -660,7 +665,7 @@ def test_resolution_reopen_protects_human_choice_from_extraction(world: World) -
     ).execute().data == [{"resolution": None, "closed_at": None}]
 
 
-def test_database_resolution_constraints_match_all_variants(world: World, service_client: Client) -> None:
+def test_database_resolution_constraints_match_all_variants(world: World, service_client: ServiceClient) -> None:
     from src.domain.entities.team_memory import RESOLUTIONS_BY_KIND
 
     for kind, resolutions in RESOLUTIONS_BY_KIND.items():
@@ -715,7 +720,7 @@ def test_anonymous_cannot_read_team_tables_or_call_team_rpcs(world: World, rls_e
 
 def test_service_claim_is_atomic_and_duplicate_claim_does_not_apply_joiners_snapshot(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
 ) -> None:
     from pydantic import TypeAdapter
 
@@ -758,7 +763,7 @@ def test_service_claim_is_atomic_and_duplicate_claim_does_not_apply_joiners_snap
         service_client.table("series").delete().eq("ical_uid", ical_uid).execute()
 
 
-def test_omitted_guest_snapshot_keeps_last_trusted_membership(world: World, service_client: Client) -> None:
+def test_omitted_guest_snapshot_keeps_last_trusted_membership(world: World, service_client: ServiceClient) -> None:
     service_client.rpc(
         "apply_calendar_snapshot",
         {
@@ -772,7 +777,7 @@ def test_omitted_guest_snapshot_keeps_last_trusted_membership(world: World, serv
     ]
 
 
-def test_calendar_error_constraint_accepts_only_public_codes(world: World, service_client: Client) -> None:
+def test_calendar_error_constraint_accepts_only_public_codes(world: World, service_client: ServiceClient) -> None:
     codes = (
         "not_connected",
         "scope_missing",
@@ -833,7 +838,7 @@ def test_out_of_order_extraction_cannot_overwrite_newer_state(world: World) -> N
 
 def test_stale_extraction_http_returns_conflict_without_changes(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     bedrock_stub: str,
 ) -> None:
     from fastapi.testclient import TestClient
@@ -904,7 +909,7 @@ def test_reextraction_closes_same_occurrence_items_before_replacing_them(world: 
 @pytest.mark.parametrize("state", ["untouched", "human_edited", "closed", "manual"])
 def test_reextraction_corrects_only_untouched_open_extracted_metadata(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     state: str,
 ) -> None:
     from pydantic import TypeAdapter
@@ -977,7 +982,7 @@ def test_reextraction_corrects_only_untouched_open_extracted_metadata(
 
 def test_malformed_extraction_http_cannot_delete_existing_extracted_memory(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     bedrock_stub: str,
     bedrock_extraction_payload: dict[str, JSON],
 ) -> None:
@@ -1042,7 +1047,7 @@ def test_malformed_extraction_http_cannot_delete_existing_extracted_memory(
 
 
 def test_calendar_snapshot_cancels_missing_slots_only_inside_fetched_window(
-    world: World, service_client: Client
+    world: World, service_client: ServiceClient
 ) -> None:
     from pydantic import TypeAdapter
 
@@ -1102,7 +1107,9 @@ def test_calendar_snapshot_cancels_missing_slots_only_inside_fetched_window(
     ).execute().data == [{"is_cancelled": False}]
 
 
-def test_missing_creator_calendar_event_cancels_all_future_occurrences(world: World, service_client: Client) -> None:
+def test_missing_creator_calendar_event_cancels_all_future_occurrences(
+    world: World, service_client: ServiceClient
+) -> None:
     from unittest.mock import MagicMock
     from uuid import UUID
 
@@ -1125,7 +1132,7 @@ def test_missing_creator_calendar_event_cancels_all_future_occurrences(world: Wo
 
 
 def test_creator_relinks_google_after_disconnect_with_owned_calendar_scope(
-    world: World, service_client: Client
+    world: World, service_client: ServiceClient
 ) -> None:
     from fastapi.testclient import TestClient
 
@@ -1207,7 +1214,7 @@ def test_reextraction_is_additive_and_never_deletes_omitted_items(world: World) 
 
 
 def test_topic_author_uses_calendar_name_then_verified_email_and_blocks_forgery(
-    world: World, service_client: Client
+    world: World, service_client: ServiceClient
 ) -> None:
     from pydantic import TypeAdapter
 
@@ -1241,7 +1248,7 @@ def test_topic_author_uses_calendar_name_then_verified_email_and_blocks_forgery(
     assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == "メンバー"
 
 
-def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_client: Client) -> None:
+def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_client: ServiceClient) -> None:
     from unittest.mock import MagicMock
     from uuid import UUID
 
@@ -1270,7 +1277,7 @@ def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_
     assert after.calendar_refresh_attempted_at is not None and after.calendar_refresh_attempted_at > old
 
 
-def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World, service_client: Client) -> None:
+def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World, service_client: ServiceClient) -> None:
     from unittest.mock import MagicMock
 
     from pydantic import TypeAdapter
@@ -1348,7 +1355,7 @@ def test_knowledge_creation_time_is_database_owned(world: World, bedrock_stub: s
 
 def test_document_committed_after_extraction_read_remains_unextracted(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     bedrock_stub: str,
     before_bedrock_tool_reply: list[Callable[[], None]],
 ) -> None:
@@ -1413,7 +1420,9 @@ def test_document_committed_after_extraction_read_remains_unextracted(
 
 
 @pytest.mark.parametrize("removal", ["delete_integration", "clear_binding"])
-def test_slack_disconnect_clears_stored_channels_atomically(world: World, service_client: Client, removal: str) -> None:
+def test_slack_disconnect_clears_stored_channels_atomically(
+    world: World, service_client: ServiceClient, removal: str
+) -> None:
     integration_id = str(uuid4())
     service_client.table("slack_integrations").insert(
         {
@@ -1443,7 +1452,7 @@ def test_slack_disconnect_clears_stored_channels_atomically(world: World, servic
     assert error.value.code == "23514"
 
 
-def test_memory_rpcs_reject_ids_from_a_different_owned_series(world: World, service_client: Client) -> None:
+def test_memory_rpcs_reject_ids_from_a_different_owned_series(world: World, service_client: ServiceClient) -> None:
     other = str(uuid4())
     service_client.table("series").insert(
         {

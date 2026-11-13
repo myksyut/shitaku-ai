@@ -2,16 +2,16 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.slack_integration import SlackIntegration
 from src.domain.repositories.slack_integration_repository import SlackIntegrationRepository
+from src.infrastructure.external.supabase_client import ServiceClient, UserClient
 
 
 class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
     """Supabase persistence with explicit credential-owner filters."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient | ServiceClient) -> None:
         self._client = client
 
     def create(self, integration: SlackIntegration) -> SlackIntegration:

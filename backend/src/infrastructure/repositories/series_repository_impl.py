@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, TypeAdapter
-from supabase import Client
 
 from src.domain.entities.series import (
     Attendee,
@@ -17,6 +16,7 @@ from src.domain.entities.series import (
     SlackSource,
 )
 from src.domain.repositories.series_repository import SeriesRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class _SeriesSummaryRow(BaseModel):
@@ -31,7 +31,7 @@ class _SeriesSummaryRow(BaseModel):
 class SeriesRepositoryImpl(SeriesRepository):
     """Supabase series queries with explicit aggregate predicates."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def role_of_caller(self, series_id: UUID) -> SeriesRole | None:

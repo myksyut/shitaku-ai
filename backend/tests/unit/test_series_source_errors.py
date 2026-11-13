@@ -30,6 +30,7 @@ from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMir
 from src.infrastructure.external.series_credentials import CredentialUnavailableError, GoogleApis, SeriesCredentials
 from src.infrastructure.services.agenda_generation_service import AgendaProposal
 from tests.application.use_cases.test_series_use_cases import make_series
+from tests.client_fakes import as_service_client
 
 
 def calendar_http_error(status: int) -> httpx.HTTPStatusError:
@@ -73,7 +74,7 @@ def test_calendar_refresh_persists_only_stable_codes(failure: Exception, expecte
         credentials.google_for_series.side_effect = failure
     else:
         calendar.snapshot.side_effect = failure
-    assert SeriesCalendarMirror(client, credentials).refresh(series) == expected
+    assert SeriesCalendarMirror(as_service_client(client), credentials).refresh(series) == expected
     client.table.return_value.update.assert_called_once_with({"calendar_sync_error": expected})
     client.table.return_value.update.return_value.eq.assert_called_once_with("id", str(series.id))
 
@@ -97,7 +98,10 @@ def test_missing_or_replaced_calendar_event_emits_event_not_found(missing: bool)
             datetime.now(UTC) + timedelta(days=35),
         )
     )
-    assert SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == "event_not_found"
+    assert (
+        SeriesCalendarMirror(as_service_client(client), credentials).refresh(make_series(uuid4(), uuid4()))
+        == "event_not_found"
+    )
     assert [call.args[0] for call in client.rpc.call_args_list] == [
         "begin_calendar_refresh",
         "mark_calendar_event_missing",
@@ -119,7 +123,7 @@ def test_calendar_success_emits_only_omitted_warning_or_none(omitted: bool) -> N
         datetime.now(UTC) - timedelta(days=35),
         datetime.now(UTC) + timedelta(days=35),
     )
-    assert SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == (
+    assert SeriesCalendarMirror(as_service_client(client), credentials).refresh(make_series(uuid4(), uuid4())) == (
         "attendees_omitted" if omitted else None
     )
     assert [call.args[0] for call in client.rpc.call_args_list] == ["begin_calendar_refresh", "apply_calendar_snapshot"]
@@ -265,5 +269,8 @@ def test_calendar_database_failures_are_best_effort_even_when_error_recording_fa
     failure = APIError({"code": "XX000", "message": "Database unavailable", "details": "", "hint": ""})
     client.rpc.side_effect = failure
     client.table.return_value.update.return_value.eq.return_value.execute.side_effect = failure
-    assert SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == "calendar_unavailable"
+    assert (
+        SeriesCalendarMirror(as_service_client(client), credentials).refresh(make_series(uuid4(), uuid4()))
+        == "calendar_unavailable"
+    )
     credentials.google_for_series.assert_not_called()

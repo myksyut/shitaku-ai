@@ -5,11 +5,10 @@ from uuid import UUID
 import httpx
 from postgrest.exceptions import APIError
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.series import CalendarClaim, CalendarErrorCode, CalendarSnapshot, Series, SeriesError
 from src.infrastructure.external.series_credentials import CredentialUnavailableError, SeriesCredentials
-from src.infrastructure.external.supabase_client import get_supabase_client
+from src.infrastructure.external.supabase_client import ServiceClient, get_supabase_client
 from src.infrastructure.repositories.google_integration_repository_impl import GoogleIntegrationRepositoryImpl
 from src.infrastructure.repositories.slack_integration_repository_impl import SlackIntegrationRepositoryImpl
 
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 class SeriesCalendarMirror:
     """Mirror calendar state into series with the service-role client."""
 
-    def __init__(self, client: Client, credentials: SeriesCredentials) -> None:
+    def __init__(self, client: ServiceClient, credentials: SeriesCredentials) -> None:
         self._client = client
         self._credentials = credentials
 

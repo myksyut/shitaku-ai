@@ -4,11 +4,11 @@ from uuid import UUID
 
 from postgrest.types import JSON
 from pydantic import BaseModel, TypeAdapter
-from supabase import Client
 
 from src.domain.entities.series import CreatorAccess, MemberAccess
 from src.domain.entities.team_memory import ExtractedMemory, ExtractionApplyResult, MemoryItem, NewMemory, Resolution
 from src.domain.repositories.team_memory_repository import TeamMemoryRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class OriginTime(BaseModel):
@@ -42,7 +42,7 @@ def memory_rows(raw: object) -> list[MemoryItem]:
 class TeamMemoryRepositoryImpl(TeamMemoryRepository):
     """Supabase team memory persistence."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def list_items(self, series_id: UUID) -> list[MemoryItem]:

@@ -1,6 +1,7 @@
 """Supabase client module for authentication and database operations."""
 
 import logging
+from typing import NewType
 
 import jwt
 from jwt import PyJWKClient
@@ -8,6 +9,9 @@ from supabase import Client, create_client
 from supabase.lib.client_options import SyncClientOptions
 
 from src.config import settings
+
+UserClient = NewType("UserClient", Client)
+ServiceClient = NewType("ServiceClient", Client)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +37,7 @@ def _get_jwks_client() -> PyJWKClient | None:
     return _jwks_client
 
 
-def get_supabase_client() -> Client | None:
+def get_supabase_client() -> ServiceClient | None:
     """Initialize and return a Supabase client with service key.
 
     Uses the service key (secret key) which bypasses RLS.
@@ -49,7 +53,7 @@ def get_supabase_client() -> Client | None:
     if key is None:
         return None
 
-    return create_client(settings.SUPABASE_URL, key)
+    return ServiceClient(create_client(settings.SUPABASE_URL, key))
 
 
 def verify_supabase_jwt(token: str) -> dict[str, object] | None:
@@ -88,7 +92,7 @@ def verify_supabase_jwt(token: str) -> dict[str, object] | None:
         return None
 
 
-def create_user_supabase_client(access_token: str) -> Client | None:
+def create_user_supabase_client(access_token: str) -> UserClient | None:
     """Create a Supabase client with user context for RLS enforcement.
 
     This client uses the user's JWT token in the Authorization header,
@@ -112,8 +116,10 @@ def create_user_supabase_client(access_token: str) -> Client | None:
         headers={"Authorization": f"Bearer {access_token}"},
     )
 
-    return create_client(
-        settings.SUPABASE_URL,
-        settings.SUPABASE_KEY,
-        options=options,
+    return UserClient(
+        create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_KEY,
+            options=options,
+        )
     )

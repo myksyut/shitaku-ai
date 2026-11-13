@@ -4,11 +4,11 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from supabase import Client
 
 from src.domain.entities.series import CreatorAccess, MemberAccess, parse_email
 from src.infrastructure.external.series_credentials import SeriesCredentials
 from src.infrastructure.external.supabase_client import (
+    UserClient,
     create_user_supabase_client,
     verify_supabase_jwt,
 )
@@ -63,7 +63,7 @@ def get_current_user_id(
 
 def get_user_supabase_client(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> Client:
+) -> UserClient:
     """Get a Supabase client with user context for RLS enforcement.
 
     This dependency creates a Supabase client that uses the user's JWT token,
@@ -100,12 +100,12 @@ def get_user_supabase_client(
     return client
 
 
-def get_series_repository(client: Client = Depends(get_user_supabase_client)) -> SeriesRepositoryImpl:
+def get_series_repository(client: UserClient = Depends(get_user_supabase_client)) -> SeriesRepositoryImpl:
     """Bind series queries to the caller's JWT."""
     return SeriesRepositoryImpl(client)
 
 
-def get_series_credentials(client: Client = Depends(get_user_supabase_client)) -> SeriesCredentials:
+def get_series_credentials(client: UserClient = Depends(get_user_supabase_client)) -> SeriesCredentials:
     """Bind credential lookups to the authenticated integration owner."""
     return SeriesCredentials(GoogleIntegrationRepositoryImpl(client), SlackIntegrationRepositoryImpl(client))
 
@@ -132,7 +132,7 @@ def creator_access(access: MemberAccess = Depends(member_access)) -> CreatorAcce
 
 def verified_google_emails(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    client: Client = Depends(get_user_supabase_client),
+    client: UserClient = Depends(get_user_supabase_client),
 ) -> frozenset[str]:
     """Read verified identities from Auth, not mutable JWT email claims."""
     response = client.auth.get_user(credentials.credentials)

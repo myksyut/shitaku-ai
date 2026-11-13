@@ -2,17 +2,17 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.agenda import Agenda, AgendaTopic
 from src.domain.entities.series import CreatorAccess, MemberAccess
 from src.domain.repositories.occurrence_repository import OccurrenceRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class OccurrenceRepositoryImpl(OccurrenceRepository):
     """Supabase topic and agenda persistence."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def topics(self, series_id: UUID, occurrence_id: UUID) -> list[AgendaTopic]:

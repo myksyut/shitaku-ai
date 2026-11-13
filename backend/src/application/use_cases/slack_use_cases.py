@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 import httpx
+from pydantic import TypeAdapter
 
 from src.config import settings
 from src.domain.entities.oauth_state import OAuthState
@@ -146,6 +147,7 @@ class HandleSlackCallbackUseCase:
         team_data = token_response.get("team")
         if not isinstance(team_data, dict):
             raise ValueError("Invalid Slack response: team data missing")
+        team_data = TypeAdapter(dict[str, object]).validate_python(team_data)
 
         workspace_id = str(team_data.get("id") or "")
         workspace_name = str(team_data.get("name") or "")

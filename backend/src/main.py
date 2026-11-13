@@ -1,10 +1,13 @@
 import logging
+from typing import cast
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from postgrest.exceptions import APIError
+from starlette.middleware import _MiddlewareFactory
 from starlette.requests import Request
+from starlette.types import ASGIApp
 
 from src.config import settings
 from src.domain.entities.series import SeriesError
@@ -21,14 +24,14 @@ def create_app() -> FastAPI:
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
     )
 
-    # CORS設定
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.BACKEND_CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    origins = settings.BACKEND_CORS_ORIGINS
+
+    def _cors_middleware(app: ASGIApp) -> ASGIApp:
+        return CORSMiddleware(
+            app, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
+        )
+
+    app.add_middleware(cast(_MiddlewareFactory[[]], _cors_middleware))
 
     # ルーター登録
     app.include_router(api_router, prefix=settings.API_V1_STR)

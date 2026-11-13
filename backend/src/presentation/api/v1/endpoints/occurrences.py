@@ -1,13 +1,13 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from supabase import Client
 
 from src.application.use_cases.agenda_use_cases import GenerateAgenda
 from src.application.use_cases.occurrence_use_cases import OccurrenceUseCases, TranscriptCandidate
 from src.domain.entities.series import CreatorAccess, MemberAccess, OccurrenceSummary
 from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
 from src.infrastructure.external.series_credentials import SeriesCredentials
+from src.infrastructure.external.supabase_client import UserClient
 from src.infrastructure.repositories.dictionary_repository_impl import DictionaryRepositoryImpl
 from src.infrastructure.repositories.knowledge_repository_impl import KnowledgeRepositoryImpl
 from src.infrastructure.repositories.occurrence_repository_impl import OccurrenceRepositoryImpl
@@ -39,7 +39,8 @@ router = APIRouter(prefix="/series/{series_id}", tags=["occurrences"])
 
 
 def get_content(
-    client: Client = Depends(get_user_supabase_client), credentials: SeriesCredentials = Depends(get_series_credentials)
+    client: UserClient = Depends(get_user_supabase_client),
+    credentials: SeriesCredentials = Depends(get_series_credentials),
 ) -> OccurrenceUseCases:
     """Compose caller-scoped content persistence and creator-bound sources."""
     return OccurrenceUseCases(
@@ -53,7 +54,8 @@ def get_content(
 
 
 def get_generator(
-    client: Client = Depends(get_user_supabase_client), credentials: SeriesCredentials = Depends(get_series_credentials)
+    client: UserClient = Depends(get_user_supabase_client),
+    credentials: SeriesCredentials = Depends(get_series_credentials),
 ) -> GenerateAgenda:
     """Build the agenda generator for the caller."""
     return GenerateAgenda(
