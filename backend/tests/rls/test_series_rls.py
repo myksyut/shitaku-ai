@@ -238,7 +238,9 @@ def test_resolution_rpc_and_service_only_functions(world: World, tag: str, servi
         }
     ).execute()
     for iid, resolution in ((action, "done"), (decision, "reversed")):
-        call = client.rpc("set_memory_item_resolution", {"p_item_id": iid, "p_resolution": resolution}).execute
+        call = client.rpc(
+            "set_memory_item_resolution", {"p_item_id": iid, "p_resolution": resolution, "p_series_id": world.sid}
+        ).execute
         if tag == "A" or (tag == "B" and iid == action):
             assert call().data
         else:
@@ -273,6 +275,7 @@ def test_resolution_rpc_and_service_only_functions(world: World, tag: str, servi
                     "p_items": [],
                     "p_closures": [],
                     "p_input_at": datetime.now(UTC).isoformat(),
+                    "p_series_id": world.sid,
                 },
             ).execute(),
             "P0002",
@@ -364,14 +367,20 @@ def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, servi
         {"kind": "open_issue", "body": "Temporary issue", "extraction_key": "issue-key"},
     ]
     arguments = {"p_occurrence_id": world.past, "p_items": items, "p_closures": [], "p_input_at": input_at.isoformat()}
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 2, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 2,
+        "closed": 0,
+    }
     before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
     owner.table("memory_items").update({"body": "Human correction", "human_updated_at": input_at.isoformat()}).eq(
         "series_id", world.sid
     ).eq("extraction_key", "action-key").execute()
-    owner.rpc("apply_extraction", {**arguments, "p_items": []}).execute()
+    owner.rpc("apply_extraction", {**arguments, "p_items": [], "p_series_id": world.sid}).execute()
     assert owner.table("memory_items").select("body").eq("series_id", world.sid).eq(
         "extraction_key", "action-key"
     ).execute().data == [{"body": "Human correction"}]
@@ -424,6 +433,7 @@ def test_member_and_outsider_extraction_cannot_change_any_state(world: World, ta
                 "p_items": [{"kind": "decision", "body": "Forged", "extraction_key": "forged"}],
                 "p_closures": [{"item_id": str(world.rows["memory_items"]["id"]), "resolution": "done"}],
                 "p_input_at": datetime.now(UTC).isoformat(),
+                "p_series_id": world.sid,
             },
         )
         .execute(),
@@ -627,7 +637,7 @@ def test_resolution_reopen_protects_human_choice_from_extraction(world: World) -
     action = str(world.rows["memory_items"]["id"])
     for resolution in ("done", None):
         world.users["B"].client.rpc(
-            "set_memory_item_resolution", {"p_item_id": action, "p_resolution": resolution}
+            "set_memory_item_resolution", {"p_item_id": action, "p_resolution": resolution, "p_series_id": world.sid}
         ).execute()
     result = (
         world.users["A"]
@@ -638,6 +648,7 @@ def test_resolution_reopen_protects_human_choice_from_extraction(world: World) -
                 "p_items": [],
                 "p_closures": [{"item_id": action, "resolution": "done"}],
                 "p_input_at": datetime.now(UTC).isoformat(),
+                "p_series_id": world.sid,
             },
         )
         .execute()
@@ -679,10 +690,7 @@ def test_anonymous_cannot_read_team_tables_or_call_team_rpcs(world: World, rls_e
     denied(
         anonymous.rpc(
             "set_memory_item_resolution",
-            {
-                "p_item_id": str(world.rows["memory_items"]["id"]),
-                "p_resolution": "done",
-            },
+            {"p_item_id": str(world.rows["memory_items"]["id"]), "p_resolution": "done", "p_series_id": world.sid},
         ).execute
     )
     denied(
@@ -693,6 +701,7 @@ def test_anonymous_cannot_read_team_tables_or_call_team_rpcs(world: World, rls_e
                 "p_items": [],
                 "p_closures": [],
                 "p_input_at": datetime.now(UTC).isoformat(),
+                "p_series_id": world.sid,
             },
         ).execute
     )
@@ -795,7 +804,10 @@ def test_out_of_order_extraction_cannot_overwrite_newer_state(world: World) -> N
         "p_items": [{"kind": "decision", "body": "Newer result", "extraction_key": "newer"}],
         "p_closures": [],
     }
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 1,
+        "closed": 0,
+    }
     before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
     stale = (
         owner.rpc(
@@ -805,6 +817,7 @@ def test_out_of_order_extraction_cannot_overwrite_newer_state(world: World) -> N
                 "p_input_at": (newer - timedelta(seconds=1)).isoformat(),
                 "p_items": [{"kind": "decision", "body": "Older result", "extraction_key": "older"}],
                 "p_closures": [{"item_id": str(world.rows["memory_items"]["id"]), "resolution": "done"}],
+                "p_series_id": world.sid,
             },
         )
         .execute()
@@ -858,7 +871,10 @@ def test_reextraction_closes_same_occurrence_items_before_replacing_them(world: 
             {"kind": "action_item", "body": "Action resolved during this meeting", "extraction_key": "same-occurrence"}
         ],
     }
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 1,
+        "closed": 0,
+    }
     rows = (
         owner.table("memory_items")
         .select("id")
@@ -869,11 +885,17 @@ def test_reextraction_closes_same_occurrence_items_before_replacing_them(world: 
     )
     item_id = TypeAdapter(list[dict[str, str]]).validate_python(rows)[0]["id"]
     closures = {**arguments, "p_items": [], "p_closures": [{"item_id": item_id, "resolution": "done"}]}
-    assert owner.rpc("apply_extraction", closures).execute().data == {"created": 0, "closed": 1}
+    assert owner.rpc("apply_extraction", {**closures, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 1,
+    }
     assert owner.table("memory_items").select("id,resolution,human_updated_at").eq("series_id", world.sid).eq(
         "id", item_id
     ).execute().data == [{"id": item_id, "resolution": "done", "human_updated_at": None}]
-    assert owner.rpc("apply_extraction", closures).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**closures, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     assert owner.table("memory_items").select("id").eq("series_id", world.sid).eq("id", item_id).execute().data == [
         {"id": item_id}
     ]
@@ -902,7 +924,10 @@ def test_reextraction_corrects_only_untouched_open_extracted_metadata(
         "p_items": [original],
         "p_closures": [],
     }
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 1,
+        "closed": 0,
+    }
     rows = (
         owner.table("memory_items")
         .select("id")
@@ -926,16 +951,25 @@ def test_reextraction_corrects_only_untouched_open_extracted_metadata(
         ).execute()
     corrected = {**original, "assignee_email": world.users["D"].email, "due_on": "2026-12-20"}
     updated = {**arguments, "p_input_at": (input_at + timedelta(seconds=1)).isoformat(), "p_items": [corrected]}
-    assert owner.rpc("apply_extraction", updated).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**updated, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     expected_assignee = world.users["D"].email.lower() if state == "untouched" else None
     expected_due = "2026-12-20" if state == "untouched" else "2026-11-20"
     assert owner.table("memory_items").select("id,assignee_email,due_on").eq("series_id", world.sid).eq(
         "id", item_id
     ).execute().data == [{"id": item_id, "assignee_email": expected_assignee, "due_on": expected_due}]
-    assert owner.rpc("apply_extraction", updated).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**updated, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     if state == "untouched":
         cleared = {**updated, "p_items": [{**original, "due_on": None}]}
-        assert owner.rpc("apply_extraction", cleared).execute().data == {"created": 0, "closed": 0}
+        assert owner.rpc("apply_extraction", {**cleared, "p_series_id": world.sid}).execute().data == {
+            "created": 0,
+            "closed": 0,
+        }
         assert owner.table("memory_items").select("id,assignee_email,due_on").eq("series_id", world.sid).eq(
             "id", item_id
         ).execute().data == [{"id": item_id, "assignee_email": None, "due_on": None}]
@@ -960,6 +994,7 @@ def test_malformed_extraction_http_cannot_delete_existing_extracted_memory(
             "p_input_at": datetime.now(UTC).isoformat(),
             "p_items": [{"kind": "open_issue", "body": "Must survive malformed output", "extraction_key": "preserved"}],
             "p_closures": [],
+            "p_series_id": world.sid,
         },
     ).execute()
     before = service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
@@ -1152,10 +1187,18 @@ def test_reextraction_is_additive_and_never_deletes_omitted_items(world: World) 
     arguments = {"p_occurrence_id": world.past, "p_input_at": datetime.now(UTC).isoformat(), "p_closures": []}
     for key in ("first", "second"):
         assert owner.rpc(
-            "apply_extraction", {**arguments, "p_items": [{"kind": "open_issue", "body": key, "extraction_key": key}]}
+            "apply_extraction",
+            {
+                **arguments,
+                "p_items": [{"kind": "open_issue", "body": key, "extraction_key": key}],
+                "p_series_id": world.sid,
+            },
         ).execute().data == {"created": 1, "closed": 0}
     before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
-    assert owner.rpc("apply_extraction", {**arguments, "p_items": []}).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_items": [], "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
     for key in ("first", "second"):
         assert owner.table("memory_items").select("body").eq("series_id", world.sid).eq(
@@ -1398,3 +1441,50 @@ def test_slack_disconnect_clears_stored_channels_atomically(world: World, servic
     with pytest.raises(APIError) as error:
         owner.table("series").update({"slack_channels": channels}).eq("id", world.sid).execute()
     assert error.value.code == "23514"
+
+
+def test_memory_rpcs_reject_ids_from_a_different_owned_series(world: World, service_client: Client) -> None:
+    other = str(uuid4())
+    service_client.table("series").insert(
+        {
+            "id": other,
+            "ical_uid": other,
+            "created_by": str(world.users["A"].id),
+            "creator_event_id": "other",
+            "title": "Other",
+        }
+    ).execute()
+    owner = world.users["A"].client
+    before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    try:
+        denied(
+            owner.rpc(
+                "set_memory_item_resolution",
+                {
+                    "p_series_id": other,
+                    "p_item_id": str(world.rows["memory_items"]["id"]),
+                    "p_resolution": "done",
+                },
+            ).execute,
+            "P0002",
+        )
+        denied(
+            owner.rpc(
+                "apply_extraction",
+                {
+                    "p_series_id": other,
+                    "p_occurrence_id": world.past,
+                    "p_items": [{"kind": "decision", "body": "Wrong series", "extraction_key": "wrong"}],
+                    "p_closures": [{"item_id": str(world.rows["memory_items"]["id"]), "resolution": "done"}],
+                    "p_input_at": datetime.now(UTC).isoformat(),
+                },
+            ).execute,
+            "P0002",
+        )
+        assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
+        assert owner.table("memory_items").select("id").eq("series_id", other).execute().data == []
+        assert owner.table("occurrences").select("extracted_at").eq("series_id", world.sid).eq(
+            "id", world.past
+        ).execute().data == [{"extracted_at": None}]
+    finally:
+        service_client.table("series").delete().eq("id", other).execute()

@@ -6,7 +6,7 @@ from postgrest.types import JSON
 from pydantic import BaseModel, TypeAdapter
 from supabase import Client
 
-from src.domain.entities.series import CreatorAccess, MemberAccess, SeriesError
+from src.domain.entities.series import CreatorAccess, MemberAccess
 from src.domain.entities.team_memory import ExtractedMemory, ExtractionApplyResult, MemoryItem, NewMemory, Resolution
 from src.domain.repositories.team_memory_repository import TeamMemoryRepository
 
@@ -95,10 +95,13 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
 
     def set_resolution(self, access: MemberAccess, item_id: UUID, resolution: Resolution | None) -> None:
         """Set or clear an item's resolution."""
-        if self.get(access.series_id, item_id) is None:
-            raise SeriesError(404, "Memory item not found")
         self._client.rpc(
-            "set_memory_item_resolution", {"p_item_id": str(item_id), "p_resolution": resolution}
+            "set_memory_item_resolution",
+            {
+                "p_series_id": str(access.series_id),
+                "p_item_id": str(item_id),
+                "p_resolution": resolution,
+            },
         ).execute()
 
     def delete(self, access: CreatorAccess, item_id: UUID) -> None:
@@ -111,16 +114,6 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
         self, access: CreatorAccess, occurrence_id: UUID, extracted: ExtractedMemory, input_at: datetime
     ) -> ExtractionApplyResult:
         """Persist extracted memory for one occurrence."""
-        occurrence = (
-            self._client.table("occurrences")
-            .select("id")
-            .eq("series_id", str(access.series_id))
-            .eq("id", str(occurrence_id))
-            .execute()
-            .data
-        )
-        if not occurrence:
-            raise SeriesError(404, "Occurrence not found")
         items: list[JSON] = []
         for draft in extracted.new_items:
             payload = TypeAdapter(dict[str, JSON]).validate_python(
@@ -131,6 +124,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
             self._client.rpc(
                 "apply_extraction",
                 {
+                    "p_series_id": str(access.series_id),
                     "p_occurrence_id": str(occurrence_id),
                     "p_input_at": input_at.isoformat(),
                     "p_items": items,
