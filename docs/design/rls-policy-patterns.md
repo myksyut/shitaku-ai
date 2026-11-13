@@ -41,7 +41,7 @@ create policy {table}_write_creator on public.{table} for all to authenticated
 
 ### カレンダー由来のデータ
 
-`series` の作成、カレンダー由来の列（`ical_uid`, `creator_event_id`, `title`, `rrule`, `calendar_synced_at`, `calendar_sync_error`, `google_integration_id`）、`series_attendees`、`occurrences` には、`authenticated` への書き込み GRANT を与えない。書くのは `SeriesCalendarMirror`（service role）だけ。作成者の UPDATE は列単位の GRANT で設定列に限る。
+`series` の作成、カレンダー由来の列（`ical_uid`, `creator_event_id`, `title`, `rrule`, `calendar_synced_at`, `calendar_sync_error`）、`series_attendees`、`occurrences` には、`authenticated` への書き込み GRANT を与えない。書くのは `SeriesCalendarMirror`（service role）だけ。作成者の UPDATE は列単位の GRANT で設定列（説明、参照件数、Slack と Google の連携先、選んだチャンネル）に限る。連携先は下の複合外部キーで作成者本人の行に限られる。
 
 ### 資格情報の参照
 

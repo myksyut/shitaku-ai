@@ -53,7 +53,7 @@ erDiagram
 ### 回の同一性と持ち越し回数
 
 - 回の識別子は `(series_id, original_start)`。日時を変更しても同じ回のまま。
-- カレンダーミラーは同期のたびに前後35日の回を upsert する。回は削除しない。キャンセルは `is_cancelled` で表す。
+- カレンダーミラーは同期のたびに前後35日の回を upsert する。回は削除しない。スナップショットの取得範囲（`window_start`〜`window_end`）にあるのにスナップショットに含まれない回は `is_cancelled = true` にする。作成者のカレンダーから予定が消えたら、未来の回をすべてキャンセル扱いにする。
 - アクションアイテムと論点の持ち越し回数は保存しない。都度、次の条件をすべて満たす回 `o` の数として計算する。
   - キャンセルされていない
   - 起点の回より後、対象の回より前に始まる
@@ -107,6 +107,7 @@ erDiagram
 
 - `series.(google_integration_id, created_by)` は `google_integrations(id, user_id)` への複合外部キー。Slack も同じ。DB が「他人の連携を自分のシリーズに結び付けること」を拒否する。
 - 連携を削除すると、シリーズ側の列が NULL になるだけでシリーズは残る。参加者の閲覧権は最後に同期した招待客一覧のまま続く。
+- 作成者は設定画面で Google 連携を付け替えられる（切断して再接続した場合など）。付け替え先も複合外部キーで作成者本人の連携に限られる。
 - トークンの復号と更新は `SeriesCredentials` だけが行い、トークンではなく API クライアントを返す。`get_all(user_id)[0]` で「最新の連携」を拾う書き方は廃止する。
 
 ## API
@@ -179,7 +180,7 @@ export interface SeriesDetail {
   occurrences: OccurrenceSummary[] // start_at 昇順
   settings: { description: string | null; minutes_count: number; slack_message_days: number }
   slack: { integration_id: string; channels: SlackChannelRef[] } | null
-  calendar: { synced_at: string; error: string | null; google_connected: boolean }
+  calendar: { synced_at: string; error: string | null; google_connected: boolean; integration_id: string | null }
 }
 export interface CalendarEventChoice {
   calendar_event_id: string
@@ -194,6 +195,7 @@ export interface SeriesSettingsRequest {
   description: string | null
   minutes_count: number
   slack_message_days: number
+  google_integration_id: string | null // 作成者自身の calendar.readonly 付きの連携。切断後の再接続に使う
   slack: { integration_id: string; channel_ids: string[] } | null
 }
 
@@ -259,8 +261,10 @@ export interface AgendaSources {
   open_issues: number
   knowledge: number
   slack_messages: number
-  slack_error: string | null
-  calendar_error: string | null
+  slack_error: string | null    // not_connected | not_in_channel | rate_limited | slack_unavailable
+  calendar_error: string | null // not_connected | scope_missing | revoked | attendees_omitted | event_not_found | calendar_unavailable
+  proposal_error: 'llm_unavailable' | null // LLM の提案部分だけが失敗した。必須セクションは作成済み
+  truncated: boolean // 入力の上限を超え、議事録や Slack の一部を省いた
 }
 export interface ExtractionReport {
   created: number
@@ -296,10 +300,11 @@ export type DictionaryEntryUpdate = Partial<DictionaryEntryCreate>
 1. 作成者がアップロードするか、トランスクリプトの候補から選ぶ（`POST …/knowledge`）。候補は作成者の Drive からその都度読み、回の開始1時間前から24時間後までに作られた「Meet Recordings」のドキュメントに絞る。選ばれなかった候補は DB に保存しない。
 2. クライアントは続けて `POST …/extract` を呼ぶ。バックエンドは Bedrock の tool use を1回呼び、結果を境界でパースしてから、`apply_extraction` で1トランザクションにまとめて反映する。
    - 抽出された項目には `extraction_key`（kind と本文から作るハッシュ）を付け、`(origin_occurrence_id, extraction_key)` を一意にする。同じ結果を再実行しても重複しない。
-   - 再抽出で置き換えるのは、人が触っておらず未解決の抽出項目だけ。
+   - 再抽出は追加のみで、既存の項目を削除しない。同じキーの項目が人に触られておらず未解決なら、担当者と期限だけを更新する。
    - LLM が「解決した」と判断した既存項目を閉じるのは、人が触っていない項目だけ。
-   - `occurrences.extracted_at` には、抽出の入力を読んだ時刻を入れる。抽出中に追加された議事録は、次回の未抽出判定に残る。
-   - 入力が文字数の上限を超えたら、切り詰めたうえでレスポンスの `truncated: true` で知らせる。黙って切らない。
+   - LLM の出力に不正な要素が1つでもあれば、何も変えずに 502 を返す。
+   - `occurrences.extracted_at` には、抽出の入力を読んだ時刻を入れる。それより古い入力の抽出結果が後から届いたら、何も変えずに 409 を返す。
+   - 入力が文字数の上限を超えたら、議事録だけを切り詰め、レスポンスの `truncated: true` で知らせる。既存項目の一覧（未解決のアクションと論点、最新20件の決定事項）は切り詰めない。それだけで上限を超えるときは 413。
 3. 抽出し損ねた回は `needs_extraction`（最新の議事録の時刻 > `extracted_at`）で一覧に表示され、作成者が再実行できる。
 
 ### 会議の前: アジェンダ生成
@@ -317,7 +322,12 @@ export type DictionaryEntryUpdate = Partial<DictionaryEntryCreate>
 {LLM の出力}
 ```
 
-LLM への入力には、上の各項目に加え、最近の決定事項、直前の回からの議事録（`minutes_count` 件）、選んだ Slack チャンネルの直前の回以降のメッセージ（最新100件）、シリーズの辞書を含める。
+- 担当と期限は、値があるものだけを括弧に入れる。両方ないときは括弧ごと省く。
+- 議題の改行は空白にまとめ、参加者が見出しを差し込めないようにする。
+- `author_label` は DB のトリガーが、投稿者の Google 確認済みメールに一致する `series_attendees.display_name`（なければメールアドレス）から決める。利用者は指定できない。
+- LLM への入力は1つの上限で切り詰め、超えたら `AgendaSources.truncated` で知らせる。LLM が失敗したら提案部分を空にして `proposal_error` で知らせる。
+
+LLM への入力には、上の各項目に加え、最近の決定事項、直前までの回の議事録（新しい順に `minutes_count` 件）、選んだ Slack チャンネルの直前の回以降のメッセージ（最新100件）、シリーズの辞書を含める。
 
 ## 既存データの移行
 
