@@ -27,6 +27,7 @@ describe('meeting minutes extraction', () => {
           knowledge: stored ? [knowledge] : [],
           occurrence: {
             ...occurrence.occurrence,
+            start_at: '2020-01-01T10:00:00Z',
             knowledge_count: stored ? 1 : 0,
             needs_extraction: stored && !extracted,
           },
@@ -68,5 +69,51 @@ describe('meeting minutes extraction', () => {
     expect(await screen.findByText('抽出完了: 1件追加、0件解決')).toBeInTheDocument()
     expect(screen.getByText(/一部を切り詰めて抽出しました/)).toBeInTheDocument()
     expect(calls).toEqual(['add', 'extract', 'extract'])
+  })
+  it('saves documents for future occurrences without extracting or showing an error', async () => {
+    let stored = false
+    let extractions = 0
+    const knowledge = {
+      id: 'knowledge-1',
+      source: 'upload',
+      title: null,
+      excerpt: '事前資料',
+      created_at: '2026-11-13T10:00:00Z',
+    }
+    server.use(
+      http.get(`${API}/series/series-1`, () => HttpResponse.json({ ...series, role: 'creator' })),
+      http.get(`${API}/series/series-1/occurrences/occurrence-1`, () =>
+        HttpResponse.json({
+          ...occurrence,
+          knowledge: stored ? [knowledge] : [],
+          occurrence: { ...occurrence.occurrence, knowledge_count: stored ? 1 : 0, needs_extraction: stored },
+        }),
+      ),
+      http.post(`${API}/series/series-1/occurrences/occurrence-1/knowledge`, () => {
+        stored = true
+        return HttpResponse.json({ knowledge, normalization_warning: null, replacement_count: 0 }, { status: 201 })
+      }),
+      http.post(`${API}/series/series-1/occurrences/occurrence-1/extract`, () => {
+        extractions += 1
+        return HttpResponse.json({ detail: 'Future occurrence' }, { status: 422 })
+      }),
+    )
+    const { client } = renderPage(
+      <Routes>
+        <Route path="/series/:seriesId/occurrences/:occurrenceId" element={<OccurrencePage />} />
+      </Routes>,
+      '/series/series-1/occurrences/occurrence-1',
+    )
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'テキストを追加' }))
+    await user.type(screen.getByLabelText('議事録・ナレッジのテキスト'), '事前資料')
+    await user.click(screen.getByRole('button', { name: '追加', exact: true }))
+    expect(await screen.findByText(/議事録を追加しました/)).toBeInTheDocument()
+    expect(screen.getByText('会議の開始後に抽出できます')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /メモリ.*抽出/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('未抽出')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(client.getMutationCache().getAll()).toHaveLength(1)
+    expect(extractions).toBe(0)
   })
 })

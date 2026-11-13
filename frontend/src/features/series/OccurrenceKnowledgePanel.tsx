@@ -3,18 +3,21 @@ import { Button, Card } from '../../components/ui'
 import { useAddKnowledge, useDeleteKnowledge, useExtractMemory, useTranscriptCandidates } from './hooks'
 import { KnowledgeDetail } from './KnowledgeDetail'
 import { KnowledgeUpload } from './KnowledgeUpload'
+import { hasOccurrenceStarted } from './occurrence-time'
 import { Badge, ErrorNotice, formatStart } from './SeriesUi'
 import type { AddKnowledgeResponse, KnowledgeSummary, SeriesRole } from './types'
 
 export function OccurrenceKnowledgePanel({
   seriesId,
   occurrenceId,
+  startAt,
   role,
   knowledge,
   needsExtraction,
 }: {
   seriesId: string
   occurrenceId: string
+  startAt: string
   role: SeriesRole
   knowledge: KnowledgeSummary[]
   needsExtraction: boolean
@@ -24,22 +27,23 @@ export function OccurrenceKnowledgePanel({
   const [selected, setSelected] = useState<string | null>(null)
   const [added, setAdded] = useState<AddKnowledgeResponse | null>(null)
   const add = useAddKnowledge(seriesId, occurrenceId)
-  const remove = useDeleteKnowledge(seriesId)
+  const remove = useDeleteKnowledge(seriesId, occurrenceId)
   const extract = useExtractMemory(seriesId, occurrenceId)
   const candidates = useTranscriptCandidates(seriesId, occurrenceId, role === 'creator' && candidatesOpen)
   const pending = add.isPending || extract.isPending || remove.isPending
+  const started = hasOccurrenceStarted(startAt)
 
   function afterAdded(result: AddKnowledgeResponse) {
     setAdded(result)
     setUploadOpen(false)
     setCandidatesOpen(false)
-    extract.mutate()
+    if (hasOccurrenceStarted(startAt)) extract.mutate()
   }
 
   return (
     <Card className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-bold">議事録・ナレッジ {needsExtraction && <Badge>未抽出</Badge>}</h2>
+        <h2 className="text-xl font-bold">議事録・ナレッジ {needsExtraction && started && <Badge>未抽出</Badge>}</h2>
         {role === 'creator' && (
           <div className="flex flex-wrap gap-2">
             <Button
@@ -131,7 +135,7 @@ export function OccurrenceKnowledgePanel({
                           )
                         }
                       >
-                        選択して抽出
+                        {started ? '選択して抽出' : '選択して追加'}
                       </Button>
                     </li>
                   ))}
@@ -147,7 +151,8 @@ export function OccurrenceKnowledgePanel({
           )}
           {add.isError && !uploadOpen && <ErrorNotice>議事録を追加できませんでした</ErrorNotice>}
           {remove.isError && <ErrorNotice>議事録を削除できませんでした</ErrorNotice>}
-          {knowledge.length > 0 && (
+          {!started && <p className="text-sm text-[var(--color-warm-gray-500)]">会議の開始後に抽出できます</p>}
+          {knowledge.length > 0 && started && (
             <div className="space-y-2">
               <Button
                 variant="secondary"
@@ -176,6 +181,7 @@ export function OccurrenceKnowledgePanel({
           {uploadOpen && (
             <KnowledgeUpload
               pending={add.isPending}
+              canExtract={started}
               failed={add.isError}
               onClose={() => setUploadOpen(false)}
               onUpload={(text) => add.mutate({ source: 'upload', text }, { onSuccess: afterAdded })}

@@ -36,7 +36,7 @@ export interface SeriesDetail {
   occurrences: OccurrenceSummary[]
   settings: { description: string | null; minutes_count: number; slack_message_days: number }
   slack: { integration_id: string; channels: SlackChannelRef[] } | null
-  calendar: { synced_at: string; error: string | null; google_connected: boolean }
+  calendar: { integration_id: string | null; synced_at: string; error: string | null; google_connected: boolean }
 }
 export interface CalendarEventChoice {
   calendar_event_id: string
@@ -54,6 +54,7 @@ export interface ClaimResponse {
   series: SeriesDetail
 }
 export interface SeriesSettingsRequest {
+  google_integration_id: string | null
   description: string | null
   minutes_count: number
   slack_message_days: number
@@ -143,6 +144,8 @@ export interface AgendaSources {
   slack_messages: number
   slack_error: string | null
   calendar_error: string | null
+  proposal_error: string | null
+  truncated: boolean
 }
 export interface ExtractionReport {
   created: number

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Button, Card } from '../../components/ui'
 import { ApiError } from '../../lib/api-client'
 import { useGoogleIntegrations } from '../google/hooks'
+import { hasCalendarReadScope } from '../google/scopes'
 import { useCalendarEvents, useClaimSeries } from './hooks'
 import { Badge, ErrorNotice } from './SeriesUi'
 import type { CalendarEventChoice } from './types'
@@ -27,14 +28,7 @@ export function CalendarEventPicker() {
   const navigate = useNavigate()
   const integrations = useGoogleIntegrations()
   const [chosen, setChosen] = useState<string | null>(null)
-  const available =
-    integrations.data?.filter((integration) =>
-      integration.granted_scopes.some(
-        (scope) =>
-          scope === 'https://www.googleapis.com/auth/calendar.readonly' ||
-          scope === 'https://www.googleapis.com/auth/calendar',
-      ),
-    ) ?? []
+  const available = integrations.data?.filter((integration) => hasCalendarReadScope(integration.granted_scopes)) ?? []
   const integrationId = available.find((integration) => integration.id === chosen)?.id ?? available[0]?.id ?? null
   const events = useCalendarEvents(integrationId)
   const claim = useClaimSeries()
@@ -62,7 +56,7 @@ export function CalendarEventPicker() {
         <output>連携を読み込み中...</output>
       ) : integrations.isError ? (
         <ErrorNotice>Google連携を読み込めませんでした</ErrorNotice>
-      ) : available.length === 0 ? (
+      ) : integrations.data.length === 0 ? (
         <p>
           カレンダーの読み取り権限があるGoogleアカウントを
           <Link to="/settings/google" className="underline">
@@ -85,13 +79,26 @@ export function CalendarEventPicker() {
               claim.reset()
             }}
           >
-            {available.map((integration) => (
-              <option key={integration.id} value={integration.id}>
+            {!integrationId && <option value="">読み取り権限のあるアカウントがありません</option>}
+            {integrations.data.map((integration) => (
+              <option
+                key={integration.id}
+                value={integration.id}
+                disabled={!hasCalendarReadScope(integration.granted_scopes)}
+              >
                 {integration.email}
+                {!hasCalendarReadScope(integration.granted_scopes) && '（カレンダーの読み取り権限を追加してください）'}
               </option>
             ))}
           </select>
-          {events.isPending ? (
+          {!integrationId ? (
+            <p>
+              カレンダーの読み取り権限を追加してください。
+              <Link to="/settings/google" className="underline">
+                Google連携設定
+              </Link>
+            </p>
+          ) : events.isPending ? (
             <output>予定を読み込み中...</output>
           ) : events.isError ? (
             <ErrorNotice>カレンダーの予定を読み込めませんでした</ErrorNotice>

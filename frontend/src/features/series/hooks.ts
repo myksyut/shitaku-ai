@@ -27,16 +27,16 @@ export const calendarKeys = {
   events: (googleIntegrationId: string) => ['calendar', 'recurring-events', googleIntegrationId] as const,
 }
 
-export function invalidateSeries(queryClient: QueryClient, seriesId: string) {
+function invalidateSeriesSummaries(queryClient: QueryClient, seriesId: string) {
   return Promise.all([
-    queryClient.invalidateQueries({ queryKey: seriesKeys.detail(seriesId) }),
-    queryClient.invalidateQueries({ queryKey: seriesKeys.list() }),
+    queryClient.invalidateQueries({ queryKey: seriesKeys.detail(seriesId), exact: true }),
+    queryClient.invalidateQueries({ queryKey: seriesKeys.list(), exact: true }),
   ])
 }
 
-async function updateBoard(queryClient: QueryClient, seriesId: string, board: TeamMemoryResponse) {
-  await invalidateSeries(queryClient, seriesId)
+function updateBoard(queryClient: QueryClient, seriesId: string, board: TeamMemoryResponse) {
   queryClient.setQueryData(seriesKeys.memory(seriesId), board)
+  return invalidateSeriesSummaries(queryClient, seriesId)
 }
 
 export function useMySeries() {
@@ -56,9 +56,11 @@ export function useClaimSeries() {
   return useMutation({
     mutationFn: api.claimSeries,
     onSuccess: async ({ series }, request) => {
-      await invalidateSeries(client, series.id)
       client.setQueryData(seriesKeys.detail(series.id), series)
-      await client.invalidateQueries({ queryKey: calendarKeys.events(request.google_integration_id) })
+      await Promise.all([
+        client.invalidateQueries({ queryKey: seriesKeys.list(), exact: true }),
+        client.invalidateQueries({ queryKey: calendarKeys.events(request.google_integration_id), exact: true }),
+      ])
     },
   })
 }
@@ -75,7 +77,7 @@ export function useSaveSeriesSettings(seriesId: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (request: SeriesSettingsRequest) => api.saveSeriesSettings(seriesId, request),
-    onSuccess: () => invalidateSeries(client, seriesId),
+    onSuccess: () => invalidateSeriesSummaries(client, seriesId),
   })
 }
 
@@ -83,7 +85,14 @@ export function useSyncSeriesCalendar(seriesId: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: () => api.syncSeriesCalendar(seriesId),
-    onSuccess: () => invalidateSeries(client, seriesId),
+    onSuccess: (series) =>
+      Promise.all([
+        invalidateSeriesSummaries(client, seriesId),
+        client.invalidateQueries({ queryKey: seriesKeys.memory(seriesId), exact: true }),
+        ...series.occurrences.map((occurrence) =>
+          client.invalidateQueries({ queryKey: seriesKeys.occurrence(seriesId, occurrence.id), exact: true }),
+        ),
+      ]),
   })
 }
 
@@ -91,7 +100,10 @@ export function useDeleteSeries() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: api.deleteSeries,
-    onSuccess: (_, seriesId) => invalidateSeries(client, seriesId),
+    onSuccess: (_, seriesId) => {
+      client.removeQueries({ queryKey: seriesKeys.detail(seriesId) })
+      return client.invalidateQueries({ queryKey: seriesKeys.list(), exact: true })
+    },
   })
 }
 
@@ -143,7 +155,7 @@ export function useSetResolution(seriesId: string) {
     mutationFn: ({ itemId, resolution }: { itemId: string; resolution: Resolution | null }) =>
       api.setResolution(seriesId, itemId, resolution),
     onMutate: async ({ itemId, resolution }) => {
-      await client.cancelQueries({ queryKey: key })
+      await client.cancelQueries({ queryKey: key, exact: true })
       const previous = client.getQueryData<TeamMemoryResponse>(key)
       if (previous) {
         client.setQueryData<TeamMemoryResponse>(key, {
@@ -179,15 +191,15 @@ export function useSubmitTopic(seriesId: string, occurrenceId: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (request: NewTopicRequest) => api.submitTopic(seriesId, occurrenceId, request),
-    onSuccess: () => invalidateSeries(client, seriesId),
+    onSuccess: () => client.invalidateQueries({ queryKey: seriesKeys.occurrence(seriesId, occurrenceId), exact: true }),
   })
 }
 
-export function useDeleteTopic(seriesId: string) {
+export function useDeleteTopic(seriesId: string, occurrenceId: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (topicId: string) => api.deleteTopic(seriesId, topicId),
-    onSuccess: () => invalidateSeries(client, seriesId),
+    onSuccess: () => client.invalidateQueries({ queryKey: seriesKeys.occurrence(seriesId, occurrenceId), exact: true }),
   })
 }
 
@@ -195,7 +207,7 @@ export function useGenerateAgenda(seriesId: string, occurrenceId: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: () => api.generateAgenda(seriesId, occurrenceId),
-    onSuccess: () => invalidateSeries(client, seriesId),
+    onSuccess: () => client.invalidateQueries({ queryKey: seriesKeys.occurrence(seriesId, occurrenceId), exact: true }),
   })
 }
 
@@ -203,7 +215,7 @@ export function useSaveAgenda(seriesId: string, occurrenceId: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (content: string) => api.saveAgenda(seriesId, occurrenceId, content),
-    onSuccess: () => invalidateSeries(client, seriesId),
+    onSuccess: () => client.invalidateQueries({ queryKey: seriesKeys.occurrence(seriesId, occurrenceId), exact: true }),
   })
 }
 
@@ -219,7 +231,11 @@ export function useAddKnowledge(seriesId: string, occurrenceId: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (request: AddKnowledgeRequest) => api.addKnowledge(seriesId, occurrenceId, request),
-    onSuccess: () => invalidateSeries(client, seriesId),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: seriesKeys.occurrence(seriesId, occurrenceId), exact: true }),
+        client.invalidateQueries({ queryKey: seriesKeys.detail(seriesId), exact: true }),
+      ]),
   })
 }
 
@@ -227,7 +243,11 @@ export function useExtractMemory(seriesId: string, occurrenceId: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: () => api.extractMemory(seriesId, occurrenceId),
-    onSuccess: (report) => updateBoard(client, seriesId, { items: report.items }),
+    onSuccess: (report) =>
+      Promise.all([
+        updateBoard(client, seriesId, { items: report.items }),
+        client.invalidateQueries({ queryKey: seriesKeys.occurrence(seriesId, occurrenceId), exact: true }),
+      ]),
   })
 }
 
@@ -239,10 +259,16 @@ export function useKnowledge(seriesId: string, knowledgeId: string) {
   })
 }
 
-export function useDeleteKnowledge(seriesId: string) {
+export function useDeleteKnowledge(seriesId: string, occurrenceId: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (knowledgeId: string) => api.deleteKnowledge(seriesId, knowledgeId),
-    onSuccess: () => invalidateSeries(client, seriesId),
+    onSuccess: (_, knowledgeId) => {
+      client.removeQueries({ queryKey: seriesKeys.knowledge(seriesId, knowledgeId), exact: true })
+      return Promise.all([
+        client.invalidateQueries({ queryKey: seriesKeys.occurrence(seriesId, occurrenceId), exact: true }),
+        client.invalidateQueries({ queryKey: seriesKeys.detail(seriesId), exact: true }),
+      ])
+    },
   })
 }

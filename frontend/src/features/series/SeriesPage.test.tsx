@@ -43,10 +43,10 @@ describe('series permissions', () => {
       await userEvent.click(screen.getByRole('button', { name: '設定', exact: true }))
       expect(screen.getAllByRole('alert')).toHaveLength(2)
       for (const alert of screen.getAllByRole('alert')) expect(alert).toHaveTextContent(expected)
-      expect(screen.getByRole('link', { name: 'Google連携を確認' })).toBeInTheDocument()
+      expect(screen.getByLabelText('Google連携（カレンダー同期）')).toBeInTheDocument()
     } else {
       expect(screen.queryByText('作成者のGoogle連携が切れています')).not.toBeInTheDocument()
-      expect(screen.queryByRole('link', { name: 'Google連携を確認' })).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Google連携（カレンダー同期）')).not.toBeInTheDocument()
     }
   })
 })

@@ -3,6 +3,7 @@ import { Button, Card } from '../../components/ui'
 import { AgendaEditor } from './AgendaEditor'
 import { useGenerateAgenda, useOccurrence, useSeries } from './hooks'
 import { OccurrenceKnowledgePanel } from './OccurrenceKnowledgePanel'
+import { hasOccurrenceStarted } from './occurrence-time'
 import { Badge, ErrorNotice, formatStart } from './SeriesUi'
 import { calendarSyncErrorMessage, syncErrorMessage } from './sync-errors'
 import { TopicList } from './TopicList'
@@ -23,7 +24,9 @@ function OccurrenceWorkspace({ series, detail }: { series: SeriesDetail; detail:
         <p className="text-lg">{formatStart(detail.occurrence.start_at)}</p>
         <div className="flex gap-2">
           {detail.occurrence.is_cancelled && <Badge>キャンセル</Badge>}
-          {detail.occurrence.needs_extraction && <Badge>未抽出</Badge>}
+          {detail.occurrence.needs_extraction && hasOccurrenceStarted(detail.occurrence.start_at) && (
+            <Badge>未抽出</Badge>
+          )}
         </div>
       </div>
       <TopicList seriesId={series.id} occurrence={detail.occurrence} topics={detail.topics} role={series.role} />
@@ -53,6 +56,10 @@ function OccurrenceWorkspace({ series, detail }: { series: SeriesDetail; detail:
             {sources.calendar_error && (
               <ErrorNotice>{calendarSyncErrorMessage(sources.calendar_error, series.role)}</ErrorNotice>
             )}
+            {sources.proposal_error && (
+              <ErrorNotice>{syncErrorMessage('proposal', sources.proposal_error)}</ErrorNotice>
+            )}
+            {sources.truncated && <ErrorNotice>入力が長いため一部を省略して生成しました</ErrorNotice>}
           </div>
         )}
         {detail.agenda ? (
@@ -73,6 +80,7 @@ function OccurrenceWorkspace({ series, detail }: { series: SeriesDetail; detail:
       <OccurrenceKnowledgePanel
         seriesId={series.id}
         occurrenceId={detail.occurrence.id}
+        startAt={detail.occurrence.start_at}
         role={series.role}
         knowledge={detail.knowledge}
         needsExtraction={detail.occurrence.needs_extraction}

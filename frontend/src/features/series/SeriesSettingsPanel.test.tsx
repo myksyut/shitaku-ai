@@ -1,9 +1,12 @@
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
+import { Route, Routes } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { API, renderPage, series, server } from '../../test/series'
+import { SeriesPage } from './SeriesPage'
 import { SeriesSettingsPanel } from './SeriesSettingsPanel'
+import type { SeriesDetail } from './types'
 
 const minutesError = '参照する議事録の件数は0〜10の整数で入力してください'
 const daysError = 'Slackの参照日数は1〜30の整数で入力してください'
@@ -40,6 +43,7 @@ describe('series settings bounds', () => {
     server.use(
       http.put(`${API}/series/series-1/settings`, async ({ request }) => {
         expect(await request.json()).toEqual({
+          google_integration_id: 'google-1',
           description: null,
           minutes_count: minutes,
           slack_message_days: days,
@@ -67,5 +71,77 @@ describe('series settings bounds', () => {
     expect(screen.queryByText(daysError)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '設定を保存' }))
     expect(await screen.findByText('設定を保存しました')).toBeInTheDocument()
+  })
+})
+
+describe('series Google integration settings', () => {
+  it('relinks a disconnected series to a readonly-capable account and can explicitly unlink it', async () => {
+    let detail: SeriesDetail = {
+      ...series,
+      role: 'creator',
+      calendar: { ...series.calendar, integration_id: null, google_connected: false, error: 'not_connected' },
+    }
+    const bindings: (string | null)[] = []
+    server.use(
+      http.get(`${API}/series/series-1`, () => HttpResponse.json(detail)),
+      http.get(`${API}/google/integrations`, () =>
+        HttpResponse.json([
+          {
+            id: 'google-full',
+            email: 'full@example.com',
+            granted_scopes: ['https://www.googleapis.com/auth/calendar'],
+            created_at: '',
+            updated_at: null,
+          },
+          {
+            id: 'google-read',
+            email: 'readonly@example.com',
+            granted_scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+            created_at: '',
+            updated_at: null,
+          },
+        ]),
+      ),
+      http.put(`${API}/series/series-1/settings`, async ({ request }) => {
+        const binding = bindings.length === 0 ? 'google-read' : null
+        expect(await request.json()).toEqual({
+          google_integration_id: binding,
+          description: null,
+          minutes_count: 3,
+          slack_message_days: 7,
+          slack: null,
+        })
+        bindings.push(binding)
+        detail = {
+          ...detail,
+          calendar: { ...detail.calendar, integration_id: binding, google_connected: binding !== null, error: null },
+        }
+        return HttpResponse.json(detail)
+      }),
+    )
+    renderPage(
+      <Routes>
+        <Route path="/series/:seriesId" element={<SeriesPage />} />
+      </Routes>,
+      '/series/series-1',
+    )
+    const user = userEvent.setup()
+    await screen.findByRole('heading', { name: series.title })
+    await user.click(screen.getByRole('button', { name: '設定', exact: true }))
+    const selector = screen.getByLabelText('Google連携（カレンダー同期）')
+    await screen.findByRole('option', { name: 'readonly@example.com' })
+    expect(selector).toHaveValue('')
+    expect(screen.getByRole('option', { name: /full@example.com/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'カレンダーを同期' })).toBeDisabled()
+    await user.selectOptions(selector, 'google-read')
+    await user.click(screen.getByRole('button', { name: '設定を保存' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'カレンダーを同期' })).toBeEnabled())
+    expect(bindings).toEqual(['google-read'])
+    expect(selector).toHaveValue('google-read')
+
+    await user.selectOptions(selector, '')
+    await user.click(screen.getByRole('button', { name: '設定を保存' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'カレンダーを同期' })).toBeDisabled())
+    expect(bindings).toEqual(['google-read', null])
   })
 })

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, Card, Input, Textarea } from '../../components/ui'
+import { useGoogleIntegrations } from '../google/hooks'
+import { hasCalendarReadScope } from '../google/scopes'
 import { useSlackChannels, useSlackIntegrations } from '../slack/hooks'
 import { useDeleteSeries, useSaveSeriesSettings, useSyncSeriesCalendar } from './hooks'
 import { ErrorNotice, formatStart } from './SeriesUi'
@@ -13,9 +15,11 @@ export function SeriesSettingsPanel({ series }: { series: SeriesDetail }) {
   const sync = useSyncSeriesCalendar(series.id)
   const remove = useDeleteSeries()
   const integrations = useSlackIntegrations()
+  const googleIntegrations = useGoogleIntegrations()
   const [description, setDescription] = useState(series.settings.description ?? '')
   const [minutesCount, setMinutesCount] = useState(String(series.settings.minutes_count))
   const [messageDays, setMessageDays] = useState(String(series.settings.slack_message_days))
+  const [googleIntegrationId, setGoogleIntegrationId] = useState(series.calendar.integration_id ?? '')
   const [integrationId, setIntegrationId] = useState(series.slack?.integration_id ?? '')
   const [channelIds, setChannelIds] = useState(series.slack?.channels.map((channel) => channel.id) ?? [])
   const channels = useSlackChannels(integrationId)
@@ -34,6 +38,7 @@ export function SeriesSettingsPanel({ series }: { series: SeriesDetail }) {
     event.preventDefault()
     if (minutesError || messageDaysError) return
     save.mutate({
+      google_integration_id: googleIntegrationId || null,
       description: description.trim() || null,
       minutes_count: minutes,
       slack_message_days: days,
@@ -78,6 +83,41 @@ export function SeriesSettingsPanel({ series }: { series: SeriesDetail }) {
               error={messageDaysError}
               aria-invalid={!!messageDaysError}
             />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="series-google" className="label">
+              Google連携（カレンダー同期）
+            </label>
+            <select
+              id="series-google"
+              className="input"
+              value={googleIntegrationId}
+              disabled={googleIntegrations.isPending}
+              onChange={(event) => setGoogleIntegrationId(event.target.value)}
+            >
+              <option value="">連携しない</option>
+              {googleIntegrationId &&
+                !googleIntegrations.data?.some((integration) => integration.id === googleIntegrationId) && (
+                  <option value={googleIntegrationId} disabled>
+                    保存済みの連携（接続を確認してください）
+                  </option>
+                )}
+              {googleIntegrations.data?.map((integration) => (
+                <option
+                  key={integration.id}
+                  value={integration.id}
+                  disabled={!hasCalendarReadScope(integration.granted_scopes)}
+                >
+                  {integration.email}
+                  {!hasCalendarReadScope(integration.granted_scopes) &&
+                    '（カレンダーの読み取り権限を追加してください）'}
+                </option>
+              ))}
+            </select>
+            <Link to="/settings/google" className="text-sm underline">
+              Google連携を管理
+            </Link>
+            {googleIntegrations.isError && <ErrorNotice>Google連携を読み込めませんでした</ErrorNotice>}
           </div>
           <div className="space-y-2">
             <label htmlFor="series-slack" className="label">
@@ -151,12 +191,7 @@ export function SeriesSettingsPanel({ series }: { series: SeriesDetail }) {
           <ErrorNotice>{calendarSyncErrorMessage(series.calendar.error, series.role)}</ErrorNotice>
         )}
         {!series.calendar.google_connected && (
-          <p>
-            Google連携が解除されているため同期は停止しています。
-            <Link className="underline" to="/settings/google">
-              Google連携を確認
-            </Link>
-          </p>
+          <p>Google連携が解除されているため同期は停止しています。上のGoogle連携を選択して設定を保存してください。</p>
         )}
         <Button
           variant="secondary"

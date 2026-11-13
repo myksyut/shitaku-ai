@@ -17,7 +17,7 @@ export function TopicList({
   role: SeriesRole
 }) {
   const submit = useSubmitTopic(seriesId, occurrence.id)
-  const remove = useDeleteTopic(seriesId)
+  const remove = useDeleteTopic(seriesId, occurrence.id)
   const [title, setTitle] = useState('')
   const [details, setDetails] = useState('')
   const canSubmit = !occurrence.is_cancelled && new Date(occurrence.start_at).getTime() > Date.now()
