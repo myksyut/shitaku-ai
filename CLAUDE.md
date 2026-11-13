@@ -135,7 +135,7 @@ AI実行精度最大化のための中核ルール。全ての指示はこのフ
 | OAuth callback | `get_supabase_client` | ❌ バイパス | 外部サービスからのコールバック |
 | バッチ処理 | `get_supabase_client` | ❌ バイパス | 管理タスク、マイグレーション |
 
-上の表にない場所で `get_supabase_client` を使わない。
+上の表にない場所で `get_supabase_client` を使わない。2つのクライアントは型でも区別する（`supabase_client.py` の `UserClient` と `ServiceClient`）。リポジトリは受け取るクライアントの型を宣言し、取り違えは mypy と ty が検出する。
 
 #### 2. シリーズのエンドポイントは権限チェックを依存関係で受け取る
 
