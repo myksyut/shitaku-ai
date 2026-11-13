@@ -1,70 +1,52 @@
+import { HttpResponse, http } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiClient } from './api-client'
+import { API, server } from '../test/series'
+import { ApiError, apiClient } from './api-client'
+import { supabase } from './supabase'
 
-const mockGetSession = vi.fn()
-const mockSignOut = vi.fn()
-
-vi.mock('./supabase', () => ({
-  supabase: {
-    auth: {
-      getSession: () => mockGetSession(),
-      signOut: () => mockSignOut(),
-    },
-  },
-}))
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null }, error: null })
+})
 
 describe('apiClient', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockGetSession.mockResolvedValue({
-      data: { session: null },
+  it('sends the session token at the HTTP boundary', async () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'test-token',
+          refresh_token: '',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: {
+            id: 'user-1',
+            email: 'user@example.com',
+            aud: 'authenticated',
+            app_metadata: {},
+            user_metadata: {},
+            created_at: '',
+          },
+        },
+      },
       error: null,
     })
-  })
-
-  it('should add Authorization header when session exists', async () => {
-    const mockSession = {
-      access_token: 'test-token-123',
-      user: { id: '1', email: 'test@example.com' },
-    }
-    mockGetSession.mockResolvedValue({
-      data: { session: mockSession },
-      error: null,
-    })
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ data: 'test' }),
-    })
-    globalThis.fetch = mockFetch
-
-    await apiClient('/test')
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/test'),
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer test-token-123',
-        }),
+    server.use(
+      http.get(`${API}/probe`, ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer test-token')
+        return HttpResponse.json({ value: 'ok' })
       }),
     )
+    await expect(apiClient('/api/v1/probe')).resolves.toEqual({ value: 'ok' })
   })
 
-  it('should handle 401 error by calling signOut', async () => {
-    mockGetSession.mockResolvedValue({
-      data: { session: { access_token: 'expired-token' } },
-      error: null,
-    })
-    mockSignOut.mockResolvedValue({ error: null })
+  it('signs out on 401 and retains the HTTP status', async () => {
+    server.use(http.get(`${API}/probe`, () => HttpResponse.json({ detail: 'Unauthorized' }, { status: 401 })))
+    await expect(apiClient('/api/v1/probe')).rejects.toEqual(new ApiError(401, 'Unauthorized'))
+    expect(supabase.auth.signOut).toHaveBeenCalledOnce()
+  })
 
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: () => Promise.resolve({ detail: 'Unauthorized' }),
-    })
-    globalThis.fetch = mockFetch
-
-    await expect(apiClient('/test')).rejects.toThrow('Unauthorized')
-    expect(mockSignOut).toHaveBeenCalled()
+  it('does not try to parse JSON after a successful deletion', async () => {
+    server.use(http.delete(`${API}/probe`, () => new HttpResponse(null, { status: 204 })))
+    await expect(apiClient('/api/v1/probe', { method: 'DELETE' })).resolves.toBeUndefined()
   })
 })

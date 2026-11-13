@@ -1,18 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  deleteSlackIntegration,
-  getSlackChannels,
-  getSlackIntegrations,
-  getSlackMessages,
-  startSlackOAuth,
-} from './api'
+import { deleteSlackIntegration, getSlackChannels, getSlackIntegrations, startSlackOAuth } from './api'
 
 export const slackKeys = {
   all: ['slack'] as const,
   integrations: () => [...slackKeys.all, 'integrations'] as const,
   channels: (integrationId: string) => [...slackKeys.all, 'channels', integrationId] as const,
-  messages: (integrationId: string, channelId: string) =>
-    [...slackKeys.all, 'messages', integrationId, channelId] as const,
 }
 
 export function useSlackIntegrations() {
@@ -27,14 +19,6 @@ export function useSlackChannels(integrationId: string) {
     queryKey: slackKeys.channels(integrationId),
     queryFn: () => getSlackChannels(integrationId),
     enabled: !!integrationId,
-  })
-}
-
-export function useSlackMessages(integrationId: string, channelId: string, oldest: string, latest?: string) {
-  return useQuery({
-    queryKey: slackKeys.messages(integrationId, channelId),
-    queryFn: () => getSlackMessages(integrationId, channelId, oldest, latest),
-    enabled: !!integrationId && !!channelId && !!oldest,
   })
 }
 

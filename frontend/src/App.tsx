@@ -1,16 +1,13 @@
-/**
- * Main App component with warm, agent-centric design
- * Using react-router-dom for navigation
- */
 import type { Session } from '@supabase/supabase-js'
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import { Button, SlackIcon } from './components/ui'
 import { GoogleIcon } from './components/ui/GoogleIcon'
-import { AgentDetailPage, AgentsPage } from './features/agents'
 import { AuthPage } from './features/auth'
-import { GoogleIntegrationPage, TranscriptViewer } from './features/google'
+import { GoogleIntegrationPage } from './features/google'
 import { syncProviderToken } from './features/google/api'
+import { OccurrencePage, SeriesListPage, SeriesPage } from './features/series'
 import { SlackSettingsPage } from './features/slack'
 import { supabase } from './lib/supabase'
 
@@ -148,8 +145,24 @@ function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const tokenSyncAttempted = useRef(false)
+  const queryClient = useQueryClient()
+  const sessionUserId = useRef<string | null>(null)
 
   useEffect(() => {
+    let active = true
+    let authChanged = false
+    const applySession = (next: Session | null) => {
+      if (!active) return
+      const nextId = next?.user.id ?? null
+      if (sessionUserId.current !== nextId) {
+        queryClient.clear()
+        tokenSyncAttempted.current = false
+        sessionUserId.current = nextId
+      }
+      setSession(next)
+      setLoading(false)
+    }
+
     const syncGoogleToken = async (sess: Session) => {
       const email = sess.user?.email
       if (!email || !sess.provider_refresh_token) return
@@ -167,8 +180,8 @@ function App() {
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setLoading(false)
+      if (!active || authChanged) return
+      applySession(session)
       if (session?.provider_refresh_token && !tokenSyncAttempted.current) {
         tokenSyncAttempted.current = true
         syncGoogleToken(session)
@@ -178,18 +191,19 @@ function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session)
+      authChanged = true
+      applySession(session)
       if (event === 'SIGNED_IN' && session?.provider_refresh_token && !tokenSyncAttempted.current) {
         tokenSyncAttempted.current = true
         syncGoogleToken(session)
       }
-      if (event === 'SIGNED_OUT') {
-        tokenSyncAttempted.current = false
-      }
     })
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [queryClient])
 
   if (loading) {
     return <LoadingScreen />
@@ -220,12 +234,20 @@ function App() {
           padding: 'var(--space-8) var(--space-6)',
         }}
       >
-        <Routes>
-          <Route path="/" element={<AgentsPage />} />
-          <Route path="/agents/:agentId" element={<AgentDetailPage />} />
+        <Routes key={session.user.id}>
+          <Route path="/" element={<SeriesListPage />} />
+          <Route path="/series/:seriesId" element={<SeriesPage />} />
+          <Route path="/series/:seriesId/occurrences/:occurrenceId" element={<OccurrencePage />} />
           <Route path="/settings/slack" element={<SlackSettingsPage />} />
           <Route path="/settings/google" element={<GoogleIntegrationPage />} />
-          <Route path="/meetings/:meetingId/transcripts" element={<TranscriptViewer />} />
+          <Route
+            path="*"
+            element={
+              <p>
+                ページが見つかりません。<Link to="/">定例一覧へ戻る</Link>
+              </p>
+            }
+          />
         </Routes>
       </main>
     </div>

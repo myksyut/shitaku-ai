@@ -10,12 +10,6 @@ export interface SlackChannel {
   name: string
 }
 
-export interface SlackMessage {
-  user_name: string
-  text: string
-  posted_at: string
-}
-
 export interface SlackOAuthStartResponse {
   authorize_url: string
 }

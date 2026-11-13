@@ -1,4 +1,3 @@
-export { AgentAvatar } from './AgentAvatar'
 export { Button } from './Button'
 export { Card, CardContent, CardFooter, CardHeader } from './Card'
 export { EmptyState } from './EmptyState'
