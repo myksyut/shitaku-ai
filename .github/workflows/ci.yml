@@ -122,7 +122,7 @@ jobs:
 
       - name: Start local Supabase with Auth and PostgREST
         if: steps.changes.outputs.backend == 'true'
-        run: supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor
+        run: supabase start -x studio,imgproxy,realtime,edge-runtime,logflare,vector,supavisor
 
       - name: Run real-JWT row-level security tests
         if: steps.changes.outputs.backend == 'true'
