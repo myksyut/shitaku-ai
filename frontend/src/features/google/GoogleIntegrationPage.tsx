@@ -1,5 +1,3 @@
-import { useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { Button, Card } from '../../components/ui'
 import { GoogleIcon } from '../../components/ui/GoogleIcon'
 import {
@@ -7,7 +5,6 @@ import {
   useGoogleIntegrations,
   useStartAdditionalScopes,
   useStartGoogleOAuth,
-  useSyncRecurringMeetings,
 } from './hooks'
 import type { GoogleIntegration } from './types'
 
@@ -202,25 +199,8 @@ function IntegrationItem({ integration }: { integration: GoogleIntegration }) {
 }
 
 export function GoogleIntegrationPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
   const { data: integrations, isLoading, error } = useGoogleIntegrations()
   const startOAuth = useStartGoogleOAuth()
-  const syncMeetings = useSyncRecurringMeetings()
-  const hasSyncedRef = useRef(false)
-
-  // OAuth成功後にカレンダー同期を自動実行
-  useEffect(() => {
-    const success = searchParams.get('success')
-    if (success === 'true' && !hasSyncedRef.current) {
-      hasSyncedRef.current = true
-      syncMeetings.mutate(undefined, {
-        onSettled: () => {
-          // 同期完了後にURLパラメータをクリア
-          setSearchParams({}, { replace: true })
-        },
-      })
-    }
-  }, [searchParams, setSearchParams, syncMeetings])
 
   const handleConnect = () => {
     startOAuth.mutate()
@@ -242,6 +222,9 @@ export function GoogleIntegrationPage() {
         </h1>
         <p style={{ color: 'var(--color-warm-gray-500)' }}>
           GoogleアカウントとShitaku.aiを連携して、カレンダーやドキュメントからアジェンダを自動生成できます。
+        </p>
+        <p className="mt-3 text-sm text-[var(--color-warm-gray-600)]">
+          連携を解除すると、あなたが作成した定例のカレンダー同期が止まります
         </p>
       </div>
 
