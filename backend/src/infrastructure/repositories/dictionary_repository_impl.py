@@ -3,7 +3,7 @@ from uuid import UUID
 from pydantic import TypeAdapter
 
 from src.domain.entities.dictionary_entry import DictionaryEntry
-from src.domain.entities.series import CreatorAccess, SeriesError
+from src.domain.entities.series import CreatorAccess
 from src.domain.repositories.dictionary_repository import DictionaryRepository
 from src.infrastructure.external.supabase_client import UserClient
 
@@ -41,10 +41,8 @@ class DictionaryRepositoryImpl(DictionaryRepository):
 
     def create(self, access: CreatorAccess, entry: DictionaryEntry) -> None:
         """Insert a vocabulary entry into the creator's series."""
-        if entry.series_id != access.series_id:
-            raise SeriesError(404, "Series not found")
         self._client.table("dictionary_entries").insert(
-            TypeAdapter(DictionaryEntry).dump_python(entry, mode="json")
+            {**TypeAdapter(DictionaryEntry).dump_python(entry, mode="json"), "series_id": str(access.series_id)}
         ).execute()
 
     def save(self, access: CreatorAccess, entry: DictionaryEntry) -> None:

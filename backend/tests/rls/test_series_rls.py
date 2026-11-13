@@ -1497,3 +1497,17 @@ def test_memory_rpcs_reject_ids_from_a_different_owned_series(world: World, serv
         ).execute().data == [{"extracted_at": None}]
     finally:
         service_client.table("series").delete().eq("id", other).execute()
+
+
+def test_dictionary_repository_uses_access_series_in_real_database(world: World) -> None:
+    from uuid import UUID
+
+    from src.domain.entities.dictionary_entry import DictionaryEntry
+    from src.domain.entities.series import CreatorAccess
+    from src.infrastructure.repositories.dictionary_repository_impl import DictionaryRepositoryImpl
+
+    entry = DictionaryEntry(uuid4(), uuid4(), "Context-owned term", None, datetime.now(UTC))
+    DictionaryRepositoryImpl(world.users["A"].client).create(CreatorAccess(UUID(world.sid), world.users["A"].id), entry)
+    assert world.users["B"].client.table("dictionary_entries").select("series_id,canonical_name").eq(
+        "series_id", world.sid
+    ).eq("id", str(entry.id)).execute().data == [{"series_id": world.sid, "canonical_name": "Context-owned term"}]
