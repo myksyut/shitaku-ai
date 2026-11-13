@@ -24,7 +24,7 @@ export function OccurrenceKnowledgePanel({
   const [selected, setSelected] = useState<string | null>(null)
   const [added, setAdded] = useState<AddKnowledgeResponse | null>(null)
   const add = useAddKnowledge(seriesId, occurrenceId)
-  const remove = useDeleteKnowledge(seriesId)
+  const remove = useDeleteKnowledge(seriesId, occurrenceId)
   const extract = useExtractMemory(seriesId, occurrenceId)
   const candidates = useTranscriptCandidates(seriesId, occurrenceId, role === 'creator' && candidatesOpen)
   const pending = add.isPending || extract.isPending || remove.isPending
