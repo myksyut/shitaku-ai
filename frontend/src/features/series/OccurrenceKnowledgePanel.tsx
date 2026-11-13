@@ -1,11 +1,21 @@
 import { useState } from 'react'
 import { Button, Card } from '../../components/ui'
+import { ApiError } from '../../lib/api-client'
 import { useAddKnowledge, useDeleteKnowledge, useExtractMemory, useTranscriptCandidates } from './hooks'
 import { KnowledgeDetail } from './KnowledgeDetail'
 import { KnowledgeUpload } from './KnowledgeUpload'
 import { hasOccurrenceStarted } from './occurrence-time'
 import { Badge, ErrorNotice, formatStart } from './SeriesUi'
 import type { AddKnowledgeResponse, KnowledgeSummary, SeriesRole } from './types'
+
+function extractionErrorMessage(error: Error) {
+  if (error instanceof ApiError) {
+    if (error.status === 409) return '別の抽出が先に完了しました。最新の状態で再抽出してください'
+    if (error.status === 413)
+      return '既存の決定事項・アクションが多すぎて抽出できません。不要な項目を解決済みにするか削除してください'
+  }
+  return 'メモリの抽出に失敗しました。議事録は保存されています。抽出を再実行してください'
+}
 
 export function OccurrenceKnowledgePanel({
   seriesId,
@@ -32,6 +42,7 @@ export function OccurrenceKnowledgePanel({
   const candidates = useTranscriptCandidates(seriesId, occurrenceId, role === 'creator' && candidatesOpen)
   const pending = add.isPending || extract.isPending || remove.isPending
   const started = hasOccurrenceStarted(startAt)
+  const extractionTooLarge = extract.error instanceof ApiError && extract.error.status === 413
 
   function afterAdded(result: AddKnowledgeResponse) {
     setAdded(result)
@@ -152,7 +163,7 @@ export function OccurrenceKnowledgePanel({
           {add.isError && !uploadOpen && <ErrorNotice>議事録を追加できませんでした</ErrorNotice>}
           {remove.isError && <ErrorNotice>議事録を削除できませんでした</ErrorNotice>}
           {!started && <p className="text-sm text-[var(--color-warm-gray-500)]">会議の開始後に抽出できます</p>}
-          {knowledge.length > 0 && started && (
+          {knowledge.length > 0 && started && !extractionTooLarge && (
             <div className="space-y-2">
               <Button
                 variant="secondary"
@@ -167,9 +178,7 @@ export function OccurrenceKnowledgePanel({
               </p>
             </div>
           )}
-          {extract.isError && (
-            <ErrorNotice>メモリの抽出に失敗しました。議事録は保存されています。抽出を再実行してください</ErrorNotice>
-          )}
+          {extract.isError && <ErrorNotice>{extractionErrorMessage(extract.error)}</ErrorNotice>}
           {extract.data && !extract.isPending && (
             <output className="block text-sm">
               抽出完了: {extract.data.created}件追加、{extract.data.closed}件解決
