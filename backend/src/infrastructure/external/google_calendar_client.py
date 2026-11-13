@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from src.domain.entities.series import Attendee, CalendarSnapshot, OccurrenceSlot, parse_email
 
 CALENDAR_API_URL = "https://www.googleapis.com/calendar/v3"
+MIRROR_WINDOW = timedelta(days=35)
 
 
 class CalendarPerson(BaseModel):
@@ -131,7 +132,7 @@ class GoogleCalendarClient:
             return None
         if not master.recurrence or not master.ical_uid:
             raise ValueError("Event is not recurring")
-        window_start, window_end = now - timedelta(days=35), now + timedelta(days=35)
+        window_start, window_end = now - MIRROR_WINDOW, now + MIRROR_WINDOW
         instances = self._pages(
             f"{path}/instances",
             {
