@@ -123,7 +123,7 @@ class GenerateAgenda:
         issues = tuple(i for i in carried if isinstance(i, OpenIssue))
         decisions = tuple(i for i in reversed(carried) if isinstance(i, Decision))[:10]
         previous = [o for o in occurrences if not o.is_cancelled and o.start_at < target.start_at]
-        selected_ids = [o.id for o in previous[-series.minutes_count :]] if series.minutes_count else []
+        selected_ids = [o.id for o in previous] if series.minutes_count else []
         knowledge = await self.knowledge.for_occurrences(access.series_id, selected_ids)
         starts = {o.id: o.start_at for o in previous}
         knowledge.sort(key=lambda k: (starts[k.occurrence_id], k.created_at), reverse=True)

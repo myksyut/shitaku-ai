@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from src.application.use_cases.agenda_use_cases import GenerateAgenda
 from src.domain.entities.agenda import Agenda, AgendaTopic
+from src.domain.entities.knowledge import Knowledge
 from src.domain.entities.series import CreatorAccess, Occurrence, SlackChannelRef
 from src.domain.entities.team_memory import ActionItem
 from src.infrastructure.external.slack_client import SlackMessageData
@@ -69,3 +70,45 @@ async def test_agenda_uses_bound_channels_newest_100_and_keeps_required_content(
     context = writer.propose.call_args.args[0]
     assert len(context.slack) == 100
     assert context.actions[0].carry_over == 1
+
+
+async def test_minutes_count_selects_documents_even_from_older_occurrences() -> None:
+    sid, owner, now = uuid4(), uuid4(), datetime.now(UTC)
+    stored = replace(make_series(sid, owner), minutes_count=2)
+    previous = [
+        Occurrence(uuid4(), sid, now - timedelta(days=days), now - timedelta(days=days), False, None, 0, None, 0, False)
+        for days in (5, 4, 3, 2, 1)
+    ]
+    cancelled = Occurrence(uuid4(), sid, now, now, True, None, 0, None, 0, False)
+    target = Occurrence(uuid4(), sid, now + timedelta(days=1), now + timedelta(days=1), False, None, 0, None, 0, False)
+    notes = [
+        Knowledge(
+            uuid4(), sid, previous[1].id, "upload", None, None, "Old", "Older document", now - timedelta(hours=2)
+        ),
+        Knowledge(
+            uuid4(), sid, previous[1].id, "upload", None, None, "New", "Newer document", now - timedelta(hours=1)
+        ),
+        Knowledge(
+            uuid4(), sid, previous[1].id, "upload", None, None, "Oldest", "Oldest document", now - timedelta(hours=3)
+        ),
+        Knowledge(uuid4(), sid, cancelled.id, "upload", None, None, "Cancelled", "Not selected", now),
+    ]
+    series, content, memory, knowledge, dictionary, credentials, mirror, writer = (AsyncMock() for _ in range(8))
+    series.get.return_value = stored
+    series.occurrences.return_value = [*previous, cancelled, target]
+    memory.list_items.return_value = []
+    dictionary.list_entries.return_value = []
+    content.topics.return_value = []
+    content.save_generated.return_value = Agenda(target.id, sid, "", now, now)
+    knowledge.for_occurrences.side_effect = lambda series_id, ids: [k for k in notes if k.occurrence_id in ids]
+    mirror.refresh.return_value = None
+    writer.propose.return_value = None
+    result = await GenerateAgenda(series, content, memory, knowledge, dictionary, credentials, mirror, writer).execute(
+        CreatorAccess(sid, owner), target.id
+    )
+    knowledge.for_occurrences.assert_awaited_once_with(sid, [o.id for o in previous])
+    assert [k.normalized_text for k in writer.propose.call_args.args[0].knowledge] == [
+        "Newer document",
+        "Older document",
+    ]
+    assert result.sources.knowledge == 2
