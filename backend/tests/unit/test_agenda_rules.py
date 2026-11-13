@@ -88,3 +88,10 @@ def test_member_topic_newlines_cannot_inject_markdown_sections() -> None:
         "## 未解決の論点",
         "## 議論の提案",
     ]
+
+
+@pytest.mark.parametrize("details", [None, "", "  \n "])
+def test_topic_without_details_has_no_trailing_separator(details: str | None) -> None:
+    topic = AgendaTopic(uuid4(), uuid4(), uuid4(), uuid4(), "E2E B", "価格改定", details, datetime.now(UTC))
+    content = render_agenda([topic], [], [], None)
+    assert content.splitlines()[1] == "- 価格改定（E2E B）"

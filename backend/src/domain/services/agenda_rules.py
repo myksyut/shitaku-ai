@@ -15,7 +15,7 @@ def _topic_line(topic: AgendaTopic) -> str:
     title = " ".join(topic.title.split())
     author = " ".join(topic.author_label.split())
     details = " ".join((topic.details or "").split())
-    return f"- {title}（{author}）: {details}"
+    return f"- {title}（{author}）: {details}" if details else f"- {title}（{author}）"
 
 
 def render_agenda(
