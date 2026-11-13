@@ -98,21 +98,6 @@ class TestSlackClient:
         call_kwargs = mock_web_client.conversations_history.call_args[1]
         assert "latest" in call_kwargs
 
-    def test_verify_token_success(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
-        """トークン検証が成功する"""
-        mock_web_client.auth_test.return_value = {"ok": True}
-
-        assert slack_client.verify_token() is True
-
-    def test_verify_token_failure(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
-        """トークン検証が失敗する"""
-        mock_web_client.auth_test.side_effect = SlackApiError(  # type: ignore[no-untyped-call]
-            message="invalid_auth",
-            response={"ok": False, "error": "invalid_auth"},
-        )
-
-        assert slack_client.verify_token() is False
-
     def test_get_user_name_fallback(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
         """ユーザー情報取得失敗時はuser_idを返す"""
         mock_web_client.conversations_history.return_value = {
@@ -160,81 +145,6 @@ class TestSlackClient:
         assert messages[0].reply_count == 3
         assert messages[1].thread_ts is None
         assert messages[1].reply_count == 0
-
-    def test_get_thread_replies_success(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
-        """スレッド返信を正しく取得できる"""
-        mock_web_client.conversations_replies.return_value = {
-            "ok": True,
-            "messages": [
-                # 親メッセージ（除外される）
-                {
-                    "type": "message",
-                    "ts": "1704067200.000001",
-                    "user": "U001",
-                    "text": "親メッセージ",
-                    "thread_ts": "1704067200.000001",
-                },
-                # 返信1
-                {
-                    "type": "message",
-                    "ts": "1704067201.000002",
-                    "user": "U002",
-                    "text": "返信1",
-                    "thread_ts": "1704067200.000001",
-                },
-                # 返信2
-                {
-                    "type": "message",
-                    "ts": "1704067202.000003",
-                    "user": "U003",
-                    "text": "返信2",
-                    "thread_ts": "1704067200.000001",
-                },
-            ],
-        }
-        mock_web_client.users_info.side_effect = [
-            {"ok": True, "user": {"real_name": "山田花子"}},
-            {"ok": True, "user": {"real_name": "佐藤次郎"}},
-        ]
-
-        replies = slack_client.get_thread_replies("C001", "1704067200.000001")
-
-        assert len(replies) == 2
-        assert replies[0].text == "返信1"
-        assert replies[0].user_name == "山田花子"
-        assert replies[0].thread_ts == "1704067200.000001"
-        assert replies[1].text == "返信2"
-        assert replies[1].user_name == "佐藤次郎"
-
-    def test_get_thread_replies_api_error(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
-        """スレッド返信取得時のAPIエラーで例外を発生させる"""
-        mock_web_client.conversations_replies.side_effect = SlackApiError(  # type: ignore[no-untyped-call]
-            message="channel_not_found",
-            response={"ok": False, "error": "channel_not_found"},
-        )
-
-        with pytest.raises(SlackApiError):
-            slack_client.get_thread_replies("C001", "1704067200.000001")
-
-    def test_get_thread_replies_empty(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
-        """返信がないスレッドは空リストを返す"""
-        mock_web_client.conversations_replies.return_value = {
-            "ok": True,
-            "messages": [
-                # 親メッセージのみ
-                {
-                    "type": "message",
-                    "ts": "1704067200.000001",
-                    "user": "U001",
-                    "text": "親メッセージ",
-                    "thread_ts": "1704067200.000001",
-                },
-            ],
-        }
-
-        replies = slack_client.get_thread_replies("C001", "1704067200.000001")
-
-        assert len(replies) == 0
 
     def test_user_cache_reduces_api_calls(self, slack_client: SlackClient, mock_web_client: MagicMock) -> None:
         """同じユーザーの2回目以降はAPIを呼ばずキャッシュを返す"""

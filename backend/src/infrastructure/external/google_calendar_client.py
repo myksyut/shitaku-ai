@@ -50,7 +50,9 @@ class CalendarPage(BaseModel):
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
 
 
-def parse_snapshot(master: CalendarEvent, instances: list[CalendarEvent]) -> CalendarSnapshot:
+def parse_snapshot(
+    master: CalendarEvent, instances: list[CalendarEvent], window_start: datetime, window_end: datetime
+) -> CalendarSnapshot:
     """Drop rooms, normalize people, and retain stable instance identities."""
     attendees: dict[str, Attendee] = {}
     people = [(p, False) for p in master.attendees]
@@ -74,6 +76,8 @@ def parse_snapshot(master: CalendarEvent, instances: list[CalendarEvent]) -> Cal
         tuple(attendees.values()),
         master.attendees_omitted,
         tuple(slots),
+        window_start,
+        window_end,
     )
 
 
@@ -83,11 +87,11 @@ class GoogleCalendarClient:
     def __init__(self, access_token: str) -> None:
         self._headers = {"Authorization": f"Bearer {access_token}"}
 
-    async def _pages(self, path: str, params: dict[str, str]) -> list[CalendarEvent]:
+    def _pages(self, path: str, params: dict[str, str]) -> list[CalendarEvent]:
         result: list[CalendarEvent] = []
-        async with httpx.AsyncClient(timeout=30) as client:
+        with httpx.Client(timeout=30) as client:
             while True:
-                response = await client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers, params=params)
+                response = client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers, params=params)
                 response.raise_for_status()
                 page = CalendarPage.model_validate(response.json())
                 result.extend(page.items)
@@ -95,31 +99,46 @@ class GoogleCalendarClient:
                     return result
                 params = {**params, "pageToken": page.next_page_token}
 
-    async def list_recurring_masters(self) -> list[CalendarSnapshot]:
+    def list_recurring_masters(self) -> list[CalendarSnapshot]:
         """Offer live recurring masters from the selected primary calendar."""
-        events = await self._pages("calendars/primary/events", {"singleEvents": "false", "maxResults": "2500"})
-        return [parse_snapshot(e, []) for e in events if e.recurrence and e.ical_uid and e.status != "cancelled"]
+        now = datetime.now(UTC)
+        window_end = now + timedelta(days=365)
+        events = self._pages(
+            "calendars/primary/events",
+            {
+                "singleEvents": "false",
+                "maxResults": "2500",
+                "timeMin": now.isoformat(),
+                "timeMax": window_end.isoformat(),
+            },
+        )
+        return [
+            parse_snapshot(e, [], now, window_end)
+            for e in events
+            if e.recurrence and e.ical_uid and e.status != "cancelled"
+        ]
 
-    async def snapshot(self, event_id: str, now: datetime) -> CalendarSnapshot | None:
+    def snapshot(self, event_id: str, now: datetime) -> CalendarSnapshot | None:
         """Fetch a recurring master and its instances in the 35-day mirror window."""
         path = f"calendars/primary/events/{quote(event_id, safe='')}"
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers)
+        with httpx.Client(timeout=30) as client:
+            response = client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers)
         if response.status_code in (404, 410):
             return None
         response.raise_for_status()
         master = CalendarEvent.model_validate(response.json())
-        if not master.recurrence or not master.ical_uid:
-            raise ValueError("Event is not recurring")
         if master.status == "cancelled":
             return None
-        instances = await self._pages(
+        if not master.recurrence or not master.ical_uid:
+            raise ValueError("Event is not recurring")
+        window_start, window_end = now - timedelta(days=35), now + timedelta(days=35)
+        instances = self._pages(
             f"{path}/instances",
             {
-                "timeMin": (now - timedelta(days=35)).isoformat(),
-                "timeMax": (now + timedelta(days=35)).isoformat(),
+                "timeMin": window_start.isoformat(),
+                "timeMax": window_end.isoformat(),
                 "showDeleted": "true",
                 "maxResults": "2500",
             },
         )
-        return parse_snapshot(master, instances)
+        return parse_snapshot(master, instances, window_start, window_end)

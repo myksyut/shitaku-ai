@@ -88,15 +88,6 @@ def verify_supabase_jwt(token: str) -> dict[str, object] | None:
         return None
 
 
-def is_supabase_configured() -> bool:
-    """Check if Supabase credentials are configured.
-
-    Returns:
-        True if SUPABASE_URL and SUPABASE_KEY are set, False otherwise.
-    """
-    return settings.SUPABASE_URL is not None and settings.SUPABASE_KEY is not None
-
-
 def create_user_supabase_client(access_token: str) -> Client | None:
     """Create a Supabase client with user context for RLS enforcement.
 

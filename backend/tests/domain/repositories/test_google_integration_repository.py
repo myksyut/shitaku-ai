@@ -25,29 +25,29 @@ class TestGoogleIntegrationRepositoryInterface:
     def test_has_create_method(self) -> None:
         """createメソッドが定義されている"""
         assert hasattr(GoogleIntegrationRepository, "create")
-        assert inspect.iscoroutinefunction(GoogleIntegrationRepository.create)
+        assert not inspect.iscoroutinefunction(GoogleIntegrationRepository.create)
 
     def test_has_get_by_id_method(self) -> None:
         """get_by_idメソッドが定義されている"""
         assert hasattr(GoogleIntegrationRepository, "get_by_id")
-        assert inspect.iscoroutinefunction(GoogleIntegrationRepository.get_by_id)
+        assert not inspect.iscoroutinefunction(GoogleIntegrationRepository.get_by_id)
 
     def test_has_get_by_email_method(self) -> None:
         """get_by_emailメソッドが定義されている"""
         assert hasattr(GoogleIntegrationRepository, "get_by_email")
-        assert inspect.iscoroutinefunction(GoogleIntegrationRepository.get_by_email)
+        assert not inspect.iscoroutinefunction(GoogleIntegrationRepository.get_by_email)
 
     def test_has_get_all_method(self) -> None:
         """get_allメソッドが定義されている"""
         assert hasattr(GoogleIntegrationRepository, "get_all")
-        assert inspect.iscoroutinefunction(GoogleIntegrationRepository.get_all)
+        assert not inspect.iscoroutinefunction(GoogleIntegrationRepository.get_all)
 
     def test_has_update_method(self) -> None:
         """updateメソッドが定義されている"""
         assert hasattr(GoogleIntegrationRepository, "update")
-        assert inspect.iscoroutinefunction(GoogleIntegrationRepository.update)
+        assert not inspect.iscoroutinefunction(GoogleIntegrationRepository.update)
 
     def test_has_delete_method(self) -> None:
         """deleteメソッドが定義されている"""
         assert hasattr(GoogleIntegrationRepository, "delete")
-        assert inspect.iscoroutinefunction(GoogleIntegrationRepository.delete)
+        assert not inspect.iscoroutinefunction(GoogleIntegrationRepository.delete)

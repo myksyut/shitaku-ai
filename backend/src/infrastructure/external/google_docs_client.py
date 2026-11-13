@@ -40,7 +40,7 @@ class GoogleDocsClient:
             raise ValueError("access_token is required")
         self._access_token = access_token
 
-    async def get_document_content(self, document_id: str) -> DocsDocument | None:
+    def get_document_content(self, document_id: str) -> DocsDocument | None:
         """ドキュメントIDでドキュメントコンテンツを取得する.
 
         Args:
@@ -52,8 +52,8 @@ class GoogleDocsClient:
         Raises:
             ValueError: API呼び出しが失敗した場合。
         """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
+        with httpx.Client() as client:
+            response = client.get(
                 f"{DOCS_API_BASE}/documents/{document_id}",
                 headers={"Authorization": f"Bearer {self._access_token}"},
             )
@@ -70,7 +70,7 @@ class GoogleDocsClient:
             data = response.json()
             return self._to_docs_document(data)
 
-    async def get_document_text(self, document_id: str) -> str | None:
+    def get_document_text(self, document_id: str) -> str | None:
         """ドキュメントIDでテキストコンテンツのみを取得する.
 
         Args:
@@ -82,7 +82,7 @@ class GoogleDocsClient:
         Raises:
             ValueError: API呼び出しが失敗した場合。
         """
-        doc = await self.get_document_content(document_id)
+        doc = self.get_document_content(document_id)
         if doc is None:
             return None
         return doc.body_text

@@ -30,15 +30,16 @@ calendar_router = APIRouter(prefix="/calendar", tags=["calendar"])
 
 
 @router.get("")
-async def list_series(
+def list_series(
     repository: SeriesRepositoryImpl = Depends(get_series_repository),
+    user_id: UUID = Depends(get_current_user_id),
 ) -> dict[str, list[SeriesSummary]]:
     """List the caller's shared series."""
-    return {"series": await SeriesUseCases(repository).list_for_caller()}
+    return {"series": SeriesUseCases(repository).list_for_caller(user_id)}
 
 
 @calendar_router.get("/recurring-events")
-async def calendar_choices(
+def calendar_choices(
     google_integration_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
     repository: SeriesRepositoryImpl = Depends(get_series_repository),
@@ -46,11 +47,11 @@ async def calendar_choices(
 ) -> dict[str, list[CalendarEventChoice]]:
     """Offer live events from the explicitly selected personal calendar."""
     use_cases = CalendarUseCases(repository, credentials, SeriesCalendarMirror.create())
-    return {"events": await use_cases.choices(user_id, google_integration_id)}
+    return {"events": use_cases.choices(user_id, google_integration_id)}
 
 
 @router.post("")
-async def claim_series(
+def claim_series(
     request: ClaimRequest,
     response: Response,
     user_id: UUID = Depends(get_current_user_id),
@@ -59,57 +60,58 @@ async def claim_series(
     credentials: SeriesCredentials = Depends(get_series_credentials),
 ) -> dict[str, str | SeriesDetail]:
     """Claim a new series or join through the creator's trusted calendar."""
-    outcome, series_id = await CalendarUseCases(repository, credentials, SeriesCalendarMirror.create()).claim(
+    outcome, series_id = CalendarUseCases(repository, credentials, SeriesCalendarMirror.create()).claim(
         user_id,
         request.google_integration_id,
         request.calendar_event_id,
         emails,
     )
-    access = await member_access(series_id, user_id, repository)
+    access = member_access(series_id, user_id, repository)
     response.status_code = 201 if outcome == "created" else 200
-    return {"outcome": outcome, "series": await SeriesUseCases(repository).detail(access)}
+    return {"outcome": outcome, "series": SeriesUseCases(repository).detail(access)}
 
 
 @router.get("/{series_id}")
-async def get_series(
+def get_series(
     access: MemberAccess = Depends(member_access), repository: SeriesRepositoryImpl = Depends(get_series_repository)
 ) -> SeriesDetail:
     """Read shared settings, attendees and occurrences."""
-    return await SeriesUseCases(repository).detail(access)
+    return SeriesUseCases(repository).detail(access)
 
 
 @router.put("/{series_id}/settings")
-async def save_settings(
+def save_settings(
     request: SeriesSettingsRequest,
     access: CreatorAccess = Depends(creator_access),
     repository: SeriesRepositoryImpl = Depends(get_series_repository),
     credentials: SeriesCredentials = Depends(get_series_credentials),
 ) -> SeriesDetail:
     """Save creator settings and validated Slack selections."""
-    return await SeriesUseCases(repository).settings(
+    return SeriesUseCases(repository).settings(
         access,
         SeriesSettings(request.description, request.minutes_count, request.slack_message_days),
         credentials,
+        request.google_integration_id,
         request.slack.integration_id if request.slack else None,
         request.slack.channel_ids if request.slack else [],
     )
 
 
 @router.post("/{series_id}/calendar-sync")
-async def sync_calendar(
+def sync_calendar(
     access: CreatorAccess = Depends(creator_access), repository: SeriesRepositoryImpl = Depends(get_series_repository)
 ) -> SeriesDetail:
     """Refresh calendar state without changing creator-owned settings."""
-    series = await repository.get(access.series_id)
+    series = repository.get(access.series_id)
     if series is None:
         raise SeriesError(404, "Series not found")
-    await SeriesCalendarMirror.create().refresh(series)
-    return await SeriesUseCases(repository).detail(access)
+    SeriesCalendarMirror.create().refresh(series)
+    return SeriesUseCases(repository).detail(access)
 
 
 @router.delete("/{series_id}", status_code=204)
-async def delete_series(
+def delete_series(
     access: CreatorAccess = Depends(creator_access), repository: SeriesRepositoryImpl = Depends(get_series_repository)
 ) -> None:
     """Delete the creator's entire shared series."""
-    await repository.delete(access)
+    repository.delete(access)

@@ -67,6 +67,8 @@ def world(
             for tag in ("A", "B", "E")
         ],
         "occurrences": [{"original_start": future, "start_at": future}],
+        "window_start": (now - timedelta(days=35)).isoformat(),
+        "window_end": (now + timedelta(days=35)).isoformat(),
     }
     service_client.table("series").insert(
         {
@@ -149,8 +151,8 @@ def test_table_crud_matrix(world: World, tag: str) -> None:
     client = world.users[tag].client
     roles = client.rpc("my_series_roles").execute().data
     assert roles == ([{"series_id": world.sid, "role": "creator" if tag == "A" else "member"}] if tag in "AB" else [])
-    for table in ("series", "series_attendees", "occurrences", *world.rows, "occurrence_overview"):
-        key = "id" if table == "series" else "series_id"
+    for table in ("series", "series_attendees", "occurrences", *world.rows, "occurrence_overview", "series_summary"):
+        key = "id" if table in ("series", "series_summary") else "series_id"
         result = client.table(table).select("*").eq(key, world.sid).execute()
         assert bool(result.data) == (tag in "AB"), (tag, table)
     for table in ("series_attendees", "occurrences"):
@@ -181,6 +183,7 @@ def test_table_crud_matrix(world: World, tag: str) -> None:
             row["canonical_name"] = "New term"
         if table == "agenda_topics":
             row["submitted_by"] = str(world.users[tag].id)
+            row.pop("id", None)
         can_insert = tag == "A" or (tag == "B" and table == "agenda_topics")
         if can_insert:
             assert client.table(table).insert(row).execute().data
@@ -213,6 +216,15 @@ def test_table_crud_matrix(world: World, tag: str) -> None:
 @pytest.mark.parametrize("tag", list("ABCDE"))
 def test_resolution_rpc_and_service_only_functions(world: World, tag: str, service_client: Client) -> None:
     client = world.users[tag].client
+    denied(
+        client.rpc(
+            "mark_calendar_event_missing",
+            {
+                "p_series_id": world.sid,
+                "p_fetched_at": datetime.now(UTC).isoformat(),
+            },
+        ).execute
+    )
     action = str(world.rows["memory_items"]["id"])
     decision = str(uuid4())
     service_client.table("memory_items").insert(
@@ -268,6 +280,8 @@ def test_resolution_rpc_and_service_only_functions(world: World, tag: str, servi
 
 
 def test_topics_timing_authorship_and_delete(world: World) -> None:
+    from pydantic import TypeAdapter
+
     member = world.users["B"]
     for oid in (world.past, world.cancelled):
         denied(
@@ -287,12 +301,10 @@ def test_topics_timing_authorship_and_delete(world: World) -> None:
         )
         .execute()
     )
-    topic_id = str(uuid4())
     topic = (
         member.client.table("agenda_topics")
         .insert(
             {
-                "id": topic_id,
                 "series_id": world.sid,
                 "occurrence_id": world.oid,
                 "submitted_by": str(member.id),
@@ -303,6 +315,7 @@ def test_topics_timing_authorship_and_delete(world: World) -> None:
         .data[0]
     )
     assert topic
+    topic_id = str(TypeAdapter(dict[str, JSON]).validate_python(topic)["id"])
     assert member.client.table("agenda_topics").delete().eq("id", topic_id).execute().data
 
 
@@ -369,7 +382,7 @@ def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, servi
         .eq("extraction_key", "issue-key")
         .execute()
         .data
-        == []
+        != []
     )
     service_client.table("knowledge").insert(
         {
@@ -426,18 +439,23 @@ def test_member_and_outsider_extraction_cannot_change_any_state(world: World, ta
     )
 
 
-async def test_memory_repository_maps_real_composite_origin_join(world: World) -> None:
+def test_memory_repository_maps_real_composite_origin_join(world: World) -> None:
     from uuid import UUID
 
     from src.infrastructure.repositories.team_memory_repository_impl import TeamMemoryRepositoryImpl
 
-    items = await TeamMemoryRepositoryImpl(world.users["B"].client).list_items(UUID(world.sid))
+    items = TeamMemoryRepositoryImpl(world.users["B"].client).list_items(UUID(world.sid))
     assert len(items) == 1 and items[0].kind == "action_item"
     assert items[0].origin_occurrence_id == UUID(world.past)
 
 
 @pytest.fixture
-def bedrock_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+def bedrock_extraction_payload() -> dict[str, JSON]:
+    return {"new_items": [{"kind": "decision", "body": "Extracted through real HTTP"}], "closures": []}
+
+
+@pytest.fixture
+def bedrock_stub(monkeypatch: pytest.MonkeyPatch, bedrock_extraction_payload: dict[str, JSON]) -> Iterator[str]:
     import json
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -452,10 +470,7 @@ def bedrock_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
                     {
                         "type": "tool_use",
                         "name": "record_meeting_memory",
-                        "input": {
-                            "new_items": [{"kind": "decision", "body": "Extracted through real HTTP"}],
-                            "closures": [],
-                        },
+                        "input": bedrock_extraction_payload,
                     }
                 ]
             elif payload["max_tokens"] == 2048:
@@ -534,7 +549,12 @@ def test_real_http_member_topic_creator_agenda_memory_and_dictionary(
         assert "1回持ち越し" in agenda["agenda"]["content"]
         assert agenda["sources"]["topics"] == 2
         assert agenda["sources"]["carried_action_items"] == 1
-        assert agenda["sources"]["calendar_error"] is not None
+        assert agenda["sources"]["calendar_error"] == "not_connected"
+        assert api.get(base, headers=headers["B"]).json()["calendar"]["error"] == "not_connected"
+        assert (
+            api.get("/api/v1/series", headers=headers["B"]).json()["series"][0]["calendar_sync_error"]
+            == "not_connected"
+        )
         assert "series_id" not in agenda["agenda"]
         edited = api.put(f"{occurrence}/agenda", json={"content": "Creator edit"}, headers=headers["A"])
         assert edited.status_code == 200
@@ -729,3 +749,520 @@ def test_omitted_guest_snapshot_keeps_last_trusted_membership(world: World, serv
     assert world.users["B"].client.table("series").select("calendar_sync_error").eq("id", world.sid).execute().data == [
         {"calendar_sync_error": "attendees_omitted"}
     ]
+
+
+def test_calendar_error_constraint_accepts_only_public_codes(world: World, service_client: Client) -> None:
+    codes = (
+        "not_connected",
+        "scope_missing",
+        "revoked",
+        "attendees_omitted",
+        "event_not_found",
+        "calendar_unavailable",
+    )
+    for code in (*codes, None):
+        service_client.table("series").update({"calendar_sync_error": code}).eq("id", world.sid).execute()
+        assert world.users["B"].client.table("series").select("calendar_sync_error").eq(
+            "id", world.sid
+        ).execute().data == [{"calendar_sync_error": code}]
+    with pytest.raises(APIError) as error:
+        service_client.table("series").update({"calendar_sync_error": "Google integration not connected"}).eq(
+            "id", world.sid
+        ).execute()
+    assert error.value.code == "23514"
+
+
+def test_out_of_order_extraction_cannot_overwrite_newer_state(world: World) -> None:
+    from pydantic import TypeAdapter
+
+    owner = world.users["A"].client
+    newer = datetime.now(UTC)
+    arguments = {
+        "p_occurrence_id": world.past,
+        "p_input_at": newer.isoformat(),
+        "p_items": [{"kind": "decision", "body": "Newer result", "extraction_key": "newer"}],
+        "p_closures": [],
+    }
+    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    stale = (
+        owner.rpc(
+            "apply_extraction",
+            {
+                **arguments,
+                "p_input_at": (newer - timedelta(seconds=1)).isoformat(),
+                "p_items": [{"kind": "decision", "body": "Older result", "extraction_key": "older"}],
+                "p_closures": [{"item_id": str(world.rows["memory_items"]["id"]), "resolution": "done"}],
+            },
+        )
+        .execute()
+        .data
+    )
+    assert stale == {"created": 0, "closed": 0, "stale": True}
+    assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
+    marker = (
+        owner.table("occurrences").select("extracted_at").eq("series_id", world.sid).eq("id", world.past).execute().data
+    )
+    assert TypeAdapter(list[dict[str, datetime]]).validate_python(marker) == [{"extracted_at": newer}]
+
+
+def test_stale_extraction_http_returns_conflict_without_changes(
+    world: World,
+    service_client: Client,
+    bedrock_stub: str,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    assert bedrock_stub.startswith("http://127.0.0.1:")
+    future = datetime.now(UTC) + timedelta(minutes=1)
+    service_client.table("occurrences").update({"extracted_at": future.isoformat()}).eq("series_id", world.sid).eq(
+        "id", world.past
+    ).execute()
+    before = service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    with TestClient(app) as api:
+        response = api.post(
+            f"/api/v1/series/{world.sid}/occurrences/{world.past}/extract",
+            headers={"Authorization": f"Bearer {world.users['A'].access_token}"},
+        )
+    assert response.status_code == 409, response.text
+    assert response.json() == {"detail": "stale_extraction"}
+    assert (
+        service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
+    )
+
+
+def test_reextraction_closes_same_occurrence_items_before_replacing_them(world: World) -> None:
+    from pydantic import TypeAdapter
+
+    owner = world.users["A"].client
+    input_at = datetime.now(UTC).isoformat()
+    arguments = {
+        "p_occurrence_id": world.past,
+        "p_input_at": input_at,
+        "p_closures": [],
+        "p_items": [
+            {"kind": "action_item", "body": "Action resolved during this meeting", "extraction_key": "same-occurrence"}
+        ],
+    }
+    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    rows = (
+        owner.table("memory_items")
+        .select("id")
+        .eq("series_id", world.sid)
+        .eq("extraction_key", "same-occurrence")
+        .execute()
+        .data
+    )
+    item_id = TypeAdapter(list[dict[str, str]]).validate_python(rows)[0]["id"]
+    closures = {**arguments, "p_items": [], "p_closures": [{"item_id": item_id, "resolution": "done"}]}
+    assert owner.rpc("apply_extraction", closures).execute().data == {"created": 0, "closed": 1}
+    assert owner.table("memory_items").select("id,resolution,human_updated_at").eq("series_id", world.sid).eq(
+        "id", item_id
+    ).execute().data == [{"id": item_id, "resolution": "done", "human_updated_at": None}]
+    assert owner.rpc("apply_extraction", closures).execute().data == {"created": 0, "closed": 0}
+    assert owner.table("memory_items").select("id").eq("series_id", world.sid).eq("id", item_id).execute().data == [
+        {"id": item_id}
+    ]
+
+
+@pytest.mark.parametrize("state", ["untouched", "human_edited", "closed", "manual"])
+def test_reextraction_corrects_only_untouched_open_extracted_metadata(
+    world: World,
+    service_client: Client,
+    state: str,
+) -> None:
+    from pydantic import TypeAdapter
+
+    owner = world.users["A"].client
+    input_at = datetime.now(UTC)
+    original: dict[str, JSON] = {
+        "kind": "action_item",
+        "body": "Stable action body",
+        "extraction_key": "stable-action",
+        "assignee_email": None,
+        "due_on": "2026-11-20",
+    }
+    arguments = {
+        "p_occurrence_id": world.past,
+        "p_input_at": input_at.isoformat(),
+        "p_items": [original],
+        "p_closures": [],
+    }
+    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    rows = (
+        owner.table("memory_items")
+        .select("id")
+        .eq("series_id", world.sid)
+        .eq("extraction_key", "stable-action")
+        .execute()
+        .data
+    )
+    item_id = TypeAdapter(list[dict[str, str]]).validate_python(rows)[0]["id"]
+    if state == "human_edited":
+        service_client.table("memory_items").update({"human_updated_at": input_at.isoformat()}).eq(
+            "series_id", world.sid
+        ).eq("id", item_id).execute()
+    elif state == "closed":
+        service_client.table("memory_items").update({"resolution": "done", "closed_at": input_at.isoformat()}).eq(
+            "series_id", world.sid
+        ).eq("id", item_id).execute()
+    elif state == "manual":
+        service_client.table("memory_items").update({"extracted": False}).eq("series_id", world.sid).eq(
+            "id", item_id
+        ).execute()
+    corrected = {**original, "assignee_email": world.users["D"].email, "due_on": "2026-12-20"}
+    updated = {**arguments, "p_input_at": (input_at + timedelta(seconds=1)).isoformat(), "p_items": [corrected]}
+    assert owner.rpc("apply_extraction", updated).execute().data == {"created": 0, "closed": 0}
+    expected_assignee = world.users["D"].email.lower() if state == "untouched" else None
+    expected_due = "2026-12-20" if state == "untouched" else "2026-11-20"
+    assert owner.table("memory_items").select("id,assignee_email,due_on").eq("series_id", world.sid).eq(
+        "id", item_id
+    ).execute().data == [{"id": item_id, "assignee_email": expected_assignee, "due_on": expected_due}]
+    assert owner.rpc("apply_extraction", updated).execute().data == {"created": 0, "closed": 0}
+    if state == "untouched":
+        cleared = {**updated, "p_items": [{**original, "due_on": None}]}
+        assert owner.rpc("apply_extraction", cleared).execute().data == {"created": 0, "closed": 0}
+        assert owner.table("memory_items").select("id,assignee_email,due_on").eq("series_id", world.sid).eq(
+            "id", item_id
+        ).execute().data == [{"id": item_id, "assignee_email": None, "due_on": None}]
+
+
+def test_malformed_extraction_http_cannot_delete_existing_extracted_memory(
+    world: World,
+    service_client: Client,
+    bedrock_stub: str,
+    bedrock_extraction_payload: dict[str, JSON],
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    assert bedrock_stub.startswith("http://127.0.0.1:")
+    owner = world.users["A"].client
+    owner.rpc(
+        "apply_extraction",
+        {
+            "p_occurrence_id": world.past,
+            "p_input_at": datetime.now(UTC).isoformat(),
+            "p_items": [{"kind": "open_issue", "body": "Must survive malformed output", "extraction_key": "preserved"}],
+            "p_closures": [],
+        },
+    ).execute()
+    before = service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    marker = (
+        service_client.table("occurrences")
+        .select("extracted_at")
+        .eq("series_id", world.sid)
+        .eq("id", world.past)
+        .execute()
+        .data
+    )
+    malformed: list[dict[str, JSON]] = [
+        {"new_items": [{}], "closures": []},
+        {"new_items": [{"kind": "decision", "body": "Valid"}, {}], "closures": []},
+        {"new_items": [{"kind": "unknown", "body": "Invalid"}], "closures": []},
+        {"new_items": [{"kind": "decision", "body": ""}], "closures": []},
+        {"new_items": [None], "closures": []},
+        {"new_items": [], "closures": [{}]},
+        {"new_items": [], "closures": [123]},
+        {"new_items": [], "closures": [{"ref": "unknown", "resolution": "invented"}]},
+    ]
+    with TestClient(app) as api:
+        for payload in malformed:
+            bedrock_extraction_payload.clear()
+            bedrock_extraction_payload.update(payload)
+            response = api.post(
+                f"/api/v1/series/{world.sid}/occurrences/{world.past}/extract",
+                headers={"Authorization": f"Bearer {world.users['A'].access_token}"},
+            )
+            assert response.status_code == 502, response.text
+            assert response.json() == {"detail": "Memory extraction unavailable"}
+            assert (
+                service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+                == before
+            )
+            assert (
+                service_client.table("occurrences")
+                .select("extracted_at")
+                .eq("series_id", world.sid)
+                .eq("id", world.past)
+                .execute()
+                .data
+                == marker
+            )
+
+
+def test_calendar_snapshot_cancels_missing_slots_only_inside_fetched_window(
+    world: World, service_client: Client
+) -> None:
+    from pydantic import TypeAdapter
+
+    original = TypeAdapter(list[dict[str, str]]).validate_python(world.snapshot["occurrences"])[0]["original_start"]
+    base = datetime.fromisoformat(original) - timedelta(days=2)
+    outside = base + timedelta(days=10)
+    service_client.table("occurrences").insert(
+        {"series_id": world.sid, "original_start": outside.isoformat(), "start_at": outside.isoformat()}
+    ).execute()
+    snapshot = {
+        **world.snapshot,
+        "window_start": (base + timedelta(days=1)).isoformat(),
+        "window_end": (base + timedelta(days=5)).isoformat(),
+        "occurrences": [
+            {
+                "original_start": (base + timedelta(days=d)).isoformat(),
+                "start_at": (base + timedelta(days=d)).isoformat(),
+            }
+            for d in (2, 3)
+        ],
+    }
+    service_client.rpc(
+        "apply_calendar_snapshot",
+        {
+            "p_series_id": world.sid,
+            "p_snapshot": snapshot,
+            "p_fetched_at": (datetime.now(UTC) + timedelta(seconds=1)).isoformat(),
+        },
+    ).execute()
+    snapshot["occurrences"] = [
+        {"original_start": (base + timedelta(days=d)).isoformat(), "start_at": (base + timedelta(days=d)).isoformat()}
+        for d in (3, 4)
+    ]
+    service_client.rpc(
+        "apply_calendar_snapshot",
+        {
+            "p_series_id": world.sid,
+            "p_snapshot": snapshot,
+            "p_fetched_at": (datetime.now(UTC) + timedelta(seconds=2)).isoformat(),
+        },
+    ).execute()
+    for days, cancelled in ((2, True), (3, False), (4, False), (10, False)):
+        assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
+            "original_start", (base + timedelta(days=days)).isoformat()
+        ).execute().data == [{"is_cancelled": cancelled}]
+    assert (
+        world.users["B"]
+        .client.table("agenda_topics")
+        .select("id")
+        .eq("series_id", world.sid)
+        .eq("occurrence_id", world.oid)
+        .execute()
+        .data
+    )
+    assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
+        "id", world.past
+    ).execute().data == [{"is_cancelled": False}]
+
+
+def test_missing_creator_calendar_event_cancels_all_future_occurrences(world: World, service_client: Client) -> None:
+    from unittest.mock import MagicMock
+    from uuid import UUID
+
+    from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
+    from src.infrastructure.external.series_credentials import GoogleApis, SeriesCredentials
+    from src.infrastructure.repositories.series_repository_impl import SeriesRepositoryImpl
+
+    series = SeriesRepositoryImpl(world.users["A"].client).get(UUID(world.sid))
+    assert series is not None
+    credentials, calendar = MagicMock(spec=SeriesCredentials), MagicMock()
+    credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
+    calendar.snapshot.return_value = None
+    assert SeriesCalendarMirror(service_client, credentials).refresh(series) == "event_not_found"
+    assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
+        "id", world.oid
+    ).execute().data == [{"is_cancelled": True}]
+    assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
+        "id", world.past
+    ).execute().data == [{"is_cancelled": False}]
+
+
+def test_creator_relinks_google_after_disconnect_with_owned_calendar_scope(
+    world: World, service_client: Client
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    service_client.table("google_integrations").delete().eq("id", world.integration).execute()
+    reconnected, foreign, no_scope = (str(uuid4()) for _ in range(3))
+    for iid, tag, scopes in (
+        (reconnected, "A", ["https://www.googleapis.com/auth/calendar.readonly"]),
+        (foreign, "C", ["https://www.googleapis.com/auth/calendar.readonly"]),
+        (no_scope, "A", []),
+    ):
+        service_client.table("google_integrations").insert(
+            {
+                "id": iid,
+                "user_id": str(world.users[tag].id),
+                "email": f"{iid}@example.com",
+                "encrypted_refresh_token": "not-needed-for-scope-validation",
+                "granted_scopes": scopes,
+            }
+        ).execute()
+    settings = {
+        "description": None,
+        "minutes_count": 3,
+        "slack_message_days": 7,
+        "slack": None,
+        "google_integration_id": reconnected,
+    }
+    headers = {tag: {"Authorization": f"Bearer {user.access_token}"} for tag, user in world.users.items()}
+    base = f"/api/v1/series/{world.sid}"
+    with TestClient(app) as api:
+        before = api.get(base, headers=headers["B"]).json()["calendar"]
+        assert before["integration_id"] is None and before["google_connected"] is False
+        assert api.put(f"{base}/settings", json=settings, headers=headers["B"]).status_code == 403
+        assert api.put(f"{base}/settings", json=settings, headers=headers["C"]).status_code == 404
+        missing_scope = api.put(
+            f"{base}/settings", json={**settings, "google_integration_id": no_scope}, headers=headers["A"]
+        )
+        assert missing_scope.status_code == 409 and missing_scope.json()["detail"] == "scope_missing"
+        foreign_binding = api.put(
+            f"{base}/settings", json={**settings, "google_integration_id": foreign}, headers=headers["A"]
+        )
+        assert foreign_binding.status_code == 409 and foreign_binding.json()["detail"] == "not_connected"
+        relinked = api.put(f"{base}/settings", json=settings, headers=headers["A"])
+        assert relinked.status_code == 200, relinked.text
+        assert relinked.json()["calendar"]["integration_id"] == reconnected
+        assert relinked.json()["calendar"]["google_connected"] is True
+        cleared = api.put(f"{base}/settings", json={**settings, "google_integration_id": None}, headers=headers["A"])
+        assert cleared.status_code == 200
+        assert cleared.json()["calendar"]["integration_id"] is None
+        assert cleared.json()["calendar"]["google_connected"] is False
+    with pytest.raises(APIError) as error:
+        world.users["A"].client.table("series").update({"google_integration_id": foreign}).eq("id", world.sid).execute()
+    assert error.value.code == "23503"
+
+
+def test_reextraction_is_additive_and_never_deletes_omitted_items(world: World) -> None:
+    owner = world.users["A"].client
+    arguments = {"p_occurrence_id": world.past, "p_input_at": datetime.now(UTC).isoformat(), "p_closures": []}
+    for key in ("first", "second"):
+        assert owner.rpc(
+            "apply_extraction", {**arguments, "p_items": [{"kind": "open_issue", "body": key, "extraction_key": key}]}
+        ).execute().data == {"created": 1, "closed": 0}
+    before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    assert owner.rpc("apply_extraction", {**arguments, "p_items": []}).execute().data == {"created": 0, "closed": 0}
+    assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
+    for key in ("first", "second"):
+        assert owner.table("memory_items").select("body").eq("series_id", world.sid).eq(
+            "extraction_key", key
+        ).execute().data == [{"body": key}]
+
+
+def test_topic_author_uses_calendar_name_then_verified_email_and_blocks_forgery(
+    world: World, service_client: Client
+) -> None:
+    from pydantic import TypeAdapter
+
+    member = world.users["B"]
+    verified_email = world.users["D"].email.lower()
+    payload = {"series_id": world.sid, "occurrence_id": world.oid, "submitted_by": str(member.id), "title": "Topic"}
+    denied(member.client.table("agenda_topics").insert({**payload, "author_label": "Forged author"}).execute)
+    service_client.table("series_attendees").update({"display_name": "Trusted calendar name"}).eq(
+        "series_id", world.sid
+    ).eq("email", verified_email).execute()
+    rows = member.client.table("agenda_topics").insert(payload).execute().data
+    assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == "Trusted calendar name"
+    assert member.email.lower() != verified_email
+    service_client.table("series_attendees").update({"display_name": None}).eq("series_id", world.sid).eq(
+        "email", verified_email
+    ).execute()
+    rows = member.client.table("agenda_topics").insert(payload).execute().data
+    assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == verified_email
+    rows = (
+        world.users["A"]
+        .client.table("agenda_topics")
+        .insert(
+            {
+                **payload,
+                "submitted_by": str(world.users["A"].id),
+            }
+        )
+        .execute()
+        .data
+    )
+    assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == "メンバー"
+
+
+def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_client: Client) -> None:
+    from unittest.mock import MagicMock
+    from uuid import UUID
+
+    from src.domain.entities.series import SeriesError
+    from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
+    from src.infrastructure.external.series_credentials import CredentialUnavailableError, SeriesCredentials
+    from src.infrastructure.repositories.series_repository_impl import SeriesRepositoryImpl
+
+    old = datetime.now(UTC) - timedelta(minutes=3)
+    service_client.table("series").update({"calendar_refresh_attempted_at": old.isoformat()}).eq(
+        "id", world.sid
+    ).execute()
+    repository = SeriesRepositoryImpl(world.users["A"].client)
+    before = repository.get(UUID(world.sid))
+    credentials = MagicMock(spec=SeriesCredentials)
+    credentials.google_for_series.side_effect = CredentialUnavailableError("not_connected")
+    mirror = SeriesCalendarMirror(service_client, credentials)
+    with pytest.raises(SeriesError) as error:
+        mirror.refresh_for_join(world.sid)
+    assert error.value.status == 409
+    mirror.refresh_for_join(world.sid)
+    credentials.google_for_series.assert_called_once()
+    after = repository.get(UUID(world.sid))
+    assert before is not None and after is not None
+    assert after.calendar_synced_at == before.calendar_synced_at
+    assert after.calendar_refresh_attempted_at is not None and after.calendar_refresh_attempted_at > old
+
+
+def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World, service_client: Client) -> None:
+    from unittest.mock import MagicMock
+
+    from pydantic import TypeAdapter
+
+    from src.domain.entities.series import CalendarSnapshot
+    from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
+    from src.infrastructure.external.series_credentials import GoogleApis, SeriesCredentials
+
+    service_client.table("series").update(
+        {"calendar_refresh_attempted_at": (datetime.now(UTC) - timedelta(minutes=3)).isoformat()}
+    ).eq("id", world.sid).execute()
+    snapshot = TypeAdapter(CalendarSnapshot).validate_python(
+        {
+            **world.snapshot,
+            "ical_uid": world.sid,
+            "event_id": "event",
+            "attendees_omitted": True,
+        }
+    )
+    credentials, calendar = MagicMock(spec=SeriesCredentials), MagicMock()
+    calendar.snapshot.return_value = snapshot
+    credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
+    SeriesCalendarMirror(service_client, credentials).refresh_for_join(world.sid)
+    assert world.users["B"].client.table("series").select("calendar_sync_error").eq("id", world.sid).execute().data == [
+        {"calendar_sync_error": "attendees_omitted"}
+    ]
+
+
+def test_batched_series_read_models_keep_rls_roles_and_counts(world: World) -> None:
+    from uuid import UUID
+
+    from src.infrastructure.repositories.series_repository_impl import SeriesRepositoryImpl
+
+    sid = UUID(world.sid)
+    for tag, user in world.users.items():
+        repository = SeriesRepositoryImpl(user.client)
+        summaries = repository.list_summaries(user.id)
+        if tag not in ("A", "B"):
+            assert summaries == []
+            assert repository.visible_calendar_series() == {}
+            assert repository.get_occurrence(sid, UUID(world.oid)) is None
+            continue
+        assert len(summaries) == 1 and summaries[0].id == sid
+        assert summaries[0].role == ("creator" if tag == "A" else "member")
+        assert summaries[0].open_action_items == 1
+        assert summaries[0].next_occurrence is not None and summaries[0].next_occurrence.id == UUID(world.oid)
+        assert summaries[0].next_occurrence.has_agenda and summaries[0].next_occurrence.topic_count == 1
+        assert repository.visible_calendar_series() == {world.sid: sid}
+        assert repository.get_occurrence(sid, UUID(world.oid)) is not None
+        assert repository.get_occurrence(sid, uuid4()) is None

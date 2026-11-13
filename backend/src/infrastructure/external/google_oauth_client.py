@@ -51,6 +51,14 @@ class GoogleUserInfo:
     picture: str | None
 
 
+class GoogleTokenRefreshError(ValueError):
+    """Preserve the provider's machine-readable refresh failure reason."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
 class GoogleOAuthClient:
     """Google OAuth client for authentication and token management."""
 
@@ -98,7 +106,7 @@ class GoogleOAuthClient:
 
         return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str) -> GoogleTokenResponse:
+    def exchange_code(self, code: str) -> GoogleTokenResponse:
         """Exchange authorization code for tokens.
 
         Args:
@@ -110,8 +118,8 @@ class GoogleOAuthClient:
         Raises:
             ValueError: If token exchange fails.
         """
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
+        with httpx.Client() as client:
+            response = client.post(
                 GOOGLE_TOKEN_URL,
                 data={
                     "client_id": self._client_id,
@@ -136,7 +144,7 @@ class GoogleOAuthClient:
                 scope=data.get("scope", ""),
             )
 
-    async def refresh_access_token(self, refresh_token: str) -> GoogleTokenResponse:
+    def refresh_access_token(self, refresh_token: str) -> GoogleTokenResponse:
         """Refresh an access token using a refresh token.
 
         Args:
@@ -148,8 +156,8 @@ class GoogleOAuthClient:
         Raises:
             ValueError: If token refresh fails.
         """
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
+        with httpx.Client() as client:
+            response = client.post(
                 GOOGLE_TOKEN_URL,
                 data={
                     "client_id": self._client_id,
@@ -161,8 +169,7 @@ class GoogleOAuthClient:
 
             if response.status_code != 200:
                 error_data = response.json()
-                error_msg = error_data.get("error_description", error_data.get("error", "Unknown error"))
-                raise ValueError(f"Google OAuth token refresh failed: {error_msg}")
+                raise GoogleTokenRefreshError(str(error_data.get("error", "unknown_error")))
 
             data = response.json()
             return GoogleTokenResponse(
@@ -173,7 +180,7 @@ class GoogleOAuthClient:
                 scope=data.get("scope", ""),
             )
 
-    async def get_user_info(self, access_token: str) -> GoogleUserInfo:
+    def get_user_info(self, access_token: str) -> GoogleUserInfo:
         """Get user profile information from Google.
 
         Args:
@@ -185,8 +192,8 @@ class GoogleOAuthClient:
         Raises:
             ValueError: If user info retrieval fails.
         """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
+        with httpx.Client() as client:
+            response = client.get(
                 GOOGLE_USERINFO_URL,
                 headers={"Authorization": f"Bearer {access_token}"},
             )

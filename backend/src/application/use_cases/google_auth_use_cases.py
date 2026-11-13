@@ -45,7 +45,7 @@ class StartGoogleOAuthUseCase:
         """
         self.oauth_state_repository = oauth_state_repository
 
-    async def execute(
+    def execute(
         self,
         user_id: UUID,
         scopes: list[str] | None = None,
@@ -84,7 +84,7 @@ class StartGoogleOAuthUseCase:
             expires_at=now + timedelta(minutes=self.STATE_EXPIRES_MINUTES),
             created_at=now,
         )
-        await self.oauth_state_repository.create(oauth_state)
+        self.oauth_state_repository.create(oauth_state)
 
         authorize_url = client.get_authorization_url(
             state=state,
@@ -112,7 +112,7 @@ class HandleGoogleCallbackUseCase:
         self.repository = repository
         self.oauth_state_repository = oauth_state_repository
 
-    async def execute(
+    def execute(
         self,
         code: str,
         state: str,
@@ -130,7 +130,7 @@ class HandleGoogleCallbackUseCase:
             ValueError: If state is invalid, expired, or token exchange fails.
         """
         # state検証（CSRF対策）- リポジトリから取得と同時に削除
-        oauth_state = await self.oauth_state_repository.get_and_delete(state)
+        oauth_state = self.oauth_state_repository.get_and_delete(state)
 
         if oauth_state is None:
             raise ValueError("Invalid state parameter")
@@ -142,17 +142,17 @@ class HandleGoogleCallbackUseCase:
         user_id = oauth_state.user_id
 
         # 期限切れstateのクリーンアップ（非同期で実行）
-        await self.oauth_state_repository.cleanup_expired()
+        self.oauth_state_repository.cleanup_expired()
 
         # トークンを取得
         client = GoogleOAuthClient()
-        token_response = await client.exchange_code(code)
+        token_response = client.exchange_code(code)
 
         if not token_response.refresh_token:
             raise ValueError("No refresh token received. Please re-authenticate with consent.")
 
         # ユーザー情報を取得
-        user_info = await client.get_user_info(token_response.access_token)
+        user_info = client.get_user_info(token_response.access_token)
 
         # 許可されたスコープをパース
         granted_scopes = GoogleOAuthClient.parse_scopes(token_response.scope)
@@ -161,13 +161,13 @@ class HandleGoogleCallbackUseCase:
         encrypted_token = encrypt_google_token(token_response.refresh_token)
 
         # 既存の連携を確認
-        existing = await self.repository.get_by_email(user_id, user_info.email)
+        existing = self.repository.get_by_email(user_id, user_info.email)
 
         if existing:
             # 既存の連携を更新
             existing.update_token(encrypted_token)
             existing.add_scopes(granted_scopes)
-            return await self.repository.update(existing), oauth_state
+            return self.repository.update(existing), oauth_state
 
         # 新規作成
         integration = GoogleIntegration(
@@ -179,7 +179,7 @@ class HandleGoogleCallbackUseCase:
             created_at=datetime.now(),
             updated_at=None,
         )
-        return await self.repository.create(integration), oauth_state
+        return self.repository.create(integration), oauth_state
 
 
 class GetGoogleIntegrationsUseCase:
@@ -189,7 +189,7 @@ class GetGoogleIntegrationsUseCase:
         """Initialize use case with repository."""
         self.repository = repository
 
-    async def execute(self, user_id: UUID) -> list[GoogleIntegration]:
+    def execute(self, user_id: UUID) -> list[GoogleIntegration]:
         """ユーザーの全Google連携を取得する.
 
         Args:
@@ -198,7 +198,7 @@ class GetGoogleIntegrationsUseCase:
         Returns:
             List of GoogleIntegration entities.
         """
-        return await self.repository.get_all(user_id)
+        return self.repository.get_all(user_id)
 
 
 class DeleteGoogleIntegrationUseCase:
@@ -208,7 +208,7 @@ class DeleteGoogleIntegrationUseCase:
         """Initialize use case with repository."""
         self.repository = repository
 
-    async def execute(self, integration_id: UUID, user_id: UUID) -> bool:
+    def execute(self, integration_id: UUID, user_id: UUID) -> bool:
         """Google連携を削除する.
 
         Args:
@@ -218,7 +218,7 @@ class DeleteGoogleIntegrationUseCase:
         Returns:
             True if deleted, False if not found.
         """
-        return await self.repository.delete(integration_id, user_id)
+        return self.repository.delete(integration_id, user_id)
 
 
 class StartAdditionalScopesUseCase:
@@ -238,7 +238,7 @@ class StartAdditionalScopesUseCase:
         self.repository = repository
         self.oauth_state_repository = oauth_state_repository
 
-    async def execute(
+    def execute(
         self,
         user_id: UUID,
         integration_id: UUID,
@@ -260,7 +260,7 @@ class StartAdditionalScopesUseCase:
             ValueError: If integration not found or OAuth not configured.
         """
         # 連携の存在を確認
-        integration = await self.repository.get_by_id(integration_id, user_id)
+        integration = self.repository.get_by_id(integration_id, user_id)
         if not integration:
             raise ValueError("Integration not found")
 
@@ -272,7 +272,7 @@ class StartAdditionalScopesUseCase:
 
         # OAuth開始
         start_use_case = StartGoogleOAuthUseCase(self.oauth_state_repository)
-        return await start_use_case.execute(user_id, scopes=all_scopes, redirect_origin=redirect_origin)
+        return start_use_case.execute(user_id, scopes=all_scopes, redirect_origin=redirect_origin)
 
 
 @dataclass
@@ -291,7 +291,7 @@ class SyncProviderTokenUseCase:
         """Initialize use case with repository."""
         self.repository = repository
 
-    async def execute(
+    def execute(
         self,
         user_id: UUID,
         email: str,
@@ -322,13 +322,13 @@ class SyncProviderTokenUseCase:
         encrypted_token = encrypt_google_token(provider_refresh_token)
 
         # 既存の連携を確認
-        existing = await self.repository.get_by_email(user_id, email)
+        existing = self.repository.get_by_email(user_id, email)
 
         if existing:
             # 既存の連携を更新
             existing.update_token(encrypted_token)
             existing.add_scopes(granted_scopes)
-            updated = await self.repository.update(existing)
+            updated = self.repository.update(existing)
             return SyncProviderTokenResult(
                 success=True,
                 message="Google integration updated",
@@ -345,7 +345,7 @@ class SyncProviderTokenUseCase:
             created_at=datetime.now(),
             updated_at=None,
         )
-        created = await self.repository.create(integration)
+        created = self.repository.create(integration)
         return SyncProviderTokenResult(
             success=True,
             message="Google integration created",

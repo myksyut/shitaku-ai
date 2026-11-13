@@ -6,6 +6,10 @@ from uuid import UUID
 SeriesId = NewType("SeriesId", UUID)
 OccurrenceId = NewType("OccurrenceId", UUID)
 SeriesRole = Literal["creator", "member"]
+CalendarErrorCode = Literal[
+    "not_connected", "scope_missing", "revoked", "attendees_omitted", "event_not_found", "calendar_unavailable"
+]
+SlackErrorCode = Literal["not_connected", "not_in_channel", "rate_limited", "slack_unavailable"]
 
 
 def parse_email(value: object) -> str | None:
@@ -59,6 +63,8 @@ class CalendarSnapshot:
     attendees: tuple[Attendee, ...]
     attendees_omitted: bool
     occurrences: tuple[OccurrenceSlot, ...]
+    window_start: datetime
+    window_end: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +109,8 @@ class Series:
     slack_integration_id: UUID | None
     slack_channels: tuple[SlackChannelRef, ...]
     calendar_synced_at: datetime
-    calendar_sync_error: str | None
+    calendar_sync_error: CalendarErrorCode | None
+    calendar_refresh_attempted_at: datetime | None = None
 
     @property
     def slack(self) -> SlackSource | None:
@@ -165,8 +172,9 @@ class CalendarStatus:
     """Public synchronization status."""
 
     synced_at: datetime
-    error: str | None
+    error: CalendarErrorCode | None
     google_connected: bool
+    integration_id: UUID | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +201,7 @@ class SeriesSummary:
     role: SeriesRole
     next_occurrence: OccurrenceSummary | None
     open_action_items: int
-    calendar_sync_error: str | None
+    calendar_sync_error: CalendarErrorCode | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,3 +222,11 @@ class SeriesError(Exception):
         self.status = status
         self.detail = detail
         super().__init__(detail)
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarClaim:
+    """The claimed series identity, whether newly created or already present."""
+
+    series_id: UUID
+    created: bool

@@ -15,7 +15,7 @@ class KnowledgeRepositoryImpl(KnowledgeRepository):
     def __init__(self, client: Client) -> None:
         self._client = client
 
-    async def for_occurrences(self, series_id: UUID, occurrence_ids: Sequence[UUID]) -> list[Knowledge]:
+    def for_occurrences(self, series_id: UUID, occurrence_ids: Sequence[UUID]) -> list[Knowledge]:
         """Keep agenda and extraction sources inside their aggregate."""
         if not occurrence_ids:
             return []
@@ -30,7 +30,7 @@ class KnowledgeRepositoryImpl(KnowledgeRepository):
         )
         return TypeAdapter(list[Knowledge]).validate_python(rows)
 
-    async def get(self, series_id: UUID, knowledge_id: UUID) -> Knowledge | None:
+    def get(self, series_id: UUID, knowledge_id: UUID) -> Knowledge | None:
         """Never resolve a document ID outside the access proof."""
         rows = (
             self._client.table("knowledge")
@@ -43,7 +43,7 @@ class KnowledgeRepositoryImpl(KnowledgeRepository):
         items = TypeAdapter(list[Knowledge]).validate_python(rows)
         return items[0] if items else None
 
-    async def imported_doc_ids(self, series_id: UUID) -> frozenset[str]:
+    def imported_doc_ids(self, series_id: UUID) -> frozenset[str]:
         """Read shared Drive identities, not other series' documents."""
         rows = (
             self._client.table("knowledge")
@@ -55,7 +55,7 @@ class KnowledgeRepositoryImpl(KnowledgeRepository):
         )
         return frozenset(r["google_doc_id"] for r in TypeAdapter(list[dict[str, str]]).validate_python(rows))
 
-    async def add(self, access: CreatorAccess, knowledge: Knowledge) -> Knowledge:
+    def add(self, access: CreatorAccess, knowledge: Knowledge) -> Knowledge:
         """Persist creator-selected content and retain idempotent imports."""
         if knowledge.series_id != access.series_id:
             raise SeriesError(404, "Occurrence not found")
@@ -74,7 +74,7 @@ class KnowledgeRepositoryImpl(KnowledgeRepository):
         self._client.table("knowledge").insert(TypeAdapter(Knowledge).dump_python(knowledge, mode="json")).execute()
         return knowledge
 
-    async def delete(self, access: CreatorAccess, knowledge_id: UUID) -> None:
+    def delete(self, access: CreatorAccess, knowledge_id: UUID) -> None:
         """Remove only the selected series' content."""
         self._client.table("knowledge").delete().eq("series_id", str(access.series_id)).eq(
             "id", str(knowledge_id)

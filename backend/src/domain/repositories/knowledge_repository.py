@@ -10,21 +10,21 @@ class KnowledgeRepository(ABC):
     """Explicitly selected occurrence content."""
 
     @abstractmethod
-    async def for_occurrences(self, series_id: UUID, occurrence_ids: Sequence[UUID]) -> list[Knowledge]:
+    def for_occurrences(self, series_id: UUID, occurrence_ids: Sequence[UUID]) -> list[Knowledge]:
         """Read only selected occurrences inside one series."""
 
     @abstractmethod
-    async def get(self, series_id: UUID, knowledge_id: UUID) -> Knowledge | None:
+    def get(self, series_id: UUID, knowledge_id: UUID) -> Knowledge | None:
         """Read one scoped knowledge document."""
 
     @abstractmethod
-    async def imported_doc_ids(self, series_id: UUID) -> frozenset[str]:
+    def imported_doc_ids(self, series_id: UUID) -> frozenset[str]:
         """Exclude already shared Drive documents from live candidates."""
 
     @abstractmethod
-    async def add(self, access: CreatorAccess, knowledge: Knowledge) -> Knowledge:
+    def add(self, access: CreatorAccess, knowledge: Knowledge) -> Knowledge:
         """Persist selected content under the creator's proof."""
 
     @abstractmethod
-    async def delete(self, access: CreatorAccess, knowledge_id: UUID) -> None:
+    def delete(self, access: CreatorAccess, knowledge_id: UUID) -> None:
         """Remove a scoped shared document."""

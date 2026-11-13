@@ -19,7 +19,7 @@ from src.infrastructure.repositories.slack_integration_repository_impl import Sl
 security = HTTPBearer()
 
 
-async def get_current_user_id(
+def get_current_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> UUID:
     """Verify JWT token and return the authenticated user ID.
@@ -61,7 +61,7 @@ async def get_current_user_id(
         ) from err
 
 
-async def get_user_supabase_client(
+def get_user_supabase_client(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> Client:
     """Get a Supabase client with user context for RLS enforcement.
@@ -110,13 +110,13 @@ def get_series_credentials(client: Client = Depends(get_user_supabase_client)) -
     return SeriesCredentials(GoogleIntegrationRepositoryImpl(client), SlackIntegrationRepositoryImpl(client))
 
 
-async def member_access(
+def member_access(
     series_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
     repository: SeriesRepositoryImpl = Depends(get_series_repository),
 ) -> MemberAccess:
     """Use the same membership function as database RLS."""
-    role = (await repository.roles()).get(series_id)
+    role = repository.role_of_caller(series_id)
     if role is None:
         raise HTTPException(404, "Series not found")
     proof = CreatorAccess if role == "creator" else MemberAccess

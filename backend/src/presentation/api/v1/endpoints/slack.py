@@ -80,7 +80,7 @@ def get_callback_oauth_state_repository() -> OAuthStateRepositoryImpl:
 
 
 @router.get("/auth", response_model=SlackOAuthStartResponse)
-async def start_slack_oauth(
+def start_slack_oauth(
     user_id: UUID = Depends(get_current_user_id),
     oauth_state_repository: OAuthStateRepositoryImpl = Depends(get_oauth_state_repository),
     redirect_origin: str | None = Query(None, description="callback後のリダイレクト先オリジン"),
@@ -97,7 +97,7 @@ async def start_slack_oauth(
 
     use_case = StartSlackOAuthUseCase(oauth_state_repository)
     try:
-        result = await use_case.execute(user_id, redirect_origin=validated_origin)
+        result = use_case.execute(user_id, redirect_origin=validated_origin)
         return SlackOAuthStartResponse(authorize_url=result.authorize_url)
     except ValueError as e:
         raise HTTPException(
@@ -107,7 +107,7 @@ async def start_slack_oauth(
 
 
 @router.get("/callback")
-async def slack_oauth_callback(
+def slack_oauth_callback(
     code: str = Query(...),
     state: str = Query(...),
     repository: SlackIntegrationRepositoryImpl = Depends(get_callback_repository),
@@ -128,7 +128,7 @@ async def slack_oauth_callback(
     use_case = HandleSlackCallbackUseCase(repository, oauth_state_repository)
 
     try:
-        integration, oauth_state = await use_case.execute(code=code, state=state)
+        integration, oauth_state = use_case.execute(code=code, state=state)
         # stateに保存されたredirect_originを使用、なければフォールバック
         frontend_url = oauth_state.redirect_origin or fallback_url
         redirect_url = f"{frontend_url}/settings/slack?success=true&workspace={integration.workspace_name}"
@@ -138,7 +138,7 @@ async def slack_oauth_callback(
 
 
 @router.get("/integrations", response_model=list[SlackIntegrationResponse])
-async def get_slack_integrations(
+def get_slack_integrations(
     user_id: UUID = Depends(get_current_user_id),
     repository: SlackIntegrationRepositoryImpl = Depends(get_repository),
 ) -> list[SlackIntegrationResponse]:
@@ -148,7 +148,7 @@ async def get_slack_integrations(
         List of SlackIntegrationResponse.
     """
     use_case = GetSlackIntegrationsUseCase(repository)
-    integrations = await use_case.execute(user_id)
+    integrations = use_case.execute(user_id)
     return [
         SlackIntegrationResponse(
             id=i.id,
@@ -161,14 +161,14 @@ async def get_slack_integrations(
 
 
 @router.delete("/integrations/{integration_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_slack_integration(
+def delete_slack_integration(
     integration_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
     repository: SlackIntegrationRepositoryImpl = Depends(get_repository),
 ) -> None:
     """Slack連携を削除する."""
     use_case = DeleteSlackIntegrationUseCase(repository)
-    deleted = await use_case.execute(integration_id, user_id)
+    deleted = use_case.execute(integration_id, user_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -180,7 +180,7 @@ async def delete_slack_integration(
     "/integrations/{integration_id}/channels",
     response_model=list[SlackChannelResponse],
 )
-async def get_slack_channels(
+def get_slack_channels(
     integration_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
     credentials: SeriesCredentials = Depends(get_series_credentials),
@@ -198,7 +198,7 @@ async def get_slack_channels(
     use_case = GetSlackChannelsUseCase(credentials)
 
     try:
-        channels = await use_case.execute(user_id, integration_id)
+        channels = use_case.execute(user_id, integration_id)
         return [SlackChannelResponse(id=c.id, name=c.name) for c in channels]
     except SlackApiError as e:
         if e.response.get("error") == "ratelimited":

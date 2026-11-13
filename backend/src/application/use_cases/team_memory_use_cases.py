@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from src.domain.entities.series import CreatorAccess, MemberAccess, SeriesError
-from src.domain.entities.team_memory import ActionItem, MemoryItem, NewActionItem, NewMemory, Resolution
+from src.domain.entities.team_memory import ActionItem, Decision, MemoryItem, NewActionItem, NewMemory, Resolution
 from src.domain.repositories.dictionary_repository import DictionaryRepository
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
 from src.domain.repositories.series_repository import SeriesRepository
@@ -29,59 +29,59 @@ class TeamMemoryUseCases:
         self.memory = memory
         self.series = series
 
-    async def board(self, access: MemberAccess) -> list[MemoryItem]:
+    def board(self, access: MemberAccess) -> list[MemoryItem]:
         """Derive carry counts against the next noncancelled meeting."""
-        occurrences = await self.series.occurrences(access.series_id)
+        occurrences = self.series.occurrences(access.series_id)
         now = datetime.now(UTC)
         target = next((o.start_at for o in occurrences if not o.is_cancelled and o.start_at > now), now)
-        return with_carry_over(await self.memory.list_items(access.series_id), occurrences, target, now)
+        return with_carry_over(self.memory.list_items(access.series_id), occurrences, target, now)
 
-    async def _validate_draft(self, access: CreatorAccess, draft: NewMemory) -> None:
-        if not any(o.id == draft.origin_occurrence_id for o in await self.series.occurrences(access.series_id)):
+    def _validate_draft(self, access: CreatorAccess, draft: NewMemory) -> None:
+        if self.series.get_occurrence(access.series_id, draft.origin_occurrence_id) is None:
             raise SeriesError(404, "Occurrence not found")
         if (
             isinstance(draft, NewActionItem)
             and draft.assignee_email is not None
-            and draft.assignee_email not in {a.email for a in await self.series.attendees(access.series_id)}
+            and draft.assignee_email not in {a.email for a in self.series.attendees(access.series_id)}
         ):
             raise SeriesError(422, "Assignee must be a series attendee")
 
-    async def _item(self, access: MemberAccess, item_id: UUID) -> MemoryItem:
-        item = await self.memory.get(access.series_id, item_id)
+    def _item(self, access: MemberAccess, item_id: UUID) -> MemoryItem:
+        item = self.memory.get(access.series_id, item_id)
         if item is None:
             raise SeriesError(404, "Memory item not found")
         return item
 
-    async def add(self, access: CreatorAccess, draft: NewMemory) -> list[MemoryItem]:
+    def add(self, access: CreatorAccess, draft: NewMemory) -> list[MemoryItem]:
         """Create only valid aggregate-scoped memory."""
-        await self._validate_draft(access, draft)
-        await self.memory.add(access, draft)
-        return await self.board(access)
+        self._validate_draft(access, draft)
+        self.memory.add(access, draft)
+        return self.board(access)
 
-    async def edit(self, access: CreatorAccess, item_id: UUID, draft: NewMemory) -> list[MemoryItem]:
+    def edit(self, access: CreatorAccess, item_id: UUID, draft: NewMemory) -> list[MemoryItem]:
         """Editing cannot change an item's kind."""
-        item = await self._item(access, item_id)
+        item = self._item(access, item_id)
         if item.kind != draft.kind:
             raise SeriesError(422, "Memory kind cannot change")
-        await self._validate_draft(access, draft)
-        await self.memory.edit(access, item_id, draft)
-        return await self.board(access)
+        self._validate_draft(access, draft)
+        self.memory.edit(access, item_id, draft)
+        return self.board(access)
 
-    async def resolve(self, access: MemberAccess, item_id: UUID, resolution: Resolution | None) -> list[MemoryItem]:
+    def resolve(self, access: MemberAccess, item_id: UUID, resolution: Resolution | None) -> list[MemoryItem]:
         """Members may resolve actions; only creators may change other kinds."""
-        item = await self._item(access, item_id)
+        item = self._item(access, item_id)
         if not isinstance(access, CreatorAccess) and not isinstance(item, ActionItem):
             raise SeriesError(403, "Only the creator can change this item")
         if not resolution_allowed(item, resolution, creator=isinstance(access, CreatorAccess)):
             raise SeriesError(422, "Resolution does not fit memory kind")
-        await self.memory.set_resolution(access, item_id, resolution)
-        return await self.board(access)
+        self.memory.set_resolution(access, item_id, resolution)
+        return self.board(access)
 
-    async def delete(self, access: CreatorAccess, item_id: UUID) -> list[MemoryItem]:
+    def delete(self, access: CreatorAccess, item_id: UUID) -> list[MemoryItem]:
         """Delete a visible item and return the updated board."""
-        await self._item(access, item_id)
-        await self.memory.delete(access, item_id)
-        return await self.board(access)
+        self._item(access, item_id)
+        self.memory.delete(access, item_id)
+        return self.board(access)
 
 
 class ExtractOccurrenceMemory:
@@ -98,29 +98,39 @@ class ExtractOccurrenceMemory:
         self.memory, self.series = memory, series
         self.knowledge, self.dictionary, self.extractor = knowledge, dictionary, extractor
 
-    async def execute(self, access: CreatorAccess, occurrence_id: UUID) -> ExtractionResult:
+    def execute(self, access: CreatorAccess, occurrence_id: UUID) -> ExtractionResult:
         """Timestamp the input before reading so concurrent minutes remain unextracted."""
         input_at = datetime.now(UTC)
-        occurrence = next((o for o in await self.series.occurrences(access.series_id) if o.id == occurrence_id), None)
+        occurrence = self.series.get_occurrence(access.series_id, occurrence_id)
         if occurrence is None:
             raise SeriesError(404, "Occurrence not found")
         if occurrence.start_at > input_at:
             raise SeriesError(422, "Meeting has not started")
-        series = await self.series.get(access.series_id)
+        series = self.series.get(access.series_id)
         if series is None:
             raise SeriesError(404, "Series not found")
-        sources = await self.knowledge.for_occurrences(access.series_id, [occurrence_id])
+        sources = self.knowledge.for_occurrences(access.series_id, [occurrence_id])
         if not sources:
             raise SeriesError(422, "Add meeting notes before extracting")
-        items = await self.memory.list_items(access.series_id)
-        eligible = [i for i in items if i.closed_at is None and i.origin_start_at <= occurrence.start_at]
-        references = {f"{i.kind[0].upper()}{n}": i for n, i in enumerate(eligible, 1)}
+        items = self.memory.list_items(access.series_id)
+        eligible = [
+            i
+            for i in items
+            if i.closed_at is None
+            and i.origin_start_at <= occurrence.start_at
+            and not (i.origin_occurrence_id == occurrence_id and i.extracted and i.human_updated_at is None)
+        ]
+        open_work = [i for i in eligible if not isinstance(i, Decision)]
+        decisions = sorted(
+            (i for i in reversed(eligible) if isinstance(i, Decision)), key=lambda i: i.origin_start_at, reverse=True
+        )[:20]
+        references = {f"{i.kind[0].upper()}{n}": i for n, i in enumerate([*open_work, *decisions], 1)}
         context = ExtractionContext(
             occurrence_id,
             series.title,
             occurrence.start_at,
-            await self.series.attendees(access.series_id),
-            tuple(await self.dictionary.list_entries(access.series_id)),
+            self.series.attendees(access.series_id),
+            tuple(self.dictionary.list_entries(access.series_id)),
             tuple(sources),
             references,
             tuple(
@@ -129,8 +139,13 @@ class ExtractOccurrenceMemory:
                 if i.origin_occurrence_id == occurrence_id and (not i.extracted or i.human_updated_at is not None)
             ),
         )
-        extracted = await self.extractor.extract(context)
-        created, closed = await self.memory.apply_extraction(access, occurrence_id, extracted, input_at)
+        extracted = self.extractor.extract(context)
+        applied = self.memory.apply_extraction(access, occurrence_id, extracted, input_at)
+        if applied.stale:
+            raise SeriesError(409, "stale_extraction")
         return ExtractionResult(
-            created, closed, extracted.truncated, await TeamMemoryUseCases(self.memory, self.series).board(access)
+            applied.created,
+            applied.closed,
+            extracted.truncated,
+            TeamMemoryUseCases(self.memory, self.series).board(access),
         )

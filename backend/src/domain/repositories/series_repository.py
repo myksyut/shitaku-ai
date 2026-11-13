@@ -8,6 +8,7 @@ from src.domain.entities.series import (
     Series,
     SeriesRole,
     SeriesSettings,
+    SeriesSummary,
     SlackSource,
 )
 
@@ -16,29 +17,43 @@ class SeriesRepository(ABC):
     """Caller-scoped series persistence."""
 
     @abstractmethod
-    async def roles(self) -> dict[UUID, SeriesRole]:
-        """Read the database's single membership definition."""
+    def role_of_caller(self, series_id: UUID) -> SeriesRole | None:
+        """Read the database membership proof for one series."""
 
     @abstractmethod
-    async def get(self, series_id: UUID) -> Series | None:
+    def list_summaries(self, user_id: UUID) -> list[SeriesSummary]:
+        """Read visible summaries with next occurrences and action counts in one query."""
+
+    @abstractmethod
+    def visible_calendar_series(self) -> dict[str, UUID]:
+        """Read visible iCalUID mappings in one RLS-scoped query."""
+
+    @abstractmethod
+    def get(self, series_id: UUID) -> Series | None:
         """Read one visible series."""
 
     @abstractmethod
-    async def attendees(self, series_id: UUID) -> tuple[Attendee, ...]:
+    def attendees(self, series_id: UUID) -> tuple[Attendee, ...]:
         """Read the mirrored invite."""
 
     @abstractmethod
-    async def occurrences(self, series_id: UUID) -> list[Occurrence]:
+    def occurrences(self, series_id: UUID) -> list[Occurrence]:
         """Read occurrence counts in start order."""
 
     @abstractmethod
-    async def open_action_count(self, series_id: UUID) -> int:
-        """Count unresolved actions."""
+    def get_occurrence(self, series_id: UUID, occurrence_id: UUID) -> Occurrence | None:
+        """Read one occurrence inside the access proof's aggregate."""
 
     @abstractmethod
-    async def save_settings(self, access: CreatorAccess, settings: SeriesSettings, slack: SlackSource | None) -> None:
+    def save_settings(
+        self,
+        access: CreatorAccess,
+        settings: SeriesSettings,
+        slack: SlackSource | None,
+        google_integration_id: UUID | None,
+    ) -> None:
         """Write only creator-owned columns."""
 
     @abstractmethod
-    async def delete(self, access: CreatorAccess) -> None:
+    def delete(self, access: CreatorAccess) -> None:
         """Delete the creator's aggregate."""

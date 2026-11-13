@@ -16,7 +16,7 @@ class OAuthStateRepository(Protocol):
     実装はインフラストラクチャ層で提供される。
     """
 
-    async def create(self, oauth_state: OAuthState) -> OAuthState:
+    def create(self, oauth_state: OAuthState) -> OAuthState:
         """OAuth stateを作成する.
 
         Args:
@@ -27,7 +27,7 @@ class OAuthStateRepository(Protocol):
         """
         ...
 
-    async def get_and_delete(self, state: str) -> OAuthState | None:
+    def get_and_delete(self, state: str) -> OAuthState | None:
         """stateを取得し、同時に削除する.
 
         アトミック操作として実装される。
@@ -41,7 +41,7 @@ class OAuthStateRepository(Protocol):
         """
         ...
 
-    async def cleanup_expired(self) -> int:
+    def cleanup_expired(self) -> int:
         """期限切れのstateを削除する.
 
         Returns:
