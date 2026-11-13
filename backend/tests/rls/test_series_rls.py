@@ -437,7 +437,12 @@ async def test_memory_repository_maps_real_composite_origin_join(world: World) -
 
 
 @pytest.fixture
-def bedrock_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+def bedrock_extraction_payload() -> dict[str, JSON]:
+    return {"new_items": [{"kind": "decision", "body": "Extracted through real HTTP"}], "closures": []}
+
+
+@pytest.fixture
+def bedrock_stub(monkeypatch: pytest.MonkeyPatch, bedrock_extraction_payload: dict[str, JSON]) -> Iterator[str]:
     import json
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -452,10 +457,7 @@ def bedrock_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
                     {
                         "type": "tool_use",
                         "name": "record_meeting_memory",
-                        "input": {
-                            "new_items": [{"kind": "decision", "body": "Extracted through real HTTP"}],
-                            "closures": [],
-                        },
+                        "input": bedrock_extraction_payload,
                     }
                 ]
             elif payload["max_tokens"] == 2048:
@@ -912,3 +914,68 @@ def test_reextraction_corrects_only_untouched_open_extracted_metadata(
         assert owner.table("memory_items").select("id,assignee_email,due_on").eq("series_id", world.sid).eq(
             "id", item_id
         ).execute().data == [{"id": item_id, "assignee_email": None, "due_on": None}]
+
+
+def test_malformed_extraction_http_cannot_delete_existing_extracted_memory(
+    world: World,
+    service_client: Client,
+    bedrock_stub: str,
+    bedrock_extraction_payload: dict[str, JSON],
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    assert bedrock_stub.startswith("http://127.0.0.1:")
+    owner = world.users["A"].client
+    owner.rpc(
+        "apply_extraction",
+        {
+            "p_occurrence_id": world.past,
+            "p_input_at": datetime.now(UTC).isoformat(),
+            "p_items": [{"kind": "open_issue", "body": "Must survive malformed output", "extraction_key": "preserved"}],
+            "p_closures": [],
+        },
+    ).execute()
+    before = service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    marker = (
+        service_client.table("occurrences")
+        .select("extracted_at")
+        .eq("series_id", world.sid)
+        .eq("id", world.past)
+        .execute()
+        .data
+    )
+    malformed: list[dict[str, JSON]] = [
+        {"new_items": [{}], "closures": []},
+        {"new_items": [{"kind": "decision", "body": "Valid"}, {}], "closures": []},
+        {"new_items": [{"kind": "unknown", "body": "Invalid"}], "closures": []},
+        {"new_items": [{"kind": "decision", "body": ""}], "closures": []},
+        {"new_items": [None], "closures": []},
+        {"new_items": [], "closures": [{}]},
+        {"new_items": [], "closures": [123]},
+        {"new_items": [], "closures": [{"ref": "unknown", "resolution": "invented"}]},
+    ]
+    with TestClient(app) as api:
+        for payload in malformed:
+            bedrock_extraction_payload.clear()
+            bedrock_extraction_payload.update(payload)
+            response = api.post(
+                f"/api/v1/series/{world.sid}/occurrences/{world.past}/extract",
+                headers={"Authorization": f"Bearer {world.users['A'].access_token}"},
+            )
+            assert response.status_code == 502, response.text
+            assert response.json() == {"detail": "Memory extraction unavailable"}
+            assert (
+                service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+                == before
+            )
+            assert (
+                service_client.table("occurrences")
+                .select("extracted_at")
+                .eq("series_id", world.sid)
+                .eq("id", world.past)
+                .execute()
+                .data
+                == marker
+            )

@@ -50,17 +50,13 @@ def test_parse_drops_untrusted_references_and_invalid_assignment() -> None:
                     "kind": "action_item",
                     "body": "Next step",
                     "assignee_email": "outsider@example.com",
-                    "due_on": "not-a-date",
+                    "due_on": None,
                 },
                 {"kind": "decision", "body": "Ship"},
-                {"kind": "decision", "body": " "},
-                {"kind": "invented", "body": "Ignore"},
                 {"kind": "action_item", "body": "Next step"},
             ],
             "closures": [
                 {"ref": "unknown", "resolution": "done"},
-                {"ref": "D1", "resolution": "done"},
-                {"ref": "A1", "resolution": "resolved"},
                 {"ref": "A1", "resolution": "done"},
             ],
         },
@@ -77,7 +73,8 @@ def test_parse_normalizes_valid_attendee_and_date() -> None:
         {
             "new_items": [
                 {"kind": "action_item", "body": "Act", "assignee_email": "MEMBER@EXAMPLE.COM", "due_on": "2026-11-15"}
-            ]
+            ],
+            "closures": [],
         },
         context(),
     )
@@ -130,3 +127,33 @@ async def test_malformed_tool_input_fails_instead_of_erasing_prior_extraction(ra
         await MeetingMemoryExtractor().extract(context())
     assert error.value.status == 502
     invoke.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("field", "elements"),
+    [
+        ("new_items", [{}]),
+        ("new_items", [{"kind": "decision", "body": "Valid"}, {}]),
+        ("new_items", [{"kind": "unknown", "body": "Invalid kind"}]),
+        ("new_items", [{"kind": "decision", "body": "  "}]),
+        ("new_items", [{"kind": "decision", "body": 123}]),
+        ("new_items", [{"kind": "decision", "body": "x" * 1001}]),
+        ("new_items", [None]),
+        ("new_items", ["not-an-object"]),
+        ("new_items", [{"kind": "action_item", "body": "Invalid deadline", "due_on": "not-a-date"}]),
+        ("new_items", [{"kind": "action_item", "body": "Invalid assignee type", "assignee_email": 123}]),
+        ("closures", [{}]),
+        ("closures", [None]),
+        ("closures", ["not-an-object"]),
+        ("closures", [{"ref": "A1", "resolution": "invented"}]),
+        ("closures", [{"ref": 123, "resolution": "done"}]),
+        ("closures", [{"ref": "D1", "resolution": "done"}]),
+    ],
+)
+def test_any_malformed_extraction_element_rejects_the_entire_payload(field: str, elements: list[object]) -> None:
+    payload: dict[str, object] = {"new_items": [], "closures": []}
+    payload[field] = elements
+    with pytest.raises(SeriesError) as error:
+        parse_extraction(payload, context())
+    assert error.value.status == 502
+    assert error.value.detail == "Memory extraction unavailable"
