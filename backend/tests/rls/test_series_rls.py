@@ -850,3 +850,65 @@ def test_reextraction_closes_same_occurrence_items_before_replacing_them(world: 
     assert owner.table("memory_items").select("id").eq("series_id", world.sid).eq("id", item_id).execute().data == [
         {"id": item_id}
     ]
+
+
+@pytest.mark.parametrize("state", ["untouched", "human_edited", "closed", "manual"])
+def test_reextraction_corrects_only_untouched_open_extracted_metadata(
+    world: World,
+    service_client: Client,
+    state: str,
+) -> None:
+    from pydantic import TypeAdapter
+
+    owner = world.users["A"].client
+    input_at = datetime.now(UTC)
+    original: dict[str, JSON] = {
+        "kind": "action_item",
+        "body": "Stable action body",
+        "extraction_key": "stable-action",
+        "assignee_email": None,
+        "due_on": "2026-11-20",
+    }
+    arguments = {
+        "p_occurrence_id": world.past,
+        "p_input_at": input_at.isoformat(),
+        "p_items": [original],
+        "p_closures": [],
+    }
+    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    rows = (
+        owner.table("memory_items")
+        .select("id")
+        .eq("series_id", world.sid)
+        .eq("extraction_key", "stable-action")
+        .execute()
+        .data
+    )
+    item_id = TypeAdapter(list[dict[str, str]]).validate_python(rows)[0]["id"]
+    if state == "human_edited":
+        service_client.table("memory_items").update({"human_updated_at": input_at.isoformat()}).eq(
+            "series_id", world.sid
+        ).eq("id", item_id).execute()
+    elif state == "closed":
+        service_client.table("memory_items").update({"resolution": "done", "closed_at": input_at.isoformat()}).eq(
+            "series_id", world.sid
+        ).eq("id", item_id).execute()
+    elif state == "manual":
+        service_client.table("memory_items").update({"extracted": False}).eq("series_id", world.sid).eq(
+            "id", item_id
+        ).execute()
+    corrected = {**original, "assignee_email": world.users["D"].email, "due_on": "2026-12-20"}
+    updated = {**arguments, "p_input_at": (input_at + timedelta(seconds=1)).isoformat(), "p_items": [corrected]}
+    assert owner.rpc("apply_extraction", updated).execute().data == {"created": 0, "closed": 0}
+    expected_assignee = world.users["D"].email.lower() if state == "untouched" else None
+    expected_due = "2026-12-20" if state == "untouched" else "2026-11-20"
+    assert owner.table("memory_items").select("id,assignee_email,due_on").eq("series_id", world.sid).eq(
+        "id", item_id
+    ).execute().data == [{"id": item_id, "assignee_email": expected_assignee, "due_on": expected_due}]
+    assert owner.rpc("apply_extraction", updated).execute().data == {"created": 0, "closed": 0}
+    if state == "untouched":
+        cleared = {**updated, "p_items": [{**original, "due_on": None}]}
+        assert owner.rpc("apply_extraction", cleared).execute().data == {"created": 0, "closed": 0}
+        assert owner.table("memory_items").select("id,assignee_email,due_on").eq("series_id", world.sid).eq(
+            "id", item_id
+        ).execute().data == [{"id": item_id, "assignee_email": None, "due_on": None}]
