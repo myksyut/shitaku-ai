@@ -1,5 +1,4 @@
 import type { Session } from '@supabase/supabase-js'
-import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import { Button, SlackIcon } from './components/ui'
@@ -10,6 +9,7 @@ import { syncProviderToken } from './features/google/api'
 import { OccurrencePage, SeriesListPage, SeriesPage } from './features/series'
 import { SlackSettingsPage } from './features/slack'
 import { supabase } from './lib/supabase'
+import { UserQueryProvider } from './lib/user-query-provider'
 
 function LoadingScreen() {
   return (
@@ -141,77 +141,23 @@ function Header({ email, onLogout }: HeaderProps) {
   )
 }
 
-function App() {
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+function AuthenticatedApp({ session }: { session: Session }) {
   const tokenSyncAttempted = useRef(false)
-  const queryClient = useQueryClient()
-  const sessionUserId = useRef<string | null>(null)
 
   useEffect(() => {
-    let active = true
-    let authChanged = false
-    const applySession = (next: Session | null) => {
-      if (!active) return
-      const nextId = next?.user.id ?? null
-      if (sessionUserId.current !== nextId) {
-        queryClient.clear()
-        tokenSyncAttempted.current = false
-        sessionUserId.current = nextId
-      }
-      setSession(next)
-      setLoading(false)
-    }
+    const email = session.user.email
+    if (!email || !session.provider_refresh_token || tokenSyncAttempted.current) return
+    tokenSyncAttempted.current = true
 
-    const syncGoogleToken = async (sess: Session) => {
-      const email = sess.user?.email
-      if (!email || !sess.provider_refresh_token) return
-
-      try {
-        await syncProviderToken({
-          provider_token: sess.provider_token ?? '',
-          provider_refresh_token: sess.provider_refresh_token,
-          email,
-          scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
-        })
-      } catch (error) {
-        console.error('Failed to sync Google token:', error)
-      }
-    }
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!active || authChanged) return
-      applySession(session)
-      if (session?.provider_refresh_token && !tokenSyncAttempted.current) {
-        tokenSyncAttempted.current = true
-        syncGoogleToken(session)
-      }
+    syncProviderToken({
+      provider_token: session.provider_token ?? '',
+      provider_refresh_token: session.provider_refresh_token,
+      email,
+      scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+    }).catch((error) => {
+      console.error('Failed to sync Google token:', error)
     })
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      authChanged = true
-      applySession(session)
-      if (event === 'SIGNED_IN' && session?.provider_refresh_token && !tokenSyncAttempted.current) {
-        tokenSyncAttempted.current = true
-        syncGoogleToken(session)
-      }
-    })
-
-    return () => {
-      active = false
-      subscription.unsubscribe()
-    }
-  }, [queryClient])
-
-  if (loading) {
-    return <LoadingScreen />
-  }
-
-  if (!session) {
-    return <AuthPage />
-  }
+  }, [session])
 
   return (
     <div
@@ -226,7 +172,6 @@ function App() {
     >
       <Header email={session.user.email ?? ''} onLogout={() => supabase.auth.signOut()} />
 
-      {/* Main Content */}
       <main
         style={{
           maxWidth: '1200px',
@@ -234,7 +179,7 @@ function App() {
           padding: 'var(--space-8) var(--space-6)',
         }}
       >
-        <Routes key={session.user.id}>
+        <Routes>
           <Route path="/" element={<SeriesListPage />} />
           <Route path="/series/:seriesId" element={<SeriesPage />} />
           <Route path="/series/:seriesId/occurrences/:occurrenceId" element={<OccurrencePage />} />
@@ -251,6 +196,47 @@ function App() {
         </Routes>
       </main>
     </div>
+  )
+}
+
+function App() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    let authChanged = false
+    const applySession = (next: Session | null) => {
+      if (!active) return
+      setSession(next)
+      setLoading(false)
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!active || authChanged) return
+      applySession(session)
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      authChanged = true
+      applySession(session)
+    })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  if (loading) return <LoadingScreen />
+  if (!session) return <AuthPage />
+
+  return (
+    <UserQueryProvider userId={session.user.id}>
+      <AuthenticatedApp session={session} />
+    </UserQueryProvider>
   )
 }
 

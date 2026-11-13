@@ -1,9 +1,11 @@
-import type { Session } from '@supabase/supabase-js'
-import { act, screen, waitFor } from '@testing-library/react'
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
+import { act, render, screen } from '@testing-library/react'
+import { HttpResponse, http } from 'msw'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { supabase } from './lib/supabase'
-import { renderPage } from './test/series'
+import { API, server } from './test/series'
 
 let authChange: Parameters<typeof supabase.auth.onAuthStateChange>[0] | undefined
 
@@ -24,6 +26,13 @@ function session(id: string): Session {
   }
 }
 
+async function changeSession(event: AuthChangeEvent, next: Session | null) {
+  vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: next }, error: null })
+  await act(async () => {
+    await authChange?.(event, next)
+  })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   authChange = undefined
@@ -35,39 +44,61 @@ beforeEach(() => {
 })
 
 describe('App', () => {
-  it('loads the login screen when signed out', async () => {
-    renderPage(<App />)
+  it('loads the login screen without an authenticated query client', async () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    )
     expect(screen.getByText('読み込み中...')).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'ログイン' })).toBeInTheDocument()
   })
 
-  it('clears every account cache on user changes and logout, not on token refresh', async () => {
+  it('preserves a user client across token refresh and replaces it on account changes and logout', async () => {
     const alice = session('alice')
-    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: alice }, error: null })
-    const { client } = renderPage(<App />)
-    expect(await screen.findByText('alice@example.com')).toBeInTheDocument()
-    client.setQueryData(['private', 'memory'], 'Alice only')
-
-    await act(async () => {
-      await authChange?.('TOKEN_REFRESHED', alice)
-    })
-    expect(client.getQueryData(['private', 'memory'])).toBe('Alice only')
-
     const bob = session('bob')
-    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: bob }, error: null })
-    await act(async () => {
-      await authChange?.('SIGNED_IN', bob)
-    })
-    expect(await screen.findByText('bob@example.com')).toBeInTheDocument()
-    expect(screen.queryByText('alice@example.com')).not.toBeInTheDocument()
-    expect(client.getQueryData(['private', 'memory'])).toBeUndefined()
+    const requests = { alice: 0, bob: 0 }
+    server.use(
+      http.get(`${API}/series`, ({ request }) => {
+        const authorization = request.headers.get('authorization')
+        expect(['Bearer token-alice', 'Bearer token-bob']).toContain(authorization)
+        const user = authorization === 'Bearer token-alice' ? 'alice' : 'bob'
+        requests[user] += 1
+        return HttpResponse.json({
+          series: [
+            {
+              id: 'series-1',
+              title: `${user}の定例`,
+              role: 'member',
+              next_occurrence: null,
+              open_action_items: 0,
+              calendar_sync_error: null,
+            },
+          ],
+        })
+      }),
+    )
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: alice }, error: null })
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('heading', { name: 'aliceの定例' })).toBeInTheDocument()
 
-    client.setQueryData(['private', 'google'], 'Bob credentials')
-    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null }, error: null })
-    await act(async () => {
-      await authChange?.('SIGNED_OUT', null)
-    })
-    await waitFor(() => expect(client.getQueryData(['private', 'google'])).toBeUndefined())
+    await changeSession('TOKEN_REFRESHED', { ...alice, expires_in: 7200 })
+    expect(screen.getByRole('heading', { name: 'aliceの定例' })).toBeInTheDocument()
+    expect(requests).toEqual({ alice: 1, bob: 0 })
+
+    await changeSession('SIGNED_IN', bob)
+    expect(await screen.findByRole('heading', { name: 'bobの定例' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'aliceの定例' })).not.toBeInTheDocument()
+    expect(requests).toEqual({ alice: 1, bob: 1 })
+
+    await changeSession('SIGNED_OUT', null)
     expect(await screen.findByRole('heading', { name: 'ログイン' })).toBeInTheDocument()
+    await changeSession('SIGNED_IN', bob)
+    expect(await screen.findByRole('heading', { name: 'bobの定例' })).toBeInTheDocument()
+    expect(requests).toEqual({ alice: 1, bob: 2 })
   })
 })
