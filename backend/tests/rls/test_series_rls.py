@@ -1367,3 +1367,34 @@ def test_document_committed_after_extraction_read_remains_unextracted(
         .data
     )
     assert TypeAdapter(list[dict[str, datetime]]).validate_python(marker) == [{"extracted_at": inserted[0].created_at}]
+
+
+@pytest.mark.parametrize("removal", ["delete_integration", "clear_binding"])
+def test_slack_disconnect_clears_stored_channels_atomically(world: World, service_client: Client, removal: str) -> None:
+    integration_id = str(uuid4())
+    service_client.table("slack_integrations").insert(
+        {
+            "id": integration_id,
+            "user_id": str(world.users["A"].id),
+            "workspace_id": integration_id,
+            "workspace_name": "Selected workspace",
+            "encrypted_access_token": "unused",
+        }
+    ).execute()
+    channels = [{"id": "selected-channel", "name": "Selected channel"}]
+    owner = world.users["A"].client
+    owner.table("series").update({"slack_integration_id": integration_id, "slack_channels": channels}).eq(
+        "id", world.sid
+    ).execute()
+    if removal == "delete_integration":
+        owner.table("slack_integrations").delete().eq("id", integration_id).eq(
+            "user_id", str(world.users["A"].id)
+        ).execute()
+    else:
+        owner.table("series").update({"slack_integration_id": None}).eq("id", world.sid).execute()
+    assert world.users["B"].client.table("series").select("id,slack_integration_id,slack_channels").eq(
+        "id", world.sid
+    ).execute().data == [{"id": world.sid, "slack_integration_id": None, "slack_channels": []}]
+    with pytest.raises(APIError) as error:
+        owner.table("series").update({"slack_channels": channels}).eq("id", world.sid).execute()
+    assert error.value.code == "23514"
