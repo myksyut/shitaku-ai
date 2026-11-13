@@ -272,57 +272,6 @@ class TestMeetingTranscriptRepositoryImpl:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_get_by_date_range_success(
-        self,
-        repository: MeetingTranscriptRepositoryImpl,
-        mock_supabase_client: MagicMock,
-    ) -> None:
-        """指定期間内のトランスクリプトを取得できる"""
-        # Arrange
-        recurring_meeting_id = uuid4()
-        start_date = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
-        end_date = datetime(2024, 1, 31, 23, 59, 59, tzinfo=UTC)
-        mock_table = MagicMock()
-        mock_supabase_client.table.return_value = mock_table
-        mock_table.select.return_value = mock_table
-        mock_table.eq.return_value = mock_table
-        mock_table.gte.return_value = mock_table
-        mock_table.lte.return_value = mock_table
-        mock_table.order.return_value = mock_table
-        mock_table.execute.return_value = MagicMock(
-            data=[
-                {
-                    "id": str(uuid4()),
-                    "recurring_meeting_id": str(recurring_meeting_id),
-                    "meeting_date": "2024-01-08T10:00:00+00:00",
-                    "google_doc_id": "doc_1",
-                    "raw_text": "1週目",
-                    "structured_data": None,
-                    "match_confidence": 0.8,
-                    "created_at": "2024-01-08T12:00:00+00:00",
-                },
-                {
-                    "id": str(uuid4()),
-                    "recurring_meeting_id": str(recurring_meeting_id),
-                    "meeting_date": "2024-01-15T10:00:00+00:00",
-                    "google_doc_id": "doc_2",
-                    "raw_text": "2週目",
-                    "structured_data": None,
-                    "match_confidence": 0.85,
-                    "created_at": "2024-01-15T12:00:00+00:00",
-                },
-            ]
-        )
-
-        # Act
-        result = await repository.get_by_date_range(recurring_meeting_id, start_date, end_date)
-
-        # Assert
-        assert len(result) == 2
-        assert result[0].google_doc_id == "doc_1"
-        assert result[1].google_doc_id == "doc_2"
-
-    @pytest.mark.asyncio
     async def test_delete_success(
         self,
         repository: MeetingTranscriptRepositoryImpl,

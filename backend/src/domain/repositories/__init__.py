@@ -10,6 +10,5 @@ from src.domain.repositories.meeting_transcript_repository import (
 from src.domain.repositories.recurring_meeting_repository import (
     RecurringMeetingRepository,
 )
-from src.domain.repositories.user_repository import UserRepository
 
-__all__ = ["MeetingTranscriptRepository", "RecurringMeetingRepository", "UserRepository"]
+__all__ = ["MeetingTranscriptRepository", "RecurringMeetingRepository"]

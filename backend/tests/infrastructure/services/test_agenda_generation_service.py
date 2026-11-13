@@ -6,8 +6,6 @@ Tests for agenda generation prompt building and service behavior.
 from datetime import datetime
 from uuid import uuid4
 
-import pytest
-
 from src.domain.entities.dictionary_entry import DictionaryEntry
 from src.domain.entities.knowledge import Knowledge
 from src.domain.entities.meeting_transcript import MeetingTranscript, TranscriptStructuredData
@@ -300,19 +298,3 @@ class TestAgendaGenerationServicePromptBuilding:
 
         # Assert
         assert "過去のMTGトランスクリプト" not in prompt
-
-
-class TestAgendaGenerationServiceGenerate:
-    """Test AgendaGenerationService.generate method."""
-
-    @pytest.mark.skip(reason="Requires mocking invoke_claude")
-    async def test_generate_returns_llm_response(self) -> None:
-        """生成メソッドがLLMレスポンスを返す"""
-        # This test requires mocking invoke_claude
-        pass
-
-    @pytest.mark.skip(reason="Requires mocking invoke_claude")
-    async def test_generate_raises_on_llm_failure(self) -> None:
-        """LLM呼び出し失敗時に例外が発生する"""
-        # This test requires mocking invoke_claude
-        pass

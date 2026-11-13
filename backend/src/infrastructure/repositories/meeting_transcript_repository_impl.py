@@ -76,24 +76,6 @@ class MeetingTranscriptRepositoryImpl(MeetingTranscriptRepository):
         result = query.execute()
         return [self._to_entity(cast(dict[str, Any], row)) for row in result.data]
 
-    async def get_by_date_range(
-        self,
-        recurring_meeting_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
-    ) -> list[MeetingTranscript]:
-        """指定期間内のトランスクリプトを取得する."""
-        result = (
-            self.client.table("meeting_transcripts")
-            .select("*")
-            .eq("recurring_meeting_id", str(recurring_meeting_id))
-            .gte("meeting_date", start_date.isoformat())
-            .lte("meeting_date", end_date.isoformat())
-            .order("meeting_date", desc=False)
-            .execute()
-        )
-        return [self._to_entity(cast(dict[str, Any], row)) for row in result.data]
-
     async def get_by_google_doc_id(
         self,
         google_doc_id: str,
@@ -130,24 +112,6 @@ class MeetingTranscriptRepositoryImpl(MeetingTranscriptRepository):
         }
         self.client.table("meeting_transcripts").update(data).eq("id", str(transcript.id)).execute()
         return transcript
-
-    async def get_needing_confirmation(
-        self,
-        user_id: UUID,
-    ) -> list[MeetingTranscript]:
-        """手動確認が必要なトランスクリプト一覧を取得する.
-
-        match_confidenceが0.7未満のトランスクリプトを取得。
-        """
-        result = (
-            self.client.table("meeting_transcripts")
-            .select("*, recurring_meetings!inner(user_id)")
-            .eq("recurring_meetings.user_id", str(user_id))
-            .lt("match_confidence", 0.7)
-            .order("meeting_date", desc=True)
-            .execute()
-        )
-        return [self._to_entity(cast(dict[str, Any], row)) for row in result.data]
 
     async def delete(self, transcript_id: UUID) -> bool:
         """トランスクリプトを削除する."""

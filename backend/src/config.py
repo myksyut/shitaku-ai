@@ -15,15 +15,10 @@ class Settings(BaseSettings):
     # CORS
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
-    # Security
-    SECRET_KEY: str = ""  # noqa: S105
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-
     # Supabase
     SUPABASE_URL: str | None = None
     SUPABASE_KEY: str | None = None  # Publishable key (client-side)
     SUPABASE_SERVICE_KEY: str | None = None  # Secret key (server-side, bypasses RLS)
-    SUPABASE_DATABASE_URL: str | None = None
 
     # AWS Bedrock (API Key Authentication)
     AWS_BEARER_TOKEN_BEDROCK: str | None = None

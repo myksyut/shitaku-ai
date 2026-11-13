@@ -64,22 +64,6 @@ class GetTranscriptsByRecurringMeetingUseCase:
         return await self.repository.get_by_recurring_meeting(recurring_meeting_id, limit)
 
 
-class GetTranscriptsByDateRangeUseCase:
-    """日付範囲でのトランスクリプト一覧取得ユースケース."""
-
-    def __init__(self, repository: MeetingTranscriptRepository) -> None:
-        self.repository = repository
-
-    async def execute(
-        self,
-        recurring_meeting_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
-    ) -> list[MeetingTranscript]:
-        """指定期間内のトランスクリプト一覧を取得する."""
-        return await self.repository.get_by_date_range(recurring_meeting_id, start_date, end_date)
-
-
 class DeleteTranscriptUseCase:
     """トランスクリプト削除ユースケース."""
 
@@ -89,24 +73,6 @@ class DeleteTranscriptUseCase:
     async def execute(self, transcript_id: UUID) -> bool:
         """トランスクリプトを削除する."""
         return await self.repository.delete(transcript_id)
-
-
-class GetTranscriptsNeedingConfirmationUseCase:
-    """手動確認が必要なトランスクリプト一覧取得ユースケース.
-
-    match_confidenceが0.7未満のトランスクリプトを抽出する。
-    """
-
-    def __init__(self, repository: MeetingTranscriptRepository) -> None:
-        self.repository = repository
-
-    async def execute(
-        self,
-        recurring_meeting_id: UUID,
-    ) -> list[MeetingTranscript]:
-        """手動確認が必要なトランスクリプト一覧を取得する."""
-        all_transcripts = await self.repository.get_by_recurring_meeting(recurring_meeting_id, None)
-        return [t for t in all_transcripts if t.needs_manual_confirmation()]
 
 
 @dataclass
@@ -329,17 +295,3 @@ class LinkTranscriptUseCase:
         transcript.match_confidence = 1.0
 
         return await self.transcript_repository.update(transcript)
-
-
-class GetPendingTranscriptsUseCase:
-    """手動確認待ちトランスクリプト一覧取得ユースケース.
-
-    match_confidenceが0.7未満のトランスクリプトを全て取得する。
-    """
-
-    def __init__(self, repository: MeetingTranscriptRepository) -> None:
-        self.repository = repository
-
-    async def execute(self, user_id: UUID) -> list[MeetingTranscript]:
-        """手動確認待ちトランスクリプト一覧を取得する."""
-        return await self.repository.get_needing_confirmation(user_id)

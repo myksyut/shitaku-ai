@@ -15,10 +15,7 @@ from src.domain.repositories.google_integration_repository import (
     GoogleIntegrationRepository,
 )
 from src.domain.repositories.oauth_state_repository import OAuthStateRepository
-from src.infrastructure.external.encryption import (
-    decrypt_google_token,
-    encrypt_google_token,
-)
+from src.infrastructure.external.encryption import encrypt_google_token
 from src.infrastructure.external.google_oauth_client import (
     DEFAULT_SCOPES,
     TRANSCRIPT_SCOPES,
@@ -276,44 +273,6 @@ class StartAdditionalScopesUseCase:
         # OAuth開始
         start_use_case = StartGoogleOAuthUseCase(self.oauth_state_repository)
         return await start_use_case.execute(user_id, scopes=all_scopes, redirect_origin=redirect_origin)
-
-
-class RefreshGoogleTokenUseCase:
-    """Googleトークンリフレッシュユースケース."""
-
-    def __init__(self, repository: GoogleIntegrationRepository) -> None:
-        """Initialize use case with repository."""
-        self.repository = repository
-
-    async def execute(
-        self,
-        user_id: UUID,
-        integration_id: UUID,
-    ) -> str:
-        """アクセストークンをリフレッシュして返す.
-
-        Args:
-            user_id: ユーザーID.
-            integration_id: 連携ID.
-
-        Returns:
-            新しいアクセストークン.
-
-        Raises:
-            ValueError: If integration not found or refresh fails.
-        """
-        integration = await self.repository.get_by_id(integration_id, user_id)
-        if not integration:
-            raise ValueError("Integration not found")
-
-        # リフレッシュトークンを復号
-        refresh_token = decrypt_google_token(integration.encrypted_refresh_token)
-
-        # アクセストークンをリフレッシュ
-        client = GoogleOAuthClient()
-        token_response = await client.refresh_access_token(refresh_token)
-
-        return token_response.access_token
 
 
 @dataclass

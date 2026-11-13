@@ -1,9 +1,7 @@
 """Supabase client module for authentication and database operations."""
 
-import atexit
 import logging
 
-import httpx
 import jwt
 from jwt import PyJWKClient
 from supabase import Client, create_client
@@ -15,9 +13,6 @@ logger = logging.getLogger(__name__)
 
 # JWKS client (lazy initialization)
 _jwks_client: PyJWKClient | None = None
-
-# Shared httpx client (singleton for performance)
-_shared_httpx_client: httpx.Client | None = None
 
 
 def _get_jwks_client() -> PyJWKClient | None:
@@ -101,38 +96,6 @@ def is_supabase_configured() -> bool:
         True if SUPABASE_URL and SUPABASE_KEY are set, False otherwise.
     """
     return settings.SUPABASE_URL is not None and settings.SUPABASE_KEY is not None
-
-
-def get_shared_httpx_client() -> httpx.Client:
-    """Get or create a shared httpx client for Supabase connections.
-
-    This singleton pattern improves performance by reusing HTTP connections
-    across multiple Supabase client instances.
-
-    Returns:
-        Shared httpx.Client instance.
-    """
-    global _shared_httpx_client
-
-    if _shared_httpx_client is None:
-        _shared_httpx_client = httpx.Client(
-            timeout=httpx.Timeout(30.0, connect=10.0),
-            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
-        )
-        # Register cleanup on application shutdown
-        atexit.register(_cleanup_httpx_client)
-        logger.info("Shared httpx client initialized")
-
-    return _shared_httpx_client
-
-
-def _cleanup_httpx_client() -> None:
-    """Clean up the shared httpx client on application shutdown."""
-    global _shared_httpx_client
-    if _shared_httpx_client is not None:
-        _shared_httpx_client.close()
-        _shared_httpx_client = None
-        logger.info("Shared httpx client closed")
 
 
 def create_user_supabase_client(access_token: str) -> Client | None:

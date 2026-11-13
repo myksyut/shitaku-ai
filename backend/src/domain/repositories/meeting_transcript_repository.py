@@ -6,7 +6,6 @@ Following ADR-0001 clean architecture principles.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
 from uuid import UUID
 
 from src.domain.entities.meeting_transcript import MeetingTranscript
@@ -58,24 +57,6 @@ class MeetingTranscriptRepository(ABC):
         """
 
     @abstractmethod
-    async def get_by_date_range(
-        self,
-        recurring_meeting_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
-    ) -> list[MeetingTranscript]:
-        """指定期間内のトランスクリプトを取得する.
-
-        Args:
-            recurring_meeting_id: 定例MTGのID
-            start_date: 開始日時
-            end_date: 終了日時
-
-        Returns:
-            MeetingTranscriptエンティティのリスト（日付昇順）
-        """
-
-    @abstractmethod
     async def get_by_google_doc_id(
         self,
         google_doc_id: str,
@@ -100,22 +81,6 @@ class MeetingTranscriptRepository(ABC):
 
         Returns:
             更新されたMeetingTranscriptエンティティ
-        """
-
-    @abstractmethod
-    async def get_needing_confirmation(
-        self,
-        user_id: UUID,
-    ) -> list[MeetingTranscript]:
-        """手動確認が必要なトランスクリプト一覧を取得する.
-
-        match_confidenceが0.7未満のトランスクリプトを取得。
-
-        Args:
-            user_id: ユーザーID（RLSフィルタリング用）
-
-        Returns:
-            手動確認が必要なMeetingTranscriptエンティティのリスト
         """
 
     @abstractmethod

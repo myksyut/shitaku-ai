@@ -33,7 +33,7 @@ def service_health_check() -> ServiceHealthResponse:
         if client is not None:
             try:
                 # Simple query to test connection
-                client.table("users").select("id").limit(1).execute()
+                client.table("agents").select("id").limit(1).execute()
                 supabase_db = True
                 details["supabase_db"] = "Connected"
             except Exception as e:

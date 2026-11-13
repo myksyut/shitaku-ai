@@ -12,7 +12,6 @@ from supabase import Client
 from src.application.use_cases.transcript_use_cases import (
     CreateTranscriptUseCase,
     DeleteTranscriptUseCase,
-    GetPendingTranscriptsUseCase,
     GetTranscriptsByRecurringMeetingUseCase,
     GetTranscriptUseCase,
     LinkTranscriptUseCase,
@@ -297,17 +296,3 @@ async def link_transcript(
         ) from None
 
     return _to_response(transcript)
-
-
-@router.get("/pending", response_model=list[TranscriptResponse])
-async def get_pending_transcripts(
-    user_id: UUID = Depends(get_current_user_id),
-    repository: MeetingTranscriptRepositoryImpl = Depends(get_repository),
-) -> list[TranscriptResponse]:
-    """手動確認が必要なトランスクリプト一覧を取得する.
-
-    信頼度が0.7未満のトランスクリプトを返す。
-    """
-    use_case = GetPendingTranscriptsUseCase(repository)
-    transcripts = await use_case.execute(user_id)
-    return [_to_response(t) for t in transcripts]

@@ -15,7 +15,6 @@ from src.application.use_cases.google_auth_use_cases import (
     DeleteGoogleIntegrationUseCase,
     GetGoogleIntegrationsUseCase,
     HandleGoogleCallbackUseCase,
-    RefreshGoogleTokenUseCase,
     StartAdditionalScopesUseCase,
     StartGoogleOAuthUseCase,
 )
@@ -562,71 +561,3 @@ class TestStartAdditionalScopesUseCase:
             combined_scopes = call_args.kwargs["scopes"]
             for scope in TRANSCRIPT_SCOPES:
                 assert scope in combined_scopes
-
-
-class TestRefreshGoogleTokenUseCase:
-    """RefreshGoogleTokenUseCaseのテスト"""
-
-    @pytest.mark.asyncio
-    async def test_execute_returns_new_access_token(self) -> None:
-        """新しいアクセストークンが返される"""
-        # Arrange
-        user_id = uuid4()
-        integration_id = uuid4()
-
-        existing_integration = GoogleIntegration(
-            id=integration_id,
-            user_id=user_id,
-            email="test@example.com",
-            encrypted_refresh_token="encrypted_refresh_token",
-            granted_scopes=["openid"],
-            created_at=datetime.now(),
-            updated_at=None,
-        )
-
-        mock_token_response = GoogleTokenResponse(
-            access_token="new_access_token",
-            refresh_token="refresh_token",
-            expires_in=3600,
-            token_type="Bearer",
-            scope="openid",
-        )
-
-        mock_repository = AsyncMock()
-        mock_repository.get_by_id = AsyncMock(return_value=existing_integration)
-
-        mock_client = MagicMock()
-        mock_client.refresh_access_token = AsyncMock(return_value=mock_token_response)
-
-        with (
-            patch.object(google_auth_use_cases, "GoogleOAuthClient", return_value=mock_client),
-            patch.object(
-                google_auth_use_cases,
-                "decrypt_google_token",
-                return_value="decrypted_refresh_token",
-            ),
-        ):
-            use_case = RefreshGoogleTokenUseCase(mock_repository)
-
-            # Act
-            result = await use_case.execute(user_id, integration_id)
-
-            # Assert
-            assert result == "new_access_token"
-            mock_client.refresh_access_token.assert_called_once_with("decrypted_refresh_token")
-
-    @pytest.mark.asyncio
-    async def test_execute_raises_when_integration_not_found(self) -> None:
-        """連携が見つからない場合にValueErrorが発生する"""
-        # Arrange
-        user_id = uuid4()
-        integration_id = uuid4()
-
-        mock_repository = AsyncMock()
-        mock_repository.get_by_id = AsyncMock(return_value=None)
-
-        use_case = RefreshGoogleTokenUseCase(mock_repository)
-
-        # Act & Assert
-        with pytest.raises(ValueError, match="Integration not found"):
-            await use_case.execute(user_id, integration_id)
