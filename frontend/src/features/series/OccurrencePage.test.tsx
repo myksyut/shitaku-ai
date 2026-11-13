@@ -53,4 +53,31 @@ describe('occurrence permissions', () => {
     await userEvent.click(screen.getByRole('button', { name: 'コピー', exact: true }))
     expect(clipboard.writeText).toHaveBeenCalledWith(content)
   })
+  it('localizes calendar and Slack source errors after generating an agenda', async () => {
+    const detail: OccurrenceDetail = { ...occurrence }
+    server.use(
+      http.post(`${API}/series/series-1/occurrences/occurrence-1/agenda`, () => {
+        const agenda = { occurrence_id: 'occurrence-1', content: '## 議題', generated_at: '', updated_at: 'generated' }
+        detail.agenda = agenda
+        return HttpResponse.json({
+          agenda,
+          sources: {
+            topics: 2,
+            carried_action_items: 0,
+            open_issues: 0,
+            knowledge: 0,
+            slack_messages: 0,
+            calendar_error: 'scope_missing',
+            slack_error: 'not_in_channel',
+          },
+        })
+      }),
+    )
+    open('creator', detail)
+    await userEvent.click(await screen.findByRole('button', { name: 'アジェンダを生成' }))
+    expect(await screen.findByText('Googleカレンダーの権限が不足しています')).toBeInTheDocument()
+    expect(screen.getByText('Slackボットがチャンネルに参加していません')).toBeInTheDocument()
+    expect(screen.queryByText('scope_missing')).not.toBeInTheDocument()
+    expect(screen.queryByText('not_in_channel')).not.toBeInTheDocument()
+  })
 })

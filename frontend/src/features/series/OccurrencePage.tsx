@@ -4,6 +4,7 @@ import { AgendaEditor } from './AgendaEditor'
 import { useGenerateAgenda, useOccurrence, useSeries } from './hooks'
 import { OccurrenceKnowledgePanel } from './OccurrenceKnowledgePanel'
 import { Badge, ErrorNotice, formatStart } from './SeriesUi'
+import { calendarSyncErrorMessage, syncErrorMessage } from './sync-errors'
 import { TopicList } from './TopicList'
 import type { OccurrenceDetail, SeriesDetail } from './types'
 
@@ -48,8 +49,10 @@ function OccurrenceWorkspace({ series, detail }: { series: SeriesDetail; detail:
               参照: 議題{sources.topics}件 / 持ち越しアクション{sources.carried_action_items}件 / 論点
               {sources.open_issues}件 / 議事録{sources.knowledge}件 / Slack{sources.slack_messages}件
             </p>
-            {sources.slack_error && <ErrorNotice>Slack: {sources.slack_error}</ErrorNotice>}
-            {sources.calendar_error && <ErrorNotice>カレンダー: {sources.calendar_error}</ErrorNotice>}
+            {sources.slack_error && <ErrorNotice>{syncErrorMessage('slack', sources.slack_error)}</ErrorNotice>}
+            {sources.calendar_error && (
+              <ErrorNotice>{calendarSyncErrorMessage(sources.calendar_error, series.role)}</ErrorNotice>
+            )}
           </div>
         )}
         {detail.agenda ? (
