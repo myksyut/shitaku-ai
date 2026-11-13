@@ -1,50 +1,57 @@
-"""Pydantic schemas for dictionary API."""
-
-from datetime import datetime
-from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
-class DictionaryCategoryEnum(str, Enum):
-    """Enum for dictionary entry categories."""
-
-    PERSON = "person"
-    PROJECT = "project"
-    TERM = "term"
-    CUSTOMER = "customer"
-    ABBREVIATION = "abbreviation"
+from src.domain.entities.dictionary_entry import DictionaryCategory, DictionaryChanges
 
 
 class DictionaryEntryCreate(BaseModel):
-    """Schema for creating a dictionary entry."""
+    """The creator's shared vocabulary input."""
 
-    canonical_name: str = Field(..., min_length=1, max_length=100)
-    category: DictionaryCategoryEnum
-    aliases: list[str] = Field(default_factory=list)
-    description: str | None = Field(None, max_length=500)
+    model_config = ConfigDict(extra="forbid")
+    canonical_name: str = Field(min_length=1, max_length=100)
+    category: DictionaryCategory | None
+    aliases: list[str]
+    description: str | None = Field(max_length=500)
 
 
 class DictionaryEntryUpdate(BaseModel):
-    """Schema for updating a dictionary entry."""
+    """Partial vocabulary changes with explicit-null support."""
 
-    canonical_name: str | None = Field(None, min_length=1, max_length=100)
-    category: DictionaryCategoryEnum | None = None
+    model_config = ConfigDict(extra="forbid")
+    canonical_name: str | None = Field(default=None, min_length=1, max_length=100)
+    category: DictionaryCategory | None = None
     aliases: list[str] | None = None
-    description: str | None = Field(None, max_length=500)
+    description: str | None = Field(default=None, max_length=500)
+
+    @field_validator("canonical_name", "aliases")
+    @classmethod
+    def nonnullable_fields(cls, value: object) -> object:
+        """Reject explicit nulls for fields that are only optional by omission."""
+        if value is None:
+            raise ValueError("Field cannot be null")
+        return value
+
+    def changes(self) -> DictionaryChanges:
+        """Preserve omission independently from explicit nullable-field clearing."""
+        result: DictionaryChanges = {}
+        if self.canonical_name is not None:
+            result["canonical_name"] = self.canonical_name
+        if self.aliases is not None:
+            result["aliases"] = self.aliases
+        if "category" in self.model_fields_set:
+            result["category"] = self.category
+        if "description" in self.model_fields_set:
+            result["description"] = self.description
+        return result
 
 
-class DictionaryEntryResponse(BaseModel):
-    """Schema for dictionary entry response."""
+class DictionaryEntryView(BaseModel):
+    """Only the vocabulary fields in the shared API contract."""
 
+    model_config = ConfigDict(from_attributes=True)
     id: UUID
-    agent_id: UUID | None = None
     canonical_name: str
-    category: DictionaryCategoryEnum | None = None
-    aliases: list[str] = Field(default_factory=list)
+    category: DictionaryCategory | None
+    aliases: list[str]
     description: str | None
-    created_at: datetime
-    updated_at: datetime | None
-
-    model_config = {"from_attributes": True}

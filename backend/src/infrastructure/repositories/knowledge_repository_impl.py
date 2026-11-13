@@ -1,129 +1,81 @@
-"""KnowledgeRepository implementation using Supabase.
-
-Infrastructure layer implementation of KnowledgeRepository interface.
-Following ADR-0001 clean architecture principles.
-"""
-
-from datetime import datetime
-from typing import Any, cast
+from collections.abc import Sequence
 from uuid import UUID
 
+from pydantic import TypeAdapter
 from supabase import Client
 
 from src.domain.entities.knowledge import Knowledge
+from src.domain.entities.series import CreatorAccess, SeriesError
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
 
 
 class KnowledgeRepositoryImpl(KnowledgeRepository):
-    """ナレッジリポジトリのSupabase実装."""
+    """Read and write only the explicitly selected series."""
 
     def __init__(self, client: Client) -> None:
-        """リポジトリを初期化する.
+        self._client = client
 
-        Args:
-            client: Supabaseクライアントインスタンス
-        """
-        self.client = client
+    async def for_occurrences(self, series_id: UUID, occurrence_ids: Sequence[UUID]) -> list[Knowledge]:
+        """Keep agenda and extraction sources inside their aggregate."""
+        if not occurrence_ids:
+            return []
+        rows = (
+            self._client.table("knowledge")
+            .select("*")
+            .eq("series_id", str(series_id))
+            .in_("occurrence_id", [str(i) for i in occurrence_ids])
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        )
+        return TypeAdapter(list[Knowledge]).validate_python(rows)
 
-    async def create(self, knowledge: Knowledge) -> Knowledge:
-        """ナレッジを作成する."""
-        data = {
-            "id": str(knowledge.id),
-            "agent_id": str(knowledge.agent_id),
-            "user_id": str(knowledge.user_id),
-            "original_text": knowledge.original_text,
-            "normalized_text": knowledge.normalized_text,
-            "meeting_date": knowledge.meeting_date.isoformat(),
-            "created_at": knowledge.created_at.isoformat(),
-        }
-        self.client.table("knowledge").insert(data).execute()
+    async def get(self, series_id: UUID, knowledge_id: UUID) -> Knowledge | None:
+        """Never resolve a document ID outside the access proof."""
+        rows = (
+            self._client.table("knowledge")
+            .select("*")
+            .eq("series_id", str(series_id))
+            .eq("id", str(knowledge_id))
+            .execute()
+            .data
+        )
+        items = TypeAdapter(list[Knowledge]).validate_python(rows)
+        return items[0] if items else None
+
+    async def imported_doc_ids(self, series_id: UUID) -> frozenset[str]:
+        """Read shared Drive identities, not other series' documents."""
+        rows = (
+            self._client.table("knowledge")
+            .select("google_doc_id")
+            .eq("series_id", str(series_id))
+            .eq("source", "meet_transcript")
+            .execute()
+            .data
+        )
+        return frozenset(r["google_doc_id"] for r in TypeAdapter(list[dict[str, str]]).validate_python(rows))
+
+    async def add(self, access: CreatorAccess, knowledge: Knowledge) -> Knowledge:
+        """Persist creator-selected content and retain idempotent imports."""
+        if knowledge.series_id != access.series_id:
+            raise SeriesError(404, "Occurrence not found")
+        if knowledge.google_doc_id:
+            rows = (
+                self._client.table("knowledge")
+                .select("*")
+                .eq("series_id", str(access.series_id))
+                .eq("google_doc_id", knowledge.google_doc_id)
+                .execute()
+                .data
+            )
+            existing = TypeAdapter(list[Knowledge]).validate_python(rows)
+            if existing:
+                return existing[0]
+        self._client.table("knowledge").insert(TypeAdapter(Knowledge).dump_python(knowledge, mode="json")).execute()
         return knowledge
 
-    async def get_by_id(self, knowledge_id: UUID, user_id: UUID) -> Knowledge | None:
-        """IDでナレッジを取得する."""
-        result = (
-            self.client.table("knowledge")
-            .select("*")
-            .eq("id", str(knowledge_id))
-            .eq("user_id", str(user_id))
-            .maybe_single()
-            .execute()
-        )
-
-        if result is None or not result.data:
-            return None
-
-        return self._to_entity(cast(dict[str, Any], result.data))
-
-    async def get_by_agent(
-        self,
-        agent_id: UUID,
-        user_id: UUID,
-        limit: int | None = None,
-    ) -> list[Knowledge]:
-        """エージェントのナレッジ一覧を取得する."""
-        query = (
-            self.client.table("knowledge")
-            .select("*")
-            .eq("agent_id", str(agent_id))
-            .eq("user_id", str(user_id))
-            .order("meeting_date", desc=True)
-        )
-
-        if limit is not None:
-            query = query.limit(limit)
-
-        result = query.execute()
-        return [self._to_entity(cast(dict[str, Any], row)) for row in result.data]
-
-    async def get_latest_by_agent(
-        self,
-        agent_id: UUID,
-        user_id: UUID,
-    ) -> Knowledge | None:
-        """エージェントの最新ナレッジを取得する."""
-        result = (
-            self.client.table("knowledge")
-            .select("*")
-            .eq("agent_id", str(agent_id))
-            .eq("user_id", str(user_id))
-            .order("meeting_date", desc=True)
-            .limit(1)
-            .execute()
-        )
-
-        if not result.data:
-            return None
-
-        return self._to_entity(cast(dict[str, Any], result.data[0]))
-
-    async def delete(self, knowledge_id: UUID, user_id: UUID) -> bool:
-        """ナレッジを削除する."""
-        result = (
-            self.client.table("knowledge").delete().eq("id", str(knowledge_id)).eq("user_id", str(user_id)).execute()
-        )
-        return len(result.data) > 0
-
-    def _to_entity(self, data: dict[str, Any]) -> Knowledge:
-        """DB結果をエンティティに変換する."""
-        created_at_str = data["created_at"]
-        updated_at_str = data.get("updated_at")
-        meeting_date_str = data["meeting_date"]
-
-        # Handle timezone-aware ISO format
-        created_at = datetime.fromisoformat(str(created_at_str).replace("Z", "+00:00"))
-        meeting_date = datetime.fromisoformat(str(meeting_date_str).replace("Z", "+00:00"))
-        updated_at = None
-        if updated_at_str:
-            updated_at = datetime.fromisoformat(str(updated_at_str).replace("Z", "+00:00"))
-
-        return Knowledge(
-            id=UUID(str(data["id"])),
-            agent_id=UUID(str(data["agent_id"])),
-            user_id=UUID(str(data["user_id"])),
-            original_text=str(data["original_text"]),
-            normalized_text=str(data["normalized_text"]),
-            meeting_date=meeting_date,
-            created_at=created_at,
-            updated_at=updated_at,
-        )
+    async def delete(self, access: CreatorAccess, knowledge_id: UUID) -> None:
+        """Remove only the selected series' content."""
+        self._client.table("knowledge").delete().eq("series_id", str(access.series_id)).eq(
+            "id", str(knowledge_id)
+        ).execute()

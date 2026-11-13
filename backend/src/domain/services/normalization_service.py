@@ -41,6 +41,7 @@ class NormalizationResult:
     original_text: str
     normalized_text: str
     replacements: list[Replacement]
+    warning: str | None = None
 
     @property
     def replacement_count(self) -> int:

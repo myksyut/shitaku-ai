@@ -7,5 +7,4 @@ class ServiceHealthResponse(BaseModel):
     supabase_db: bool
     supabase_auth: bool
     bedrock_claude: bool
-    bedrock_embeddings: bool
     details: dict[str, str | None]

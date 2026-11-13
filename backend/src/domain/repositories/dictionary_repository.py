@@ -1,110 +1,29 @@
-"""DictionaryRepository interface for domain layer.
-
-Abstract base class defining the contract for dictionary persistence operations.
-Implementations should be provided in the infrastructure layer.
-"""
-
 from abc import ABC, abstractmethod
 from uuid import UUID
 
 from src.domain.entities.dictionary_entry import DictionaryEntry
+from src.domain.entities.series import CreatorAccess
 
 
 class DictionaryRepository(ABC):
-    """Abstract repository interface for DictionaryEntry entity.
-
-    This interface follows the Repository pattern from DDD,
-    defining the contract for dictionary persistence operations.
-    Concrete implementations are provided in the infrastructure layer.
-    """
+    """Vocabulary shared only within the access proof's series."""
 
     @abstractmethod
-    async def create(self, entry: DictionaryEntry) -> DictionaryEntry:
-        """Create a new dictionary entry.
-
-        Args:
-            entry: The DictionaryEntry entity to create.
-
-        Returns:
-            The created DictionaryEntry entity.
-        """
+    async def list_entries(self, series_id: UUID) -> list[DictionaryEntry]:
+        """Read the series vocabulary."""
 
     @abstractmethod
-    async def get_by_id(self, entry_id: UUID, user_id: UUID) -> DictionaryEntry | None:
-        """Retrieve a dictionary entry by ID.
-
-        Args:
-            entry_id: The unique identifier of the entry.
-            user_id: The user ID for RLS filtering.
-
-        Returns:
-            The DictionaryEntry if found, None otherwise.
-        """
+    async def get(self, series_id: UUID, entry_id: UUID) -> DictionaryEntry | None:
+        """Read a scoped entry."""
 
     @abstractmethod
-    async def get_all(self, user_id: UUID) -> list[DictionaryEntry]:
-        """Retrieve all dictionary entries for a user.
-
-        Args:
-            user_id: The user ID.
-
-        Returns:
-            A list of DictionaryEntry entities.
-        """
+    async def create(self, access: CreatorAccess, entry: DictionaryEntry) -> None:
+        """Create a creator-owned vocabulary entry."""
 
     @abstractmethod
-    async def update(self, entry: DictionaryEntry) -> DictionaryEntry:
-        """Update an existing dictionary entry.
-
-        Args:
-            entry: The DictionaryEntry entity with updated values.
-
-        Returns:
-            The updated DictionaryEntry entity.
-        """
+    async def save(self, access: CreatorAccess, entry: DictionaryEntry) -> None:
+        """Update an existing aggregate-scoped entry."""
 
     @abstractmethod
-    async def delete(self, entry_id: UUID, user_id: UUID) -> bool:
-        """Delete a dictionary entry.
-
-        Args:
-            entry_id: The unique identifier of the entry.
-            user_id: The user ID.
-
-        Returns:
-            True if deleted, False if not found.
-        """
-
-    @abstractmethod
-    async def exists_by_canonical_name(
-        self,
-        user_id: UUID,
-        canonical_name: str,
-        exclude_id: UUID | None = None,
-    ) -> bool:
-        """Check if a canonical name already exists.
-
-        Args:
-            user_id: The user ID.
-            canonical_name: The canonical name to check.
-            exclude_id: Entry ID to exclude (for update checks).
-
-        Returns:
-            True if duplicate exists.
-        """
-
-    @abstractmethod
-    async def find_by_agent_id(
-        self,
-        agent_id: UUID,
-        user_id: UUID,
-    ) -> list[DictionaryEntry]:
-        """Retrieve all dictionary entries for a specific agent.
-
-        Args:
-            agent_id: The agent ID.
-            user_id: The user ID for RLS filtering.
-
-        Returns:
-            A list of DictionaryEntry entities for the agent.
-        """
+    async def delete(self, access: CreatorAccess, entry_id: UUID) -> None:
+        """Delete one aggregate-scoped entry."""

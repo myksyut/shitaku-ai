@@ -28,11 +28,3 @@ class SlackChannelResponse(BaseModel):
 
     id: str
     name: str
-
-
-class SlackMessageResponse(BaseModel):
-    """Slackメッセージレスポンス."""
-
-    user_name: str
-    text: str
-    posted_at: str
