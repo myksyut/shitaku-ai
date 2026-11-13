@@ -1,3 +1,4 @@
+import subprocess
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ class RlsEnvironment(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_KEY: str = ""
+    DB_URL: str = ""
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -90,3 +92,39 @@ def attendee(make_user: Callable[[str], RlsUser]) -> RlsUser:
 @pytest.fixture
 def outsider(make_user: Callable[[str], RlsUser]) -> RlsUser:
     return make_user("outsider")
+
+
+@pytest.fixture
+def add_identity(rls_env: RlsEnvironment) -> Callable[[RlsUser, str, bool, str], None]:
+    def insert(user: RlsUser, email: str, verified: bool, provider: str = "google") -> None:
+        sql = """
+            insert into auth.identities
+                (id, user_id, provider_id, provider, identity_data, created_at, updated_at)
+            values (gen_random_uuid(), :'uid', :'uid', :'provider',
+                    jsonb_build_object('sub', :'uid', 'email', :'email', 'email_verified', :'verified'::boolean),
+                    now(), now())
+            on conflict (provider_id, provider) do update set identity_data = excluded.identity_data;
+        """
+        subprocess.run(  # noqa: S603
+            [  # noqa: S607
+                "psql",
+                rls_env.DB_URL,
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-q",
+                "-v",
+                f"uid={user.id}",
+                "-v",
+                f"provider={provider}",
+                "-v",
+                f"email={email}",
+                "-v",
+                f"verified={str(verified).lower()}",
+            ],
+            input=sql,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+
+    return insert

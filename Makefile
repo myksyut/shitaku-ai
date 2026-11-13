@@ -56,6 +56,7 @@ test-rls:
 	export RLS_SUPABASE_URL="$$API_URL"; \
 	export RLS_SUPABASE_ANON_KEY="$$ANON_KEY"; \
 	export RLS_SUPABASE_SERVICE_KEY="$$SERVICE_ROLE_KEY"; \
+	export RLS_DB_URL="$$DB_URL"; \
 	cd backend && uv run pytest tests/rls -q
 
 # テスト（カバレッジ付き）
