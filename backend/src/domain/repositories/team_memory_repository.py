@@ -3,7 +3,7 @@ from datetime import datetime
 from uuid import UUID
 
 from src.domain.entities.series import CreatorAccess, MemberAccess
-from src.domain.entities.team_memory import ExtractedMemory, MemoryItem, NewMemory, Resolution
+from src.domain.entities.team_memory import ExtractedMemory, ExtractionApplyResult, MemoryItem, NewMemory, Resolution
 
 
 class TeamMemoryRepository(ABC):
@@ -36,5 +36,5 @@ class TeamMemoryRepository(ABC):
     @abstractmethod
     async def apply_extraction(
         self, access: CreatorAccess, occurrence_id: UUID, extracted: ExtractedMemory, input_at: datetime
-    ) -> tuple[int, int]:
+    ) -> ExtractionApplyResult:
         """Apply idempotent extraction in one transaction."""

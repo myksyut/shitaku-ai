@@ -107,3 +107,12 @@ class ExtractedMemory:
     new_items: tuple[NewMemory, ...]
     closures: tuple[ClosureRequest, ...]
     truncated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractionApplyResult:
+    """Atomic persistence outcome, including a rejected older input snapshot."""
+
+    created: int
+    closed: int
+    stale: bool = False

@@ -755,3 +755,64 @@ def test_calendar_error_constraint_accepts_only_public_codes(world: World, servi
             "id", world.sid
         ).execute()
     assert error.value.code == "23514"
+
+
+def test_out_of_order_extraction_cannot_overwrite_newer_state(world: World) -> None:
+    from pydantic import TypeAdapter
+
+    owner = world.users["A"].client
+    newer = datetime.now(UTC)
+    arguments = {
+        "p_occurrence_id": world.past,
+        "p_input_at": newer.isoformat(),
+        "p_items": [{"kind": "decision", "body": "Newer result", "extraction_key": "newer"}],
+        "p_closures": [],
+    }
+    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    stale = (
+        owner.rpc(
+            "apply_extraction",
+            {
+                **arguments,
+                "p_input_at": (newer - timedelta(seconds=1)).isoformat(),
+                "p_items": [{"kind": "decision", "body": "Older result", "extraction_key": "older"}],
+                "p_closures": [{"item_id": str(world.rows["memory_items"]["id"]), "resolution": "done"}],
+            },
+        )
+        .execute()
+        .data
+    )
+    assert stale == {"created": 0, "closed": 0, "stale": True}
+    assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
+    marker = (
+        owner.table("occurrences").select("extracted_at").eq("series_id", world.sid).eq("id", world.past).execute().data
+    )
+    assert TypeAdapter(list[dict[str, datetime]]).validate_python(marker) == [{"extracted_at": newer}]
+
+
+def test_stale_extraction_http_returns_conflict_without_changes(
+    world: World,
+    service_client: Client,
+    bedrock_stub: str,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    assert bedrock_stub.startswith("http://127.0.0.1:")
+    future = datetime.now(UTC) + timedelta(minutes=1)
+    service_client.table("occurrences").update({"extracted_at": future.isoformat()}).eq("series_id", world.sid).eq(
+        "id", world.past
+    ).execute()
+    before = service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    with TestClient(app) as api:
+        response = api.post(
+            f"/api/v1/series/{world.sid}/occurrences/{world.past}/extract",
+            headers={"Authorization": f"Bearer {world.users['A'].access_token}"},
+        )
+    assert response.status_code == 409, response.text
+    assert response.json() == {"detail": "stale_extraction"}
+    assert (
+        service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
+    )

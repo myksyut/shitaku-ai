@@ -7,7 +7,7 @@ from pydantic import BaseModel, TypeAdapter
 from supabase import Client
 
 from src.domain.entities.series import CreatorAccess, MemberAccess, SeriesError
-from src.domain.entities.team_memory import ExtractedMemory, MemoryItem, NewMemory, Resolution
+from src.domain.entities.team_memory import ExtractedMemory, ExtractionApplyResult, MemoryItem, NewMemory, Resolution
 from src.domain.repositories.team_memory_repository import TeamMemoryRepository
 
 
@@ -109,7 +109,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
 
     async def apply_extraction(
         self, access: CreatorAccess, occurrence_id: UUID, extracted: ExtractedMemory, input_at: datetime
-    ) -> tuple[int, int]:
+    ) -> ExtractionApplyResult:
         """Apply only after an explicit aggregate-scoped occurrence read."""
         occurrence = (
             self._client.table("occurrences")
@@ -140,5 +140,4 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
             .execute()
             .data
         )
-        counts = TypeAdapter(dict[str, int]).validate_python(result)
-        return counts["created"], counts["closed"]
+        return TypeAdapter(ExtractionApplyResult).validate_python(result)

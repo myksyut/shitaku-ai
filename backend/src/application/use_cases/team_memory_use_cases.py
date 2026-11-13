@@ -130,7 +130,12 @@ class ExtractOccurrenceMemory:
             ),
         )
         extracted = await self.extractor.extract(context)
-        created, closed = await self.memory.apply_extraction(access, occurrence_id, extracted, input_at)
+        applied = await self.memory.apply_extraction(access, occurrence_id, extracted, input_at)
+        if applied.stale:
+            raise SeriesError(409, "stale_extraction")
         return ExtractionResult(
-            created, closed, extracted.truncated, await TeamMemoryUseCases(self.memory, self.series).board(access)
+            applied.created,
+            applied.closed,
+            extracted.truncated,
+            await TeamMemoryUseCases(self.memory, self.series).board(access),
         )
