@@ -1,4 +1,4 @@
-.PHONY: setup dev build test lint clean help
+.PHONY: setup dev build test test-rls lint clean help
 
 # 初期セットアップ
 setup:
@@ -48,6 +48,15 @@ build:
 test:
 	cd backend && uv run pytest
 	cd frontend && npm run test
+
+test-rls:
+	@set -eu; \
+	supabase_env=$$(npx -y supabase status -o env); \
+	eval "$$supabase_env"; \
+	export RLS_SUPABASE_URL="$$API_URL"; \
+	export RLS_SUPABASE_ANON_KEY="$$ANON_KEY"; \
+	export RLS_SUPABASE_SERVICE_KEY="$$SERVICE_ROLE_KEY"; \
+	cd backend && uv run pytest tests/rls -q
 
 # テスト（カバレッジ付き）
 test-cov:
@@ -131,6 +140,7 @@ help:
 	@echo ""
 	@echo "テスト・品質:"
 	@echo "  make test           - 全テスト実行"
+	@echo "  make test-rls       - ローカルSupabaseの実DB認可テスト"
 	@echo "  make test-cov       - テスト（カバレッジ付き）"
 	@echo "  make lint           - Lint"
 	@echo "  make format         - Format"
