@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
 from src.domain.entities.dictionary_entry import DictionaryCategory, DictionaryChanges
 
@@ -34,16 +34,7 @@ class DictionaryEntryUpdate(BaseModel):
 
     def changes(self) -> DictionaryChanges:
         """Return only the fields the request supplied."""
-        result: DictionaryChanges = {}
-        if self.canonical_name is not None:
-            result["canonical_name"] = self.canonical_name
-        if self.aliases is not None:
-            result["aliases"] = self.aliases
-        if "category" in self.model_fields_set:
-            result["category"] = self.category
-        if "description" in self.model_fields_set:
-            result["description"] = self.description
-        return result
+        return TypeAdapter[DictionaryChanges](DictionaryChanges).validate_python(self.model_dump(exclude_unset=True))
 
 
 class DictionaryEntryView(BaseModel):
