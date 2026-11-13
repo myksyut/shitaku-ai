@@ -8,6 +8,7 @@ import { MemoryBoard } from './MemoryBoard'
 import { OccurrenceList } from './OccurrenceList'
 import { SeriesSettingsPanel } from './SeriesSettingsPanel'
 import { Badge, ErrorNotice } from './SeriesUi'
+import { calendarSyncErrorMessage } from './sync-errors'
 import type { SeriesDetail } from './types'
 
 function SeriesWorkspace({ series }: { series: SeriesDetail }) {
@@ -34,7 +35,9 @@ function SeriesWorkspace({ series }: { series: SeriesDetail }) {
           </p>
         )}
       </div>
-      {series.calendar.error && <ErrorNotice>カレンダー同期: {series.calendar.error}</ErrorNotice>}
+      {series.calendar.error && (
+        <ErrorNotice>{calendarSyncErrorMessage(series.calendar.error, series.role)}</ErrorNotice>
+      )}
       <nav aria-label="定例のメニュー" className="flex flex-wrap gap-2 border-b border-[var(--color-cream-300)] pb-3">
         {tabs.map((label) => (
           <Button

@@ -4,6 +4,7 @@ import { Button, Card, Input, Textarea } from '../../components/ui'
 import { useSlackChannels, useSlackIntegrations } from '../slack/hooks'
 import { useDeleteSeries, useSaveSeriesSettings, useSyncSeriesCalendar } from './hooks'
 import { ErrorNotice, formatStart } from './SeriesUi'
+import { calendarSyncErrorMessage } from './sync-errors'
 import type { SeriesDetail } from './types'
 
 export function SeriesSettingsPanel({ series }: { series: SeriesDetail }) {
@@ -146,7 +147,9 @@ export function SeriesSettingsPanel({ series }: { series: SeriesDetail }) {
       <Card className="space-y-3">
         <h2 className="text-lg font-bold">カレンダー同期</h2>
         <p className="text-sm">最終同期: {formatStart(series.calendar.synced_at)}</p>
-        {series.calendar.error && <ErrorNotice>{series.calendar.error}</ErrorNotice>}
+        {series.calendar.error && (
+          <ErrorNotice>{calendarSyncErrorMessage(series.calendar.error, series.role)}</ErrorNotice>
+        )}
         {!series.calendar.google_connected && (
           <p>
             Google連携が解除されているため同期は停止しています。

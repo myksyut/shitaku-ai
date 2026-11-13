@@ -4,6 +4,7 @@ import { Button, Card } from '../../components/ui'
 import { CalendarEventPicker } from './CalendarEventPicker'
 import { useMySeries } from './hooks'
 import { Badge, ErrorNotice, formatStart } from './SeriesUi'
+import { calendarSyncErrorMessage } from './sync-errors'
 
 export function SeriesListPage() {
   const series = useMySeries()
@@ -53,7 +54,9 @@ export function SeriesListPage() {
                 <Badge>未完了のアクション{item.open_action_items}件</Badge>
                 {item.next_occurrence?.needs_extraction && <Badge>未抽出</Badge>}
               </div>
-              {item.calendar_sync_error && <ErrorNotice>カレンダー同期: {item.calendar_sync_error}</ErrorNotice>}
+              {item.calendar_sync_error && (
+                <ErrorNotice>{calendarSyncErrorMessage(item.calendar_sync_error, item.role)}</ErrorNotice>
+              )}
               <Link className="font-semibold text-[var(--color-primary-700)] hover:underline" to={`/series/${item.id}`}>
                 定例を開く →
               </Link>
