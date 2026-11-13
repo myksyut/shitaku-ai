@@ -1,6 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 from src.application.use_cases.agenda_use_cases import GenerateAgenda
@@ -13,7 +13,7 @@ from src.infrastructure.services.agenda_generation_service import AgendaProposal
 from tests.application.use_cases.test_series_use_cases import make_series
 
 
-async def test_agenda_uses_bound_channels_newest_100_and_keeps_required_content() -> None:
+def test_agenda_uses_bound_channels_newest_100_and_keeps_required_content() -> None:
     sid, owner, now = uuid4(), uuid4(), datetime.now(UTC)
     stored = replace(
         make_series(sid, owner),
@@ -24,7 +24,7 @@ async def test_agenda_uses_bound_channels_newest_100_and_keeps_required_content(
         uuid4(), sid, now - timedelta(days=3), now - timedelta(days=3), False, None, 0, None, 0, False
     )
     target = Occurrence(uuid4(), sid, now + timedelta(days=1), now + timedelta(days=1), False, None, 0, None, 0, False)
-    series, content, memory, knowledge, dictionary, credentials, mirror, writer = (AsyncMock() for _ in range(8))
+    series, content, memory, knowledge, dictionary, credentials, mirror, writer = (MagicMock() for _ in range(8))
     series.get.return_value = stored
     series.occurrences.return_value = [previous, target]
     action = ActionItem(
@@ -53,11 +53,11 @@ async def test_agenda_uses_bound_channels_newest_100_and_keeps_required_content(
     mirror.refresh.return_value = None
     writer.propose.return_value = AgendaProposal(None, False)
 
-    async def save(access: CreatorAccess, oid: UUID, text: str) -> Agenda:
+    def save(access: CreatorAccess, oid: UUID, text: str) -> Agenda:
         return Agenda(oid, sid, text, now, now)
 
     content.save_generated.side_effect = save
-    result = await GenerateAgenda(series, content, memory, knowledge, dictionary, credentials, mirror, writer).execute(
+    result = GenerateAgenda(series, content, memory, knowledge, dictionary, credentials, mirror, writer).execute(
         CreatorAccess(sid, owner), target.id
     )
     assert "Do not omit this topic" in result.agenda.content
@@ -68,13 +68,13 @@ async def test_agenda_uses_bound_channels_newest_100_and_keeps_required_content(
     assert result.sources.topics == 1 and result.sources.carried_action_items == 1
     assert [call.args[0] for call in slack.get_messages.call_args_list] == ["chosen-1", "chosen-2"]
     assert all(call.args[1] == previous.start_at for call in slack.get_messages.call_args_list)
-    credentials.slack_for_series.assert_awaited_once_with(stored)
+    credentials.slack_for_series.assert_called_once_with(stored)
     context = writer.propose.call_args.args[0]
     assert len(context.slack) == 100
     assert context.actions[0].carry_over == 1
 
 
-async def test_minutes_count_selects_documents_even_from_older_occurrences() -> None:
+def test_minutes_count_selects_documents_even_from_older_occurrences() -> None:
     sid, owner, now = uuid4(), uuid4(), datetime.now(UTC)
     stored = replace(make_series(sid, owner), minutes_count=2)
     previous = [
@@ -95,7 +95,7 @@ async def test_minutes_count_selects_documents_even_from_older_occurrences() -> 
         ),
         Knowledge(uuid4(), sid, cancelled.id, "upload", None, None, "Cancelled", "Not selected", now),
     ]
-    series, content, memory, knowledge, dictionary, credentials, mirror, writer = (AsyncMock() for _ in range(8))
+    series, content, memory, knowledge, dictionary, credentials, mirror, writer = (MagicMock() for _ in range(8))
     series.get.return_value = stored
     series.occurrences.return_value = [*previous, cancelled, target]
     memory.list_items.return_value = []
@@ -105,10 +105,10 @@ async def test_minutes_count_selects_documents_even_from_older_occurrences() -> 
     knowledge.for_occurrences.side_effect = lambda series_id, ids: [k for k in notes if k.occurrence_id in ids]
     mirror.refresh.return_value = None
     writer.propose.return_value = AgendaProposal(None, False)
-    result = await GenerateAgenda(series, content, memory, knowledge, dictionary, credentials, mirror, writer).execute(
+    result = GenerateAgenda(series, content, memory, knowledge, dictionary, credentials, mirror, writer).execute(
         CreatorAccess(sid, owner), target.id
     )
-    knowledge.for_occurrences.assert_awaited_once_with(sid, [o.id for o in previous])
+    knowledge.for_occurrences.assert_called_once_with(sid, [o.id for o in previous])
     assert [k.normalized_text for k in writer.propose.call_args.args[0].knowledge] == [
         "Newer document",
         "Older document",
@@ -116,7 +116,7 @@ async def test_minutes_count_selects_documents_even_from_older_occurrences() -> 
     assert result.sources.knowledge == 2
 
 
-async def test_agenda_generation_survives_calendar_mirror_database_errors() -> None:
+def test_agenda_generation_survives_calendar_mirror_database_errors() -> None:
     from postgrest.exceptions import APIError
 
     from src.domain.entities.series import CalendarSnapshot
@@ -125,7 +125,7 @@ async def test_agenda_generation_survives_calendar_mirror_database_errors() -> N
 
     sid, owner, now = uuid4(), uuid4(), datetime.now(UTC)
     target = Occurrence(uuid4(), sid, now, now, False, None, 0, None, 0, False)
-    series, content, memory, knowledge, dictionary, credentials, writer = (AsyncMock() for _ in range(7))
+    series, content, memory, knowledge, dictionary, credentials, writer = (MagicMock() for _ in range(7))
     series.get.return_value = make_series(sid, owner)
     series.occurrences.return_value = [target]
     content.topics.return_value = []
@@ -134,7 +134,7 @@ async def test_agenda_generation_survives_calendar_mirror_database_errors() -> N
     knowledge.for_occurrences.return_value = []
     dictionary.list_entries.return_value = []
     writer.propose.return_value = AgendaProposal(None, False)
-    calendar = AsyncMock()
+    calendar = MagicMock()
     calendar.snapshot.return_value = CalendarSnapshot(
         "uid", "event", "Weekly", None, (), False, (), now - timedelta(days=35), now + timedelta(days=35)
     )
@@ -143,8 +143,8 @@ async def test_agenda_generation_survives_calendar_mirror_database_errors() -> N
     started.execute.return_value.data = True
     failed.execute.side_effect = APIError({"code": "XX000", "message": "Mirror unavailable", "details": "", "hint": ""})
     service.rpc.side_effect = [started, failed]
-    result = await GenerateAgenda(
+    result = GenerateAgenda(
         series, content, memory, knowledge, dictionary, credentials, SeriesCalendarMirror(service, credentials), writer
     ).execute(CreatorAccess(sid, owner), target.id)
     assert result.agenda.content == "Saved" and result.sources.calendar_error == "calendar_unavailable"
-    content.save_generated.assert_awaited_once()
+    content.save_generated.assert_called_once()

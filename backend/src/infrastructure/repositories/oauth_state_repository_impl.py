@@ -32,7 +32,7 @@ class OAuthStateRepositoryImpl:
         """
         self._client = client
 
-    async def create(self, oauth_state: OAuthState) -> OAuthState:
+    def create(self, oauth_state: OAuthState) -> OAuthState:
         """OAuth stateを作成する.
 
         Args:
@@ -61,7 +61,7 @@ class OAuthStateRepositoryImpl:
         self._client.table("oauth_states").insert(data).execute()
         return oauth_state
 
-    async def get_and_delete(self, state: str) -> OAuthState | None:
+    def get_and_delete(self, state: str) -> OAuthState | None:
         """stateを取得し、同時に削除する（アトミック操作）.
 
         callback時にservice_roleクライアントで呼び出されることを想定。
@@ -89,7 +89,7 @@ class OAuthStateRepositoryImpl:
         logger.info("Validated OAuth state: provider=%s", oauth_state.provider)
         return oauth_state
 
-    async def cleanup_expired(self) -> int:
+    def cleanup_expired(self) -> int:
         """期限切れのstateを全て削除する.
 
         Returns:

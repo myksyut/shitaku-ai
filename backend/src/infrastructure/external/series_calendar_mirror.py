@@ -40,7 +40,7 @@ class SeriesCalendarMirror:
             client, SeriesCredentials(GoogleIntegrationRepositoryImpl(client), SlackIntegrationRepositoryImpl(client))
         )
 
-    async def claim(
+    def claim(
         self, snapshot: CalendarSnapshot, creator_id: UUID, integration_id: UUID, fetched_at: datetime
     ) -> UUID | None:
         """Atomically claim an unowned iCalUID and mirror its first snapshot."""
@@ -60,7 +60,7 @@ class SeriesCalendarMirror:
         parsed = TypeAdapter(list[dict[str, str | bool]]).validate_python(rows)
         return UUID(str(parsed[0]["series_id"])) if parsed and parsed[0]["created"] is True else None
 
-    async def apply(self, series_id: UUID, snapshot: CalendarSnapshot, fetched_at: datetime) -> None:
+    def apply(self, series_id: UUID, snapshot: CalendarSnapshot, fetched_at: datetime) -> None:
         """Apply only snapshots newer than the database's last successful read."""
         self._client.rpc(
             "apply_calendar_snapshot",
@@ -71,7 +71,7 @@ class SeriesCalendarMirror:
             },
         ).execute()
 
-    async def refresh(self, series: Series, *, throttle: bool = False) -> CalendarErrorCode | None:
+    def refresh(self, series: Series, *, throttle: bool = False) -> CalendarErrorCode | None:
         """Refresh the creator's calendar without deleting retained content on failure."""
         fetched_at = datetime.now(UTC)
         try:
@@ -89,8 +89,8 @@ class SeriesCalendarMirror:
             )
             if not TypeAdapter(bool).validate_python(started):
                 return series.calendar_sync_error
-            apis = await self._credentials.google_for_series(series, "calendar")
-            snapshot = await apis.calendar.snapshot(series.creator_event_id, fetched_at)
+            apis = self._credentials.google_for_series(series, "calendar")
+            snapshot = apis.calendar.snapshot(series.creator_event_id, fetched_at)
             if snapshot is None or snapshot.ical_uid != series.ical_uid:
                 self._client.rpc(
                     "mark_calendar_event_missing",
@@ -101,7 +101,7 @@ class SeriesCalendarMirror:
                 ).execute()
                 error_code: CalendarErrorCode = "event_not_found"
             else:
-                await self.apply(series.id, snapshot, fetched_at)
+                self.apply(series.id, snapshot, fetched_at)
                 return "attendees_omitted" if snapshot.attendees_omitted else None
         except CredentialUnavailableError as error:
             error_code = error.code
@@ -115,7 +115,7 @@ class SeriesCalendarMirror:
             logger.warning("Calendar error persistence failed: code=%s message=%s", error.code, error.message)
         return error_code
 
-    async def refresh_for_join(self, ical_uid: str) -> None:
+    def refresh_for_join(self, ical_uid: str) -> None:
         """Re-read the trusted invite; reveal no series data to the caller."""
         rows = self._client.table("series").select("*").eq("ical_uid", ical_uid).execute().data
         series_list = TypeAdapter(list[Series]).validate_python(rows)
@@ -126,6 +126,6 @@ class SeriesCalendarMirror:
             UTC
         ) - series.calendar_refresh_attempted_at < timedelta(minutes=2):
             return
-        error = await self.refresh(series, throttle=True)
+        error = self.refresh(series, throttle=True)
         if error not in (None, "attendees_omitted"):
             raise SeriesError(409, "calendar_unavailable")

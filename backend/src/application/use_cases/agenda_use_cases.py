@@ -1,4 +1,3 @@
-import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -77,7 +76,7 @@ class GenerateAgenda:
         self.knowledge, self.dictionary = knowledge, dictionary
         self.credentials, self.mirror, self.writer = credentials, mirror, writer
 
-    async def _slack(
+    def _slack(
         self, series: Series, previous: Occurrence | None, target: Occurrence
     ) -> tuple[list[SlackMessageData], SlackErrorCode | None]:
         if series.slack is None:
@@ -85,12 +84,12 @@ class GenerateAgenda:
         oldest = previous.start_at if previous else target.start_at - timedelta(days=series.slack_message_days)
         now = datetime.now(UTC)
         try:
-            client = await self.credentials.slack_for_series(series)
+            client = self.credentials.slack_for_series(series)
             if client is None:
                 return [], None
             messages: list[SlackMessageData] = []
             for channel in series.slack.channels:
-                messages.extend(await asyncio.to_thread(client.get_messages, channel.id, oldest, now))
+                messages.extend(client.get_messages(channel.id, oldest, now))
             return sorted(
                 (m for m in messages if oldest <= m.posted_at <= now), key=lambda m: float(m.ts), reverse=True
             )[:100], None
@@ -101,23 +100,23 @@ class GenerateAgenda:
         except (SeriesError, SlackClientError):
             return [], "slack_unavailable"
 
-    async def execute(self, access: CreatorAccess, occurrence_id: UUID) -> GeneratedAgenda:
+    def execute(self, access: CreatorAccess, occurrence_id: UUID) -> GeneratedAgenda:
         """Refresh calendar best-effort, then persist deterministic sections and proposals."""
-        series = await self.series.get(access.series_id)
+        series = self.series.get(access.series_id)
         if series is None:
             raise SeriesError(404, "Series not found")
-        calendar_error = await self.mirror.refresh(series)
-        series = await self.series.get(access.series_id)
+        calendar_error = self.mirror.refresh(series)
+        series = self.series.get(access.series_id)
         if series is None:
             raise SeriesError(404, "Series not found")
-        occurrences = await self.series.occurrences(access.series_id)
+        occurrences = self.series.occurrences(access.series_id)
         target = next((o for o in occurrences if o.id == occurrence_id), None)
         if target is None:
             raise SeriesError(404, "Occurrence not found")
         if target.is_cancelled:
             raise SeriesError(422, "Occurrence is cancelled")
         now = datetime.now(UTC)
-        items = with_carry_over(await self.memory.list_items(access.series_id), occurrences, target.start_at, now)
+        items = with_carry_over(self.memory.list_items(access.series_id), occurrences, target.start_at, now)
         carried = sorted(
             (i for i in items if i.closed_at is None and i.origin_start_at < target.start_at),
             key=lambda i: i.origin_start_at,
@@ -127,12 +126,12 @@ class GenerateAgenda:
         decisions = tuple(i for i in reversed(carried) if isinstance(i, Decision))[:10]
         previous = [o for o in occurrences if not o.is_cancelled and o.start_at < target.start_at]
         selected_ids = [o.id for o in previous] if series.minutes_count else []
-        knowledge = await self.knowledge.for_occurrences(access.series_id, selected_ids)
+        knowledge = self.knowledge.for_occurrences(access.series_id, selected_ids)
         starts = {o.id: o.start_at for o in previous}
         knowledge.sort(key=lambda k: (starts[k.occurrence_id], k.created_at), reverse=True)
         knowledge = knowledge[: series.minutes_count]
-        slack, slack_error = await self._slack(series, previous[-1] if previous else None, target)
-        topics = await self.content.topics(access.series_id, occurrence_id)
+        slack, slack_error = self._slack(series, previous[-1] if previous else None, target)
+        topics = self.content.topics(access.series_id, occurrence_id)
         context = AgendaContext(
             series.title,
             series.description,
@@ -142,10 +141,10 @@ class GenerateAgenda:
             decisions,
             tuple(knowledge),
             tuple(slack),
-            tuple(await self.dictionary.list_entries(access.series_id)),
+            tuple(self.dictionary.list_entries(access.series_id)),
         )
-        proposal = await self.writer.propose(context)
-        agenda = await self.content.save_generated(
+        proposal = self.writer.propose(context)
+        agenda = self.content.save_generated(
             access, occurrence_id, render_agenda(topics, actions, issues, proposal.content)
         )
         return GeneratedAgenda(

@@ -69,13 +69,13 @@ def get_generator(
 
 
 @router.get("/occurrences/{occurrence_id}")
-async def occurrence_detail(
+def occurrence_detail(
     occurrence_id: UUID,
     access: MemberAccess = Depends(member_access),
     use_cases: OccurrenceUseCases = Depends(get_content),
 ) -> OccurrenceDetail:
     """Read shared content for one series occurrence."""
-    result = await use_cases.detail(access, occurrence_id)
+    result = use_cases.detail(access, occurrence_id)
     return OccurrenceDetail(
         occurrence=OccurrenceSummary.of(result.occurrence),
         agenda=AgendaView.model_validate(result.agenda) if result.agenda else None,
@@ -85,38 +85,36 @@ async def occurrence_detail(
 
 
 @router.post("/occurrences/{occurrence_id}/topics", status_code=201)
-async def submit_topic(
+def submit_topic(
     occurrence_id: UUID,
     request: TopicRequest,
     access: MemberAccess = Depends(member_access),
     use_cases: OccurrenceUseCases = Depends(get_content),
 ) -> TopicView:
     """Post the caller's own suggestion for a future meeting."""
-    return TopicView.of(
-        await use_cases.submit_topic(access, occurrence_id, request.title, request.details), access.user_id
-    )
+    return TopicView.of(use_cases.submit_topic(access, occurrence_id, request.title, request.details), access.user_id)
 
 
 @router.delete("/topics/{topic_id}", status_code=204)
-async def delete_topic(
+def delete_topic(
     topic_id: UUID, access: MemberAccess = Depends(member_access), use_cases: OccurrenceUseCases = Depends(get_content)
 ) -> None:
     """Withdraw a topic as its author or the series creator."""
-    await use_cases.delete_topic(access, topic_id)
+    use_cases.delete_topic(access, topic_id)
 
 
 @router.get("/occurrences/{occurrence_id}/transcript-candidates")
-async def transcript_candidates(
+def transcript_candidates(
     occurrence_id: UUID,
     access: CreatorAccess = Depends(creator_access),
     use_cases: OccurrenceUseCases = Depends(get_content),
 ) -> dict[str, list[TranscriptCandidate]]:
     """Read creator Drive candidates live; unpicked files are never stored."""
-    return {"candidates": await use_cases.transcript_candidates(access, occurrence_id)}
+    return {"candidates": use_cases.transcript_candidates(access, occurrence_id)}
 
 
 @router.post("/occurrences/{occurrence_id}/knowledge", status_code=201)
-async def add_knowledge(
+def add_knowledge(
     occurrence_id: UUID,
     request: AddKnowledgeRequest,
     access: CreatorAccess = Depends(creator_access),
@@ -124,9 +122,9 @@ async def add_knowledge(
 ) -> AddKnowledgeResponse:
     """Share an upload or one explicitly selected transcript."""
     if isinstance(request, UploadRequest):
-        result = await use_cases.add_upload(access, occurrence_id, request.text)
+        result = use_cases.add_upload(access, occurrence_id, request.text)
     else:
-        result = await use_cases.add_transcript(access, occurrence_id, request.google_doc_id)
+        result = use_cases.add_transcript(access, occurrence_id, request.google_doc_id)
     return AddKnowledgeResponse(
         knowledge=KnowledgeSummary.of(result.knowledge),
         normalization_warning=result.normalization_warning,
@@ -135,43 +133,43 @@ async def add_knowledge(
 
 
 @router.get("/knowledge/{knowledge_id}")
-async def get_knowledge(
+def get_knowledge(
     knowledge_id: UUID,
     access: MemberAccess = Depends(member_access),
     use_cases: OccurrenceUseCases = Depends(get_content),
 ) -> KnowledgeView:
     """Read only a selected shared document."""
-    knowledge = await use_cases.get_knowledge(access, knowledge_id)
+    knowledge = use_cases.get_knowledge(access, knowledge_id)
     return KnowledgeView(**KnowledgeSummary.of(knowledge).model_dump(), text=knowledge.normalized_text)
 
 
 @router.delete("/knowledge/{knowledge_id}", status_code=204)
-async def delete_knowledge(
+def delete_knowledge(
     knowledge_id: UUID,
     access: CreatorAccess = Depends(creator_access),
     use_cases: OccurrenceUseCases = Depends(get_content),
 ) -> None:
     """Remove creator-selected shared content."""
-    await use_cases.delete_knowledge(access, knowledge_id)
+    use_cases.delete_knowledge(access, knowledge_id)
 
 
 @router.post("/occurrences/{occurrence_id}/agenda")
-async def generate_agenda(
+def generate_agenda(
     occurrence_id: UUID,
     access: CreatorAccess = Depends(creator_access),
     generator: GenerateAgenda = Depends(get_generator),
 ) -> GenerateAgendaResponse:
     """Persist required sections even if the proposal model produces no useful text."""
-    result = await generator.execute(access, occurrence_id)
+    result = generator.execute(access, occurrence_id)
     return GenerateAgendaResponse(agenda=AgendaView.model_validate(result.agenda), sources=result.sources)
 
 
 @router.put("/occurrences/{occurrence_id}/agenda")
-async def save_agenda(
+def save_agenda(
     occurrence_id: UUID,
     request: AgendaRequest,
     access: CreatorAccess = Depends(creator_access),
     use_cases: OccurrenceUseCases = Depends(get_content),
 ) -> AgendaView:
     """Save a creator's edits to the existing agenda."""
-    return AgendaView.model_validate(await use_cases.save_agenda(access, occurrence_id, request.content))
+    return AgendaView.model_validate(use_cases.save_agenda(access, occurrence_id, request.content))

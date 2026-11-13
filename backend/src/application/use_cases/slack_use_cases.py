@@ -42,7 +42,7 @@ class StartSlackOAuthUseCase:
         """
         self.oauth_state_repository = oauth_state_repository
 
-    async def execute(self, user_id: UUID, redirect_origin: str | None = None) -> OAuthStartResult:
+    def execute(self, user_id: UUID, redirect_origin: str | None = None) -> OAuthStartResult:
         """OAuth認証URLを生成する.
 
         Args:
@@ -76,7 +76,7 @@ class StartSlackOAuthUseCase:
             expires_at=now + timedelta(minutes=self.STATE_EXPIRES_MINUTES),
             created_at=now,
         )
-        await self.oauth_state_repository.create(oauth_state)
+        self.oauth_state_repository.create(oauth_state)
 
         # Slack OAuth URLを構築
         params = {
@@ -108,7 +108,7 @@ class HandleSlackCallbackUseCase:
         self.repository = repository
         self.oauth_state_repository = oauth_state_repository
 
-    async def execute(
+    def execute(
         self,
         code: str,
         state: str,
@@ -126,7 +126,7 @@ class HandleSlackCallbackUseCase:
             ValueError: If state is invalid or expired.
         """
         # state検証（CSRF対策）- リポジトリから取得と同時に削除
-        oauth_state = await self.oauth_state_repository.get_and_delete(state)
+        oauth_state = self.oauth_state_repository.get_and_delete(state)
 
         if oauth_state is None:
             raise ValueError("Invalid state parameter")
@@ -138,10 +138,10 @@ class HandleSlackCallbackUseCase:
         user_id = oauth_state.user_id
 
         # 期限切れstateのクリーンアップ（非同期で実行）
-        await self.oauth_state_repository.cleanup_expired()
+        self.oauth_state_repository.cleanup_expired()
 
         # アクセストークンを取得
-        token_response = await self._exchange_code(code)
+        token_response = self._exchange_code(code)
 
         team_data = token_response.get("team")
         if not isinstance(team_data, dict):
@@ -158,12 +158,12 @@ class HandleSlackCallbackUseCase:
         encrypted_token = encrypt_token(access_token)
 
         # 既存の連携を確認
-        existing = await self.repository.get_by_workspace(user_id, workspace_id)
+        existing = self.repository.get_by_workspace(user_id, workspace_id)
 
         if existing:
             # 既存の連携を更新
             existing.update_token(encrypted_token)
-            return await self.repository.update(existing), oauth_state
+            return self.repository.update(existing), oauth_state
 
         # 新規作成
         integration = SlackIntegration(
@@ -175,15 +175,15 @@ class HandleSlackCallbackUseCase:
             created_at=datetime.now(),
             updated_at=None,
         )
-        return await self.repository.create(integration), oauth_state
+        return self.repository.create(integration), oauth_state
 
-    async def _exchange_code(self, code: str) -> dict[str, object]:
+    def _exchange_code(self, code: str) -> dict[str, object]:
         """認可コードをアクセストークンに交換する."""
         if not settings.SLACK_CLIENT_ID or not settings.SLACK_CLIENT_SECRET:
             raise ValueError("Slack OAuth is not configured")
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
+        with httpx.Client() as client:
+            response = client.post(
                 "https://slack.com/api/oauth.v2.access",
                 data={
                     "client_id": settings.SLACK_CLIENT_ID,
@@ -207,7 +207,7 @@ class GetSlackIntegrationsUseCase:
         """Initialize use case with repository."""
         self.repository = repository
 
-    async def execute(self, user_id: UUID) -> list[SlackIntegration]:
+    def execute(self, user_id: UUID) -> list[SlackIntegration]:
         """ユーザーの全Slack連携を取得する.
 
         Args:
@@ -216,7 +216,7 @@ class GetSlackIntegrationsUseCase:
         Returns:
             List of SlackIntegration entities.
         """
-        return await self.repository.get_all(user_id)
+        return self.repository.get_all(user_id)
 
 
 class DeleteSlackIntegrationUseCase:
@@ -226,7 +226,7 @@ class DeleteSlackIntegrationUseCase:
         """Initialize use case with repository."""
         self.repository = repository
 
-    async def execute(self, integration_id: UUID, user_id: UUID) -> bool:
+    def execute(self, integration_id: UUID, user_id: UUID) -> bool:
         """Slack連携を削除する.
 
         Args:
@@ -236,7 +236,7 @@ class DeleteSlackIntegrationUseCase:
         Returns:
             True if deleted, False if not found.
         """
-        return await self.repository.delete(integration_id, user_id)
+        return self.repository.delete(integration_id, user_id)
 
 
 class GetSlackChannelsUseCase:
@@ -245,7 +245,7 @@ class GetSlackChannelsUseCase:
     def __init__(self, credentials: SeriesCredentials) -> None:
         self.credentials = credentials
 
-    async def execute(self, user_id: UUID, integration_id: UUID) -> list[SlackChannel]:
+    def execute(self, user_id: UUID, integration_id: UUID) -> list[SlackChannel]:
         """Resolve credentials through the shared credential boundary."""
-        client = await self.credentials.slack_for_user(user_id, integration_id)
+        client = self.credentials.slack_for_user(user_id, integration_id)
         return client.get_channels()

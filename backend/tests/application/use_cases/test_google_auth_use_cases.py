@@ -5,7 +5,7 @@ All external dependencies (GoogleOAuthClient, Repository, encryption) are mocked
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -31,16 +31,15 @@ from src.infrastructure.external.google_oauth_client import (
 class TestStartGoogleOAuthUseCase:
     """StartGoogleOAuthUseCaseのテスト"""
 
-    @pytest.mark.asyncio
-    async def test_execute_generates_authorize_url_with_default_scopes(self) -> None:
+    def test_execute_generates_authorize_url_with_default_scopes(self) -> None:
         """デフォルトスコープでauthorize_urlが生成される"""
         # Arrange
         user_id = uuid4()
         mock_client = MagicMock()
         mock_client.get_authorization_url.return_value = "https://accounts.google.com/o/oauth2/v2/auth?..."
 
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.create = AsyncMock(side_effect=lambda x: x)
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.create = MagicMock(side_effect=lambda x: x)
 
         with patch.object(
             google_auth_use_cases,
@@ -50,7 +49,7 @@ class TestStartGoogleOAuthUseCase:
             use_case = StartGoogleOAuthUseCase(mock_oauth_state_repository)
 
             # Act
-            result = await use_case.execute(user_id)
+            result = use_case.execute(user_id)
 
             # Assert
             assert result.authorize_url == "https://accounts.google.com/o/oauth2/v2/auth?..."
@@ -62,8 +61,7 @@ class TestStartGoogleOAuthUseCase:
             assert call_args.kwargs["include_granted_scopes"] is True
             mock_oauth_state_repository.create.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_execute_generates_authorize_url_with_custom_scopes(self) -> None:
+    def test_execute_generates_authorize_url_with_custom_scopes(self) -> None:
         """カスタムスコープでauthorize_urlが生成される"""
         # Arrange
         user_id = uuid4()
@@ -71,8 +69,8 @@ class TestStartGoogleOAuthUseCase:
         mock_client = MagicMock()
         mock_client.get_authorization_url.return_value = "https://accounts.google.com/..."
 
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.create = AsyncMock(side_effect=lambda x: x)
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.create = MagicMock(side_effect=lambda x: x)
 
         with patch.object(
             google_auth_use_cases,
@@ -82,14 +80,13 @@ class TestStartGoogleOAuthUseCase:
             use_case = StartGoogleOAuthUseCase(mock_oauth_state_repository)
 
             # Act
-            await use_case.execute(user_id, scopes=custom_scopes)
+            use_case.execute(user_id, scopes=custom_scopes)
 
             # Assert
             call_args = mock_client.get_authorization_url.call_args
             assert call_args.kwargs["scopes"] == custom_scopes
 
-    @pytest.mark.asyncio
-    async def test_execute_stores_state_in_repository(self) -> None:
+    def test_execute_stores_state_in_repository(self) -> None:
         """stateがリポジトリに保存される"""
         # Arrange
         user_id = uuid4()
@@ -98,13 +95,13 @@ class TestStartGoogleOAuthUseCase:
 
         created_oauth_state: OAuthState | None = None
 
-        async def capture_create(oauth_state: OAuthState) -> OAuthState:
+        def capture_create(oauth_state: OAuthState) -> OAuthState:
             nonlocal created_oauth_state
             created_oauth_state = oauth_state
             return oauth_state
 
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.create = AsyncMock(side_effect=capture_create)
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.create = MagicMock(side_effect=capture_create)
 
         with patch.object(
             google_auth_use_cases,
@@ -114,7 +111,7 @@ class TestStartGoogleOAuthUseCase:
             use_case = StartGoogleOAuthUseCase(mock_oauth_state_repository)
 
             # Act
-            result = await use_case.execute(user_id)
+            result = use_case.execute(user_id)
 
             # Assert
             assert created_oauth_state is not None
@@ -123,12 +120,11 @@ class TestStartGoogleOAuthUseCase:
             assert created_oauth_state.provider == "google"
             assert created_oauth_state.scopes == DEFAULT_SCOPES
 
-    @pytest.mark.asyncio
-    async def test_execute_raises_when_oauth_not_configured(self) -> None:
+    def test_execute_raises_when_oauth_not_configured(self) -> None:
         """OAuth未設定時にValueErrorが発生する"""
         # Arrange
         user_id = uuid4()
-        mock_oauth_state_repository = AsyncMock()
+        mock_oauth_state_repository = MagicMock()
 
         with patch.object(
             google_auth_use_cases,
@@ -139,14 +135,13 @@ class TestStartGoogleOAuthUseCase:
 
             # Act & Assert
             with pytest.raises(ValueError, match="Google OAuth is not configured"):
-                await use_case.execute(user_id)
+                use_case.execute(user_id)
 
 
 class TestHandleGoogleCallbackUseCase:
     """HandleGoogleCallbackUseCaseのテスト"""
 
-    @pytest.mark.asyncio
-    async def test_execute_creates_new_integration_on_first_auth(self) -> None:
+    def test_execute_creates_new_integration_on_first_auth(self) -> None:
         """初回認証で新規GoogleIntegrationが作成される"""
         # Arrange
         user_id = uuid4()
@@ -178,17 +173,17 @@ class TestHandleGoogleCallbackUseCase:
             picture=None,
         )
         mock_client = MagicMock()
-        mock_client.exchange_code = AsyncMock(return_value=mock_token_response)
-        mock_client.get_user_info = AsyncMock(return_value=mock_user_info)
+        mock_client.exchange_code = MagicMock(return_value=mock_token_response)
+        mock_client.get_user_info = MagicMock(return_value=mock_user_info)
         mock_client.parse_scopes = MagicMock(return_value=["openid", "email", "profile"])
 
-        mock_repository = AsyncMock()
-        mock_repository.get_by_email = AsyncMock(return_value=None)
-        mock_repository.create = AsyncMock(side_effect=lambda x: x)
+        mock_repository = MagicMock()
+        mock_repository.get_by_email = MagicMock(return_value=None)
+        mock_repository.create = MagicMock(side_effect=lambda x: x)
 
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.get_and_delete = AsyncMock(return_value=oauth_state)
-        mock_oauth_state_repository.cleanup_expired = AsyncMock(return_value=0)
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.get_and_delete = MagicMock(return_value=oauth_state)
+        mock_oauth_state_repository.cleanup_expired = MagicMock(return_value=0)
 
         with (
             patch.object(google_auth_use_cases, "GoogleOAuthClient", return_value=mock_client),
@@ -197,7 +192,7 @@ class TestHandleGoogleCallbackUseCase:
             use_case = HandleGoogleCallbackUseCase(mock_repository, mock_oauth_state_repository)
 
             # Act
-            integration, returned_state = await use_case.execute(code, state)
+            integration, returned_state = use_case.execute(code, state)
 
             # Assert
             assert integration.email == "test@example.com"
@@ -207,8 +202,7 @@ class TestHandleGoogleCallbackUseCase:
             mock_repository.create.assert_called_once()
             mock_oauth_state_repository.cleanup_expired.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_execute_updates_existing_integration(self) -> None:
+    def test_execute_updates_existing_integration(self) -> None:
         """既存連携の更新時にupdate_tokenとadd_scopesが呼ばれる"""
         # Arrange
         user_id = uuid4()
@@ -250,17 +244,17 @@ class TestHandleGoogleCallbackUseCase:
             picture=None,
         )
         mock_client = MagicMock()
-        mock_client.exchange_code = AsyncMock(return_value=mock_token_response)
-        mock_client.get_user_info = AsyncMock(return_value=mock_user_info)
+        mock_client.exchange_code = MagicMock(return_value=mock_token_response)
+        mock_client.get_user_info = MagicMock(return_value=mock_user_info)
         mock_client.parse_scopes = MagicMock(return_value=["openid", "email", "profile"])
 
-        mock_repository = AsyncMock()
-        mock_repository.get_by_email = AsyncMock(return_value=existing_integration)
-        mock_repository.update = AsyncMock(side_effect=lambda x: x)
+        mock_repository = MagicMock()
+        mock_repository.get_by_email = MagicMock(return_value=existing_integration)
+        mock_repository.update = MagicMock(side_effect=lambda x: x)
 
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.get_and_delete = AsyncMock(return_value=oauth_state)
-        mock_oauth_state_repository.cleanup_expired = AsyncMock(return_value=0)
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.get_and_delete = MagicMock(return_value=oauth_state)
+        mock_oauth_state_repository.cleanup_expired = MagicMock(return_value=0)
 
         with (
             patch.object(google_auth_use_cases, "GoogleOAuthClient", return_value=mock_client),
@@ -269,29 +263,27 @@ class TestHandleGoogleCallbackUseCase:
             use_case = HandleGoogleCallbackUseCase(mock_repository, mock_oauth_state_repository)
 
             # Act
-            integration, _ = await use_case.execute(code, state)
+            integration, _ = use_case.execute(code, state)
 
             # Assert
             assert integration.encrypted_refresh_token == "new_encrypted_token"
             mock_repository.update.assert_called_once()
             mock_repository.create.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_execute_raises_on_invalid_state(self) -> None:
+    def test_execute_raises_on_invalid_state(self) -> None:
         """無効なstateでValueErrorが発生する"""
         # Arrange
-        mock_repository = AsyncMock()
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.get_and_delete = AsyncMock(return_value=None)
+        mock_repository = MagicMock()
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.get_and_delete = MagicMock(return_value=None)
 
         use_case = HandleGoogleCallbackUseCase(mock_repository, mock_oauth_state_repository)
 
         # Act & Assert
         with pytest.raises(ValueError, match="Invalid state parameter"):
-            await use_case.execute("code", "invalid_state")
+            use_case.execute("code", "invalid_state")
 
-    @pytest.mark.asyncio
-    async def test_execute_raises_on_expired_state(self) -> None:
+    def test_execute_raises_on_expired_state(self) -> None:
         """期限切れstateでValueErrorが発生する"""
         # Arrange
         user_id = uuid4()
@@ -310,18 +302,17 @@ class TestHandleGoogleCallbackUseCase:
             created_at=now - timedelta(minutes=6),
         )
 
-        mock_repository = AsyncMock()
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.get_and_delete = AsyncMock(return_value=oauth_state)
+        mock_repository = MagicMock()
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.get_and_delete = MagicMock(return_value=oauth_state)
 
         use_case = HandleGoogleCallbackUseCase(mock_repository, mock_oauth_state_repository)
 
         # Act & Assert
         with pytest.raises(ValueError, match="State expired"):
-            await use_case.execute("code", state)
+            use_case.execute("code", state)
 
-    @pytest.mark.asyncio
-    async def test_execute_raises_when_no_refresh_token(self) -> None:
+    def test_execute_raises_when_no_refresh_token(self) -> None:
         """refresh_tokenがない場合にValueErrorが発生する"""
         # Arrange
         user_id = uuid4()
@@ -347,26 +338,25 @@ class TestHandleGoogleCallbackUseCase:
             scope="openid email profile",
         )
         mock_client = MagicMock()
-        mock_client.exchange_code = AsyncMock(return_value=mock_token_response)
+        mock_client.exchange_code = MagicMock(return_value=mock_token_response)
 
-        mock_repository = AsyncMock()
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.get_and_delete = AsyncMock(return_value=oauth_state)
-        mock_oauth_state_repository.cleanup_expired = AsyncMock(return_value=0)
+        mock_repository = MagicMock()
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.get_and_delete = MagicMock(return_value=oauth_state)
+        mock_oauth_state_repository.cleanup_expired = MagicMock(return_value=0)
 
         with patch.object(google_auth_use_cases, "GoogleOAuthClient", return_value=mock_client):
             use_case = HandleGoogleCallbackUseCase(mock_repository, mock_oauth_state_repository)
 
             # Act & Assert
             with pytest.raises(ValueError, match="No refresh token received"):
-                await use_case.execute("code", state)
+                use_case.execute("code", state)
 
 
 class TestGetGoogleIntegrationsUseCase:
     """GetGoogleIntegrationsUseCaseのテスト"""
 
-    @pytest.mark.asyncio
-    async def test_execute_returns_all_integrations(self) -> None:
+    def test_execute_returns_all_integrations(self) -> None:
         """ユーザーの全連携が取得される"""
         # Arrange
         user_id = uuid4()
@@ -390,13 +380,13 @@ class TestGetGoogleIntegrationsUseCase:
                 updated_at=None,
             ),
         ]
-        mock_repository = AsyncMock()
-        mock_repository.get_all = AsyncMock(return_value=integrations)
+        mock_repository = MagicMock()
+        mock_repository.get_all = MagicMock(return_value=integrations)
 
         use_case = GetGoogleIntegrationsUseCase(mock_repository)
 
         # Act
-        result = await use_case.execute(user_id)
+        result = use_case.execute(user_id)
 
         # Assert
         assert len(result) == 2
@@ -404,18 +394,17 @@ class TestGetGoogleIntegrationsUseCase:
         assert result[1].email == "test2@example.com"
         mock_repository.get_all.assert_called_once_with(user_id)
 
-    @pytest.mark.asyncio
-    async def test_execute_returns_empty_list_when_no_integrations(self) -> None:
+    def test_execute_returns_empty_list_when_no_integrations(self) -> None:
         """連携がない場合は空リストが返される"""
         # Arrange
         user_id = uuid4()
-        mock_repository = AsyncMock()
-        mock_repository.get_all = AsyncMock(return_value=[])
+        mock_repository = MagicMock()
+        mock_repository.get_all = MagicMock(return_value=[])
 
         use_case = GetGoogleIntegrationsUseCase(mock_repository)
 
         # Act
-        result = await use_case.execute(user_id)
+        result = use_case.execute(user_id)
 
         # Assert
         assert result == []
@@ -424,37 +413,35 @@ class TestGetGoogleIntegrationsUseCase:
 class TestDeleteGoogleIntegrationUseCase:
     """DeleteGoogleIntegrationUseCaseのテスト"""
 
-    @pytest.mark.asyncio
-    async def test_execute_returns_true_on_success(self) -> None:
+    def test_execute_returns_true_on_success(self) -> None:
         """削除成功時にTrueが返される"""
         # Arrange
         integration_id = uuid4()
         user_id = uuid4()
-        mock_repository = AsyncMock()
-        mock_repository.delete = AsyncMock(return_value=True)
+        mock_repository = MagicMock()
+        mock_repository.delete = MagicMock(return_value=True)
 
         use_case = DeleteGoogleIntegrationUseCase(mock_repository)
 
         # Act
-        result = await use_case.execute(integration_id, user_id)
+        result = use_case.execute(integration_id, user_id)
 
         # Assert
         assert result is True
         mock_repository.delete.assert_called_once_with(integration_id, user_id)
 
-    @pytest.mark.asyncio
-    async def test_execute_returns_false_when_not_found(self) -> None:
+    def test_execute_returns_false_when_not_found(self) -> None:
         """連携が見つからない場合にFalseが返される"""
         # Arrange
         integration_id = uuid4()
         user_id = uuid4()
-        mock_repository = AsyncMock()
-        mock_repository.delete = AsyncMock(return_value=False)
+        mock_repository = MagicMock()
+        mock_repository.delete = MagicMock(return_value=False)
 
         use_case = DeleteGoogleIntegrationUseCase(mock_repository)
 
         # Act
-        result = await use_case.execute(integration_id, user_id)
+        result = use_case.execute(integration_id, user_id)
 
         # Assert
         assert result is False
@@ -463,8 +450,7 @@ class TestDeleteGoogleIntegrationUseCase:
 class TestStartAdditionalScopesUseCase:
     """StartAdditionalScopesUseCaseのテスト"""
 
-    @pytest.mark.asyncio
-    async def test_execute_generates_url_with_additional_scopes(self) -> None:
+    def test_execute_generates_url_with_additional_scopes(self) -> None:
         """追加スコープを含むauthorize_urlが生成される"""
         # Arrange
         user_id = uuid4()
@@ -481,11 +467,11 @@ class TestStartAdditionalScopesUseCase:
             updated_at=None,
         )
 
-        mock_repository = AsyncMock()
-        mock_repository.get_by_id = AsyncMock(return_value=existing_integration)
+        mock_repository = MagicMock()
+        mock_repository.get_by_id = MagicMock(return_value=existing_integration)
 
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.create = AsyncMock(side_effect=lambda x: x)
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.create = MagicMock(side_effect=lambda x: x)
 
         mock_client = MagicMock()
         mock_client.get_authorization_url.return_value = "https://accounts.google.com/..."
@@ -494,7 +480,7 @@ class TestStartAdditionalScopesUseCase:
             use_case = StartAdditionalScopesUseCase(mock_repository, mock_oauth_state_repository)
 
             # Act
-            result = await use_case.execute(user_id, integration_id, additional_scopes)
+            result = use_case.execute(user_id, integration_id, additional_scopes)
 
             # Assert
             assert result.authorize_url == "https://accounts.google.com/..."
@@ -506,26 +492,24 @@ class TestStartAdditionalScopesUseCase:
             assert "email" in combined_scopes
             assert "https://www.googleapis.com/auth/drive.readonly" in combined_scopes
 
-    @pytest.mark.asyncio
-    async def test_execute_raises_when_integration_not_found(self) -> None:
+    def test_execute_raises_when_integration_not_found(self) -> None:
         """連携が見つからない場合にValueErrorが発生する"""
         # Arrange
         user_id = uuid4()
         integration_id = uuid4()
 
-        mock_repository = AsyncMock()
-        mock_repository.get_by_id = AsyncMock(return_value=None)
+        mock_repository = MagicMock()
+        mock_repository.get_by_id = MagicMock(return_value=None)
 
-        mock_oauth_state_repository = AsyncMock()
+        mock_oauth_state_repository = MagicMock()
 
         use_case = StartAdditionalScopesUseCase(mock_repository, mock_oauth_state_repository)
 
         # Act & Assert
         with pytest.raises(ValueError, match="Integration not found"):
-            await use_case.execute(user_id, integration_id)
+            use_case.execute(user_id, integration_id)
 
-    @pytest.mark.asyncio
-    async def test_execute_uses_transcript_scopes_by_default(self) -> None:
+    def test_execute_uses_transcript_scopes_by_default(self) -> None:
         """追加スコープ未指定時はTRANSCRIPT_SCOPESが使用される"""
         # Arrange
         user_id = uuid4()
@@ -541,11 +525,11 @@ class TestStartAdditionalScopesUseCase:
             updated_at=None,
         )
 
-        mock_repository = AsyncMock()
-        mock_repository.get_by_id = AsyncMock(return_value=existing_integration)
+        mock_repository = MagicMock()
+        mock_repository.get_by_id = MagicMock(return_value=existing_integration)
 
-        mock_oauth_state_repository = AsyncMock()
-        mock_oauth_state_repository.create = AsyncMock(side_effect=lambda x: x)
+        mock_oauth_state_repository = MagicMock()
+        mock_oauth_state_repository.create = MagicMock(side_effect=lambda x: x)
 
         mock_client = MagicMock()
         mock_client.get_authorization_url.return_value = "https://accounts.google.com/..."
@@ -554,7 +538,7 @@ class TestStartAdditionalScopesUseCase:
             use_case = StartAdditionalScopesUseCase(mock_repository, mock_oauth_state_repository)
 
             # Act
-            await use_case.execute(user_id, integration_id, additional_scopes=None)
+            use_case.execute(user_id, integration_id, additional_scopes=None)
 
             # Assert
             call_args = mock_client.get_authorization_url.call_args

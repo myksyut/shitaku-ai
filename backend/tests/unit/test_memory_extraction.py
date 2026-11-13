@@ -119,12 +119,12 @@ def test_tool_request_uses_configured_endpoint_and_forces_named_tool(monkeypatch
 
 
 @pytest.mark.parametrize("raw", [None, {}, {"new_items": []}, {"new_items": [], "closures": None}])
-async def test_malformed_tool_input_fails_instead_of_erasing_prior_extraction(raw: dict[str, object] | None) -> None:
+def test_malformed_tool_input_fails_instead_of_erasing_prior_extraction(raw: dict[str, object] | None) -> None:
     with (
         patch("src.infrastructure.services.meeting_memory_extractor.invoke_claude_tool", return_value=raw) as invoke,
         pytest.raises(SeriesError) as error,
     ):
-        await MeetingMemoryExtractor().extract(context())
+        MeetingMemoryExtractor().extract(context())
     assert error.value.status == 502
     invoke.assert_called_once()
 

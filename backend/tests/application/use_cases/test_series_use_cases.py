@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -38,14 +38,14 @@ def make_series(sid: UUID, owner: UUID, synced: datetime | None = None) -> Serie
 
 
 @pytest.mark.parametrize("outcome", ["created", "already_member", "joined", "forbidden"])
-async def test_claim_outcomes_recheck_the_callers_visibility(outcome: str) -> None:
+def test_claim_outcomes_recheck_the_callers_visibility(outcome: str) -> None:
     sid, uid = uuid4(), uuid4()
-    repository = AsyncMock(spec=SeriesRepository)
+    repository = MagicMock(spec=SeriesRepository)
     repository.get.return_value = make_series(sid, uid)
     repository.roles.side_effect = (
         [{sid: "member"}] if outcome == "already_member" else [{}, {sid: "member"} if outcome == "joined" else {}]
     )
-    calendar = AsyncMock(spec=GoogleCalendarClient)
+    calendar = MagicMock(spec=GoogleCalendarClient)
     calendar.snapshot.return_value = CalendarSnapshot(
         "uid",
         "event",
@@ -57,24 +57,24 @@ async def test_claim_outcomes_recheck_the_callers_visibility(outcome: str) -> No
         datetime.now(UTC) - timedelta(days=35),
         datetime.now(UTC) + timedelta(days=35),
     )
-    credentials = AsyncMock(spec=SeriesCredentials)
+    credentials = MagicMock(spec=SeriesCredentials)
     credentials.google_for_user.return_value = GoogleApis(
         calendar, MagicMock(spec=GoogleDriveClient), MagicMock(spec=GoogleDocsClient)
     )
-    mirror = AsyncMock(spec=SeriesCalendarMirror)
+    mirror = MagicMock(spec=SeriesCalendarMirror)
     mirror.claim.return_value = sid if outcome == "created" else None
     use_case = CalendarUseCases(repository, credentials, mirror)
     if outcome == "forbidden":
         with pytest.raises(SeriesError) as error:
-            await use_case.claim(uid, uuid4(), "event", frozenset({"member@example.com"}))
+            use_case.claim(uid, uuid4(), "event", frozenset({"member@example.com"}))
         assert error.value.status == 403
     else:
-        assert await use_case.claim(uid, uuid4(), "event", frozenset({"member@example.com"})) == (outcome, sid)
-    assert mirror.refresh_for_join.await_count == (1 if outcome in ("joined", "forbidden") else 0)
+        assert use_case.claim(uid, uuid4(), "event", frozenset({"member@example.com"})) == (outcome, sid)
+    assert mirror.refresh_for_join.call_count == (1 if outcome in ("joined", "forbidden") else 0)
 
 
-async def test_claim_rejects_unverified_participant_without_writing() -> None:
-    calendar = AsyncMock(spec=GoogleCalendarClient)
+def test_claim_rejects_unverified_participant_without_writing() -> None:
+    calendar = MagicMock(spec=GoogleCalendarClient)
     calendar.snapshot.return_value = CalendarSnapshot(
         "uid",
         "event",
@@ -86,11 +86,11 @@ async def test_claim_rejects_unverified_participant_without_writing() -> None:
         datetime.now(UTC) - timedelta(days=35),
         datetime.now(UTC) + timedelta(days=35),
     )
-    credentials = AsyncMock(spec=SeriesCredentials)
+    credentials = MagicMock(spec=SeriesCredentials)
     credentials.google_for_user.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
-    mirror = AsyncMock(spec=SeriesCalendarMirror)
+    mirror = MagicMock(spec=SeriesCalendarMirror)
     with pytest.raises(SeriesError) as error:
-        await CalendarUseCases(AsyncMock(spec=SeriesRepository), credentials, mirror).claim(
+        CalendarUseCases(MagicMock(spec=SeriesRepository), credentials, mirror).claim(
             uuid4(), uuid4(), "event", frozenset()
         )
     assert error.value.status == 422
@@ -98,15 +98,15 @@ async def test_claim_rejects_unverified_participant_without_writing() -> None:
 
 
 @pytest.mark.parametrize("fresh", [True, False])
-async def test_join_refresh_is_throttled_and_uses_creator_calendar(fresh: bool) -> None:
+def test_join_refresh_is_throttled_and_uses_creator_calendar(fresh: bool) -> None:
     series = make_series(uuid4(), uuid4(), datetime.now(UTC) - timedelta(seconds=30 if fresh else 180))
     client = MagicMock()
     client.rpc.return_value.execute.return_value.data = True
     client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
         TypeAdapter(Series).dump_python(series, mode="json")
     ]
-    credentials = AsyncMock(spec=SeriesCredentials)
-    calendar = AsyncMock(spec=GoogleCalendarClient)
+    credentials = MagicMock(spec=SeriesCredentials)
+    calendar = MagicMock(spec=GoogleCalendarClient)
     calendar.snapshot.return_value = CalendarSnapshot(
         "uid",
         "event",
@@ -119,23 +119,23 @@ async def test_join_refresh_is_throttled_and_uses_creator_calendar(fresh: bool) 
         datetime.now(UTC) + timedelta(days=35),
     )
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
-    await SeriesCalendarMirror(client, credentials).refresh_for_join("uid")
-    assert credentials.google_for_series.await_count == (0 if fresh else 1)
+    SeriesCalendarMirror(client, credentials).refresh_for_join("uid")
+    assert credentials.google_for_series.call_count == (0 if fresh else 1)
     if not fresh:
         assert credentials.google_for_series.call_args.args == (series, "calendar")
 
 
-async def test_access_dependency_hides_outsiders_and_distinguishes_members() -> None:
-    repository = AsyncMock()
+def test_access_dependency_hides_outsiders_and_distinguishes_members() -> None:
+    repository = MagicMock()
     sid, uid = uuid4(), uuid4()
     repository.roles.return_value = {}
     with pytest.raises(HTTPException) as missing:
-        await member_access(sid, uid, repository)
+        member_access(sid, uid, repository)
     assert missing.value.status_code == 404
     repository.roles.return_value = {sid: "member"}
-    access = await member_access(sid, uid, repository)
+    access = member_access(sid, uid, repository)
     with pytest.raises(HTTPException) as forbidden:
         creator_access(access)
     assert forbidden.value.status_code == 403
     repository.roles.return_value = {sid: "creator"}
-    assert isinstance(await member_access(sid, uid, repository), CreatorAccess)
+    assert isinstance(member_access(sid, uid, repository), CreatorAccess)

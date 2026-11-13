@@ -87,11 +87,11 @@ class GoogleCalendarClient:
     def __init__(self, access_token: str) -> None:
         self._headers = {"Authorization": f"Bearer {access_token}"}
 
-    async def _pages(self, path: str, params: dict[str, str]) -> list[CalendarEvent]:
+    def _pages(self, path: str, params: dict[str, str]) -> list[CalendarEvent]:
         result: list[CalendarEvent] = []
-        async with httpx.AsyncClient(timeout=30) as client:
+        with httpx.Client(timeout=30) as client:
             while True:
-                response = await client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers, params=params)
+                response = client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers, params=params)
                 response.raise_for_status()
                 page = CalendarPage.model_validate(response.json())
                 result.extend(page.items)
@@ -99,11 +99,11 @@ class GoogleCalendarClient:
                     return result
                 params = {**params, "pageToken": page.next_page_token}
 
-    async def list_recurring_masters(self) -> list[CalendarSnapshot]:
+    def list_recurring_masters(self) -> list[CalendarSnapshot]:
         """Offer live recurring masters from the selected primary calendar."""
         now = datetime.now(UTC)
         window_end = now + timedelta(days=365)
-        events = await self._pages(
+        events = self._pages(
             "calendars/primary/events",
             {
                 "singleEvents": "false",
@@ -118,11 +118,11 @@ class GoogleCalendarClient:
             if e.recurrence and e.ical_uid and e.status != "cancelled"
         ]
 
-    async def snapshot(self, event_id: str, now: datetime) -> CalendarSnapshot | None:
+    def snapshot(self, event_id: str, now: datetime) -> CalendarSnapshot | None:
         """Fetch a recurring master and its instances in the 35-day mirror window."""
         path = f"calendars/primary/events/{quote(event_id, safe='')}"
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers)
+        with httpx.Client(timeout=30) as client:
+            response = client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers)
         if response.status_code in (404, 410):
             return None
         response.raise_for_status()
@@ -132,7 +132,7 @@ class GoogleCalendarClient:
         if not master.recurrence or not master.ical_uid:
             raise ValueError("Event is not recurring")
         window_start, window_end = now - timedelta(days=35), now + timedelta(days=35)
-        instances = await self._pages(
+        instances = self._pages(
             f"{path}/instances",
             {
                 "timeMin": window_start.isoformat(),

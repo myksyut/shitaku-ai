@@ -38,8 +38,7 @@ class TestGoogleIntegrationRepositoryImpl:
             updated_at=None,
         )
 
-    @pytest.mark.asyncio
-    async def test_create_success(
+    def test_create_success(
         self,
         repository: GoogleIntegrationRepositoryImpl,
         mock_supabase_client: MagicMock,
@@ -53,7 +52,7 @@ class TestGoogleIntegrationRepositoryImpl:
         mock_table.execute.return_value = MagicMock(data=[{}])
 
         # Act
-        result = await repository.create(sample_integration)
+        result = repository.create(sample_integration)
 
         # Assert
         assert result == sample_integration
@@ -63,8 +62,7 @@ class TestGoogleIntegrationRepositoryImpl:
         assert insert_data["email"] == "test@example.com"
         assert insert_data["granted_scopes"] == ["https://www.googleapis.com/auth/calendar.readonly"]
 
-    @pytest.mark.asyncio
-    async def test_get_by_id_success(
+    def test_get_by_id_success(
         self,
         repository: GoogleIntegrationRepositoryImpl,
         mock_supabase_client: MagicMock,
@@ -91,15 +89,14 @@ class TestGoogleIntegrationRepositoryImpl:
         )
 
         # Act
-        result = await repository.get_by_id(integration_id, user_id)
+        result = repository.get_by_id(integration_id, user_id)
 
         # Assert
         assert result is not None
         assert result.email == "test@example.com"
         assert result.granted_scopes == ["scope1", "scope2"]
 
-    @pytest.mark.asyncio
-    async def test_get_by_id_not_found(
+    def test_get_by_id_not_found(
         self,
         repository: GoogleIntegrationRepositoryImpl,
         mock_supabase_client: MagicMock,
@@ -114,13 +111,12 @@ class TestGoogleIntegrationRepositoryImpl:
         mock_table.execute.return_value = MagicMock(data=None)
 
         # Act
-        result = await repository.get_by_id(uuid4(), uuid4())
+        result = repository.get_by_id(uuid4(), uuid4())
 
         # Assert
         assert result is None
 
-    @pytest.mark.asyncio
-    async def test_get_by_email_success(
+    def test_get_by_email_success(
         self,
         repository: GoogleIntegrationRepositoryImpl,
         mock_supabase_client: MagicMock,
@@ -147,14 +143,13 @@ class TestGoogleIntegrationRepositoryImpl:
         )
 
         # Act
-        result = await repository.get_by_email(user_id, "test@example.com")
+        result = repository.get_by_email(user_id, "test@example.com")
 
         # Assert
         assert result is not None
         assert result.email == "test@example.com"
 
-    @pytest.mark.asyncio
-    async def test_get_all_success(
+    def test_get_all_success(
         self,
         repository: GoogleIntegrationRepositoryImpl,
         mock_supabase_client: MagicMock,
@@ -191,15 +186,14 @@ class TestGoogleIntegrationRepositoryImpl:
         )
 
         # Act
-        result = await repository.get_all(user_id)
+        result = repository.get_all(user_id)
 
         # Assert
         assert len(result) == 2
         assert result[0].email == "test1@example.com"
         assert result[1].email == "test2@example.com"
 
-    @pytest.mark.asyncio
-    async def test_get_all_empty(
+    def test_get_all_empty(
         self,
         repository: GoogleIntegrationRepositoryImpl,
         mock_supabase_client: MagicMock,
@@ -214,13 +208,12 @@ class TestGoogleIntegrationRepositoryImpl:
         mock_table.execute.return_value = MagicMock(data=[])
 
         # Act
-        result = await repository.get_all(uuid4())
+        result = repository.get_all(uuid4())
 
         # Assert
         assert result == []
 
-    @pytest.mark.asyncio
-    async def test_update_success(
+    def test_update_success(
         self,
         repository: GoogleIntegrationRepositoryImpl,
         mock_supabase_client: MagicMock,
@@ -235,15 +228,14 @@ class TestGoogleIntegrationRepositoryImpl:
         mock_table.execute.return_value = MagicMock(data=[{}])
 
         # Act
-        result = await repository.update(sample_integration)
+        result = repository.update(sample_integration)
 
         # Assert
         assert result == sample_integration
         mock_supabase_client.table.assert_called_once_with("google_integrations")
         mock_table.update.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_delete_success(
+    def test_delete_success(
         self,
         repository: GoogleIntegrationRepositoryImpl,
         mock_supabase_client: MagicMock,
@@ -259,13 +251,12 @@ class TestGoogleIntegrationRepositoryImpl:
         mock_table.execute.return_value = MagicMock(data=[{"id": str(integration_id)}])
 
         # Act
-        result = await repository.delete(integration_id, user_id)
+        result = repository.delete(integration_id, user_id)
 
         # Assert
         assert result is True
 
-    @pytest.mark.asyncio
-    async def test_delete_not_found(
+    def test_delete_not_found(
         self,
         repository: GoogleIntegrationRepositoryImpl,
         mock_supabase_client: MagicMock,
@@ -279,7 +270,7 @@ class TestGoogleIntegrationRepositoryImpl:
         mock_table.execute.return_value = MagicMock(data=[])
 
         # Act
-        result = await repository.delete(uuid4(), uuid4())
+        result = repository.delete(uuid4(), uuid4())
 
         # Assert
         assert result is False

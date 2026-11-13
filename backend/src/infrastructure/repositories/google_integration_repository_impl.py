@@ -14,14 +14,14 @@ class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
     def __init__(self, client: Client) -> None:
         self._client = client
 
-    async def create(self, integration: GoogleIntegration) -> GoogleIntegration:
+    def create(self, integration: GoogleIntegration) -> GoogleIntegration:
         """Persist an owned credential binding."""
         self._client.table("google_integrations").insert(
             TypeAdapter(GoogleIntegration).dump_python(integration, mode="json")
         ).execute()
         return integration
 
-    async def get_by_id(self, integration_id: UUID, user_id: UUID) -> GoogleIntegration | None:
+    def get_by_id(self, integration_id: UUID, user_id: UUID) -> GoogleIntegration | None:
         """Read only the explicitly selected owner's integration."""
         result = (
             self._client.table("google_integrations")
@@ -33,7 +33,7 @@ class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
         )
         return self._to_entity(result.data) if result is not None and result.data else None
 
-    async def get_by_email(self, user_id: UUID, email: str) -> GoogleIntegration | None:
+    def get_by_email(self, user_id: UUID, email: str) -> GoogleIntegration | None:
         """Find a personal email binding for OAuth reconnect."""
         result = (
             self._client.table("google_integrations")
@@ -45,7 +45,7 @@ class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
         )
         return self._to_entity(result.data) if result is not None and result.data else None
 
-    async def get_all(self, user_id: UUID) -> list[GoogleIntegration]:
+    def get_all(self, user_id: UUID) -> list[GoogleIntegration]:
         """List personal credential choices, never select one implicitly."""
         rows = (
             self._client.table("google_integrations")
@@ -57,7 +57,7 @@ class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
         )
         return [self._to_entity(row) for row in rows]
 
-    async def update(self, integration: GoogleIntegration) -> GoogleIntegration:
+    def update(self, integration: GoogleIntegration) -> GoogleIntegration:
         """Update only the checked owner's credential row."""
         self._client.table("google_integrations").update(
             {
@@ -69,7 +69,7 @@ class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
         ).eq("id", str(integration.id)).eq("user_id", str(integration.user_id)).execute()
         return integration
 
-    async def delete(self, integration_id: UUID, user_id: UUID) -> bool:
+    def delete(self, integration_id: UUID, user_id: UUID) -> bool:
         """Disconnect credentials without deleting retained shared series."""
         return bool(
             self._client.table("google_integrations")

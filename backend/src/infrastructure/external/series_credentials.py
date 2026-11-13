@@ -47,7 +47,7 @@ class SeriesCredentials:
         self._google = google
         self._slack = slack
 
-    async def _google_token(self, encrypted_refresh_token: str) -> tuple[GoogleTokenResponse, str]:
+    def _google_token(self, encrypted_refresh_token: str) -> tuple[GoogleTokenResponse, str]:
         try:
             refresh_token = decrypt_google_token(encrypted_refresh_token)
             oauth = GoogleOAuthClient()
@@ -56,7 +56,7 @@ class SeriesCredentials:
         except ValueError as error:
             raise CredentialUnavailableError("calendar_unavailable") from error
         try:
-            return await oauth.refresh_access_token(refresh_token), refresh_token
+            return oauth.refresh_access_token(refresh_token), refresh_token
         except GoogleTokenRefreshError as error:
             code: CredentialErrorCode = (
                 "revoked" if error.code in ("invalid_grant", "invalid_token") else "calendar_unavailable"
@@ -65,13 +65,13 @@ class SeriesCredentials:
         except (ValueError, httpx.HTTPError) as error:
             raise CredentialUnavailableError("calendar_unavailable") from error
 
-    async def _google_integration(
+    def _google_integration(
         self,
         user_id: UUID,
         integration_id: UUID,
         need: Literal["calendar", "drive"],
     ) -> GoogleIntegration:
-        integration = await self._google.get_by_id(integration_id, user_id)
+        integration = self._google.get_by_id(integration_id, user_id)
         if integration is None:
             raise CredentialUnavailableError("not_connected")
         scopes = (
@@ -86,37 +86,37 @@ class SeriesCredentials:
             raise CredentialUnavailableError("scope_missing")
         return integration
 
-    async def validate_calendar_integration(self, user_id: UUID, integration_id: UUID) -> None:
+    def validate_calendar_integration(self, user_id: UUID, integration_id: UUID) -> None:
         """Validate ownership and scopes without refreshing credentials."""
-        await self._google_integration(user_id, integration_id, "calendar")
+        self._google_integration(user_id, integration_id, "calendar")
 
-    async def google_for_user(
+    def google_for_user(
         self,
         user_id: UUID,
         integration_id: UUID,
         need: Literal["calendar", "drive"],
     ) -> GoogleApis:
         """Open the caller's selected integration."""
-        integration = await self._google_integration(user_id, integration_id, need)
-        token, refresh_token = await self._google_token(integration.encrypted_refresh_token)
+        integration = self._google_integration(user_id, integration_id, need)
+        token, refresh_token = self._google_token(integration.encrypted_refresh_token)
         if token.refresh_token and refresh_token != token.refresh_token:
             integration.update_token(encrypt_google_token(token.refresh_token))
-            await self._google.update(integration)
+            self._google.update(integration)
         return GoogleApis(
             GoogleCalendarClient(token.access_token),
             GoogleDriveClient(token.access_token),
             GoogleDocsClient(token.access_token),
         )
 
-    async def google_for_series(self, series: Series, need: Literal["calendar", "drive"]) -> GoogleApis:
+    def google_for_series(self, series: Series, need: Literal["calendar", "drive"]) -> GoogleApis:
         """Open only the creator's bound integration."""
         if series.google_integration_id is None:
             raise CredentialUnavailableError("not_connected")
-        return await self.google_for_user(series.created_by, series.google_integration_id, need)
+        return self.google_for_user(series.created_by, series.google_integration_id, need)
 
-    async def slack_for_user(self, user_id: UUID, integration_id: UUID) -> SlackClient:
+    def slack_for_user(self, user_id: UUID, integration_id: UUID) -> SlackClient:
         """Open a selected personal Slack integration."""
-        integration = await self._slack.get_by_id(integration_id, user_id)
+        integration = self._slack.get_by_id(integration_id, user_id)
         if integration is None:
             raise CredentialUnavailableError("not_connected")
         try:
@@ -124,8 +124,8 @@ class SeriesCredentials:
         except (ValueError, InvalidToken) as error:
             raise CredentialUnavailableError("not_connected") from error
 
-    async def slack_for_series(self, series: Series) -> SlackClient | None:
+    def slack_for_series(self, series: Series) -> SlackClient | None:
         """Open the creator's bound Slack source, if selected."""
         if series.slack_integration_id is None:
             return None
-        return await self.slack_for_user(series.created_by, series.slack_integration_id)
+        return self.slack_for_user(series.created_by, series.slack_integration_id)

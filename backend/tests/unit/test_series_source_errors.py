@@ -1,6 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import httpx
@@ -63,24 +63,24 @@ def mirror_client() -> MagicMock:
         (SeriesError(409, "Unstable source prose"), "calendar_unavailable"),
     ],
 )
-async def test_calendar_refresh_persists_only_stable_codes(failure: Exception, expected: CalendarErrorCode) -> None:
+def test_calendar_refresh_persists_only_stable_codes(failure: Exception, expected: CalendarErrorCode) -> None:
     series = make_series(uuid4(), uuid4())
     client = mirror_client()
-    credentials = AsyncMock(spec=SeriesCredentials)
-    calendar = AsyncMock(spec=GoogleCalendarClient)
+    credentials = MagicMock(spec=SeriesCredentials)
+    calendar = MagicMock(spec=GoogleCalendarClient)
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
     if isinstance(failure, CredentialUnavailableError):
         credentials.google_for_series.side_effect = failure
     else:
         calendar.snapshot.side_effect = failure
-    assert await SeriesCalendarMirror(client, credentials).refresh(series) == expected
+    assert SeriesCalendarMirror(client, credentials).refresh(series) == expected
     client.table.return_value.update.assert_called_once_with({"calendar_sync_error": expected})
     client.table.return_value.update.return_value.eq.assert_called_once_with("id", str(series.id))
 
 
 @pytest.mark.parametrize("missing", [True, False])
-async def test_missing_or_replaced_calendar_event_emits_event_not_found(missing: bool) -> None:
-    client, credentials, calendar = mirror_client(), AsyncMock(), AsyncMock()
+def test_missing_or_replaced_calendar_event_emits_event_not_found(missing: bool) -> None:
+    client, credentials, calendar = mirror_client(), MagicMock(), MagicMock()
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
     calendar.snapshot.return_value = (
         None
@@ -97,7 +97,7 @@ async def test_missing_or_replaced_calendar_event_emits_event_not_found(missing:
             datetime.now(UTC) + timedelta(days=35),
         )
     )
-    assert await SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == "event_not_found"
+    assert SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == "event_not_found"
     assert [call.args[0] for call in client.rpc.call_args_list] == [
         "begin_calendar_refresh",
         "mark_calendar_event_missing",
@@ -105,8 +105,8 @@ async def test_missing_or_replaced_calendar_event_emits_event_not_found(missing:
 
 
 @pytest.mark.parametrize("omitted", [True, False])
-async def test_calendar_success_emits_only_omitted_warning_or_none(omitted: bool) -> None:
-    client, credentials, calendar = mirror_client(), AsyncMock(), AsyncMock()
+def test_calendar_success_emits_only_omitted_warning_or_none(omitted: bool) -> None:
+    client, credentials, calendar = mirror_client(), MagicMock(), MagicMock()
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
     calendar.snapshot.return_value = CalendarSnapshot(
         "uid",
@@ -119,7 +119,7 @@ async def test_calendar_success_emits_only_omitted_warning_or_none(omitted: bool
         datetime.now(UTC) - timedelta(days=35),
         datetime.now(UTC) + timedelta(days=35),
     )
-    assert await SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == (
+    assert SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == (
         "attendees_omitted" if omitted else None
     )
     assert [call.args[0] for call in client.rpc.call_args_list] == ["begin_calendar_refresh", "apply_calendar_snapshot"]
@@ -139,7 +139,7 @@ async def test_calendar_success_emits_only_omitted_warning_or_none(omitted: bool
         ("network", "calendar_unavailable"),
     ],
 )
-async def test_google_credentials_classify_missing_revoked_and_unavailable(
+def test_google_credentials_classify_missing_revoked_and_unavailable(
     case: str,
     expected: CalendarErrorCode,
     monkeypatch: pytest.MonkeyPatch,
@@ -157,7 +157,7 @@ async def test_google_credentials_classify_missing_revoked_and_unavailable(
         datetime.now(UTC),
         None,
     )
-    google, slack = AsyncMock(spec=GoogleIntegrationRepository), AsyncMock(spec=SlackIntegrationRepository)
+    google, slack = MagicMock(spec=GoogleIntegrationRepository), MagicMock(spec=SlackIntegrationRepository)
     google.get_by_id.return_value = integration
     if case == "not_connected":
         google.get_by_id.return_value = None
@@ -171,33 +171,33 @@ async def test_google_credentials_classify_missing_revoked_and_unavailable(
     with (
         patch(
             "src.infrastructure.external.series_credentials.GoogleOAuthClient.refresh_access_token",
-            new=AsyncMock(side_effect=failure),
+            new=MagicMock(side_effect=failure),
         ),
         pytest.raises(CredentialUnavailableError) as error,
     ):
-        await SeriesCredentials(google, slack).google_for_user(uid, iid, "calendar")
+        SeriesCredentials(google, slack).google_for_user(uid, iid, "calendar")
     assert error.value.code == expected and error.value.detail == expected
 
 
-async def test_google_oauth_preserves_machine_readable_refresh_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_google_oauth_preserves_machine_readable_refresh_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "local-client")
     monkeypatch.setattr(settings, "GOOGLE_CLIENT_SECRET", "local-secret")
     response = httpx.Response(400, json={"error": "invalid_grant", "error_description": "Unstable provider prose"})
     with (
-        patch("httpx.AsyncClient.post", new=AsyncMock(return_value=response)),
+        patch("httpx.Client.post", new=MagicMock(return_value=response)),
         pytest.raises(GoogleTokenRefreshError) as error,
     ):
-        await GoogleOAuthClient().refresh_access_token("refresh")
+        GoogleOAuthClient().refresh_access_token("refresh")
     assert error.value.code == "invalid_grant"
 
 
-async def generate_with_slack_failure(failure: Exception, *, credential_failure: bool = False) -> SlackErrorCode | None:
+def generate_with_slack_failure(failure: Exception, *, credential_failure: bool = False) -> SlackErrorCode | None:
     sid, owner, now = uuid4(), uuid4(), datetime.now(UTC)
     stored = replace(
         make_series(sid, owner), slack_integration_id=uuid4(), slack_channels=(SlackChannelRef("chosen", "Selected"),)
     )
     target = Occurrence(uuid4(), sid, now, now, False, None, 0, None, 0, False)
-    series, content, memory, knowledge, dictionary, credentials, mirror, writer = (AsyncMock() for _ in range(8))
+    series, content, memory, knowledge, dictionary, credentials, mirror, writer = (MagicMock() for _ in range(8))
     series.get.return_value = stored
     series.occurrences.return_value = [target]
     memory.list_items.return_value = []
@@ -213,11 +213,11 @@ async def generate_with_slack_failure(failure: Exception, *, credential_failure:
         slack.get_messages.side_effect = failure
         credentials.slack_for_series.return_value = slack
 
-    async def save(access: CreatorAccess, oid: UUID, text: str) -> Agenda:
+    def save(access: CreatorAccess, oid: UUID, text: str) -> Agenda:
         return Agenda(oid, sid, text, now, now)
 
     content.save_generated.side_effect = save
-    result = await GenerateAgenda(series, content, memory, knowledge, dictionary, credentials, mirror, writer).execute(
+    result = GenerateAgenda(series, content, memory, knowledge, dictionary, credentials, mirror, writer).execute(
         CreatorAccess(sid, owner), target.id
     )
     assert result.sources.slack_messages == 0
@@ -238,11 +238,11 @@ async def generate_with_slack_failure(failure: Exception, *, credential_failure:
         (None, "slack_unavailable"),
     ],
 )
-async def test_agenda_slack_errors_are_stable_codes(provider_code: str | None, expected: SlackErrorCode) -> None:
+def test_agenda_slack_errors_are_stable_codes(provider_code: str | None, expected: SlackErrorCode) -> None:
     response = MagicMock()
     response.get.return_value = provider_code
     failure = SlackApiError("Unstable provider prose", response)  # type: ignore[no-untyped-call]
-    assert await generate_with_slack_failure(failure) == expected
+    assert generate_with_slack_failure(failure) == expected
 
 
 @pytest.mark.parametrize(
@@ -254,20 +254,16 @@ async def test_agenda_slack_errors_are_stable_codes(provider_code: str | None, e
         (SlackClientError("Unstable network prose"), "slack_unavailable"),
     ],
 )
-async def test_agenda_slack_unavailable_sources_never_expose_prose(
-    failure: Exception, expected: SlackErrorCode
-) -> None:
-    assert await generate_with_slack_failure(failure, credential_failure=True) == expected
+def test_agenda_slack_unavailable_sources_never_expose_prose(failure: Exception, expected: SlackErrorCode) -> None:
+    assert generate_with_slack_failure(failure, credential_failure=True) == expected
 
 
-async def test_calendar_database_failures_are_best_effort_even_when_error_recording_fails() -> None:
+def test_calendar_database_failures_are_best_effort_even_when_error_recording_fails() -> None:
     from postgrest.exceptions import APIError
 
-    client, credentials = mirror_client(), AsyncMock(spec=SeriesCredentials)
+    client, credentials = mirror_client(), MagicMock(spec=SeriesCredentials)
     failure = APIError({"code": "XX000", "message": "Database unavailable", "details": "", "hint": ""})
     client.rpc.side_effect = failure
     client.table.return_value.update.return_value.eq.return_value.execute.side_effect = failure
-    assert (
-        await SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == "calendar_unavailable"
-    )
+    assert SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == "calendar_unavailable"
     credentials.google_for_series.assert_not_called()

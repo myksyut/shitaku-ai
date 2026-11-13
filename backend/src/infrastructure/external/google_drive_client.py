@@ -47,7 +47,7 @@ class GoogleDriveClient:
             raise ValueError("access_token is required")
         self._access_token = access_token
 
-    async def search_transcript_files(
+    def search_transcript_files(
         self,
         folder_name: str = "Meet Recordings",
         max_results: int = 100,
@@ -69,15 +69,15 @@ class GoogleDriveClient:
             ValueError: API呼び出しが失敗した場合。
         """
         # まずMeet Recordingsフォルダを検索
-        folder_id = await self._find_folder_by_name(folder_name)
+        folder_id = self._find_folder_by_name(folder_name)
         if not folder_id:
             logger.info("Folder '%s' not found", folder_name)
             return []
 
         # フォルダ内のGoogle Docsを検索
-        return await self._list_docs_in_folder(folder_id, max_results, created_after, created_before)
+        return self._list_docs_in_folder(folder_id, max_results, created_after, created_before)
 
-    async def _find_folder_by_name(self, folder_name: str) -> str | None:
+    def _find_folder_by_name(self, folder_name: str) -> str | None:
         """フォルダ名でフォルダIDを検索する.
 
         Args:
@@ -88,8 +88,8 @@ class GoogleDriveClient:
         """
         query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
+        with httpx.Client() as client:
+            response = client.get(
                 f"{DRIVE_API_BASE}/files",
                 headers={"Authorization": f"Bearer {self._access_token}"},
                 params={
@@ -111,7 +111,7 @@ class GoogleDriveClient:
                 return str(files[0]["id"])
             return None
 
-    async def _list_docs_in_folder(
+    def _list_docs_in_folder(
         self,
         folder_id: str,
         max_results: int,
@@ -138,7 +138,7 @@ class GoogleDriveClient:
         all_files: list[DriveFile] = []
         page_token: str | None = None
 
-        async with httpx.AsyncClient() as client:
+        with httpx.Client() as client:
             while len(all_files) < max_results:
                 params: dict[str, str | int] = {
                     "q": query,
@@ -149,7 +149,7 @@ class GoogleDriveClient:
                 if page_token:
                     params["pageToken"] = page_token
 
-                response = await client.get(
+                response = client.get(
                     f"{DRIVE_API_BASE}/files",
                     headers={"Authorization": f"Bearer {self._access_token}"},
                     params=params,

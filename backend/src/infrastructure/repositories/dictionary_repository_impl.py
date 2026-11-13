@@ -14,7 +14,7 @@ class DictionaryRepositoryImpl(DictionaryRepository):
     def __init__(self, client: Client) -> None:
         self._client = client
 
-    async def list_entries(self, series_id: UUID) -> list[DictionaryEntry]:
+    def list_entries(self, series_id: UUID) -> list[DictionaryEntry]:
         """Read only this series' vocabulary."""
         rows = (
             self._client.table("dictionary_entries")
@@ -26,7 +26,7 @@ class DictionaryRepositoryImpl(DictionaryRepository):
         )
         return TypeAdapter(list[DictionaryEntry]).validate_python(rows)
 
-    async def get(self, series_id: UUID, entry_id: UUID) -> DictionaryEntry | None:
+    def get(self, series_id: UUID, entry_id: UUID) -> DictionaryEntry | None:
         """Resolve a scoped entry ID."""
         rows = (
             self._client.table("dictionary_entries")
@@ -39,7 +39,7 @@ class DictionaryRepositoryImpl(DictionaryRepository):
         items = TypeAdapter(list[DictionaryEntry]).validate_python(rows)
         return items[0] if items else None
 
-    async def create(self, access: CreatorAccess, entry: DictionaryEntry) -> None:
+    def create(self, access: CreatorAccess, entry: DictionaryEntry) -> None:
         """Derive the aggregate boundary from the proof, never request data."""
         if entry.series_id != access.series_id:
             raise SeriesError(404, "Series not found")
@@ -47,7 +47,7 @@ class DictionaryRepositoryImpl(DictionaryRepository):
             TypeAdapter(DictionaryEntry).dump_python(entry, mode="json")
         ).execute()
 
-    async def save(self, access: CreatorAccess, entry: DictionaryEntry) -> None:
+    def save(self, access: CreatorAccess, entry: DictionaryEntry) -> None:
         """Write vocabulary columns only."""
         self._client.table("dictionary_entries").update(
             {
@@ -59,7 +59,7 @@ class DictionaryRepositoryImpl(DictionaryRepository):
             }
         ).eq("series_id", str(access.series_id)).eq("id", str(entry.id)).execute()
 
-    async def delete(self, access: CreatorAccess, entry_id: UUID) -> None:
+    def delete(self, access: CreatorAccess, entry_id: UUID) -> None:
         """Delete the selected series' vocabulary entry."""
         self._client.table("dictionary_entries").delete().eq("series_id", str(access.series_id)).eq(
             "id", str(entry_id)

@@ -1,4 +1,3 @@
-import asyncio
 import json
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -176,10 +175,10 @@ def parse_extraction(raw: dict[str, object], context: ExtractionContext, *, trun
 class MeetingMemoryExtractor:
     """One forced Bedrock tool invocation per extraction."""
 
-    async def extract(self, context: ExtractionContext) -> ExtractedMemory:
+    def extract(self, context: ExtractionContext) -> ExtractedMemory:
         """Fail visibly if no structured output is available."""
         prompt, truncated = build_extraction_prompt(context)
-        result = await asyncio.to_thread(invoke_claude_tool, prompt, RECORD_MEETING_MEMORY)
+        result = invoke_claude_tool(prompt, RECORD_MEETING_MEMORY)
         if result is None:
             raise SeriesError(502, "Memory extraction unavailable")
         return parse_extraction(result, context, truncated=truncated)

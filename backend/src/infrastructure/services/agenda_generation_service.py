@@ -1,4 +1,3 @@
-import asyncio
 import json
 from dataclasses import dataclass
 
@@ -76,9 +75,9 @@ def build_agenda_prompt(context: AgendaContext) -> tuple[str | None, bool]:
 class AgendaGenerationService:
     """Generate only the optional proposal section."""
 
-    async def propose(self, context: AgendaContext) -> AgendaProposal:
+    def propose(self, context: AgendaContext) -> AgendaProposal:
         """Keep model failure separate from deterministic agenda requirements."""
         prompt, truncated = build_agenda_prompt(context)
         if prompt is None:
             return AgendaProposal(None, truncated)
-        return AgendaProposal(await asyncio.to_thread(invoke_claude, prompt, 4096), truncated)
+        return AgendaProposal(invoke_claude(prompt, 4096), truncated)

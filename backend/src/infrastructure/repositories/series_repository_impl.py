@@ -24,7 +24,7 @@ class SeriesRepositoryImpl(SeriesRepository):
     def __init__(self, client: Client) -> None:
         self._client = client
 
-    async def roles(self) -> dict[UUID, SeriesRole]:
+    def roles(self) -> dict[UUID, SeriesRole]:
         """Read roles under the caller's JWT."""
         rows = self._client.rpc("my_series_roles").execute().data
         parsed = TypeAdapter(list[dict[str, str]]).validate_python(rows)
@@ -32,13 +32,13 @@ class SeriesRepositoryImpl(SeriesRepository):
             UUID(r["series_id"]): TypeAdapter(Literal["creator", "member"]).validate_python(r["role"]) for r in parsed
         }
 
-    async def get(self, series_id: UUID) -> Series | None:
+    def get(self, series_id: UUID) -> Series | None:
         """Read a visible aggregate root."""
         rows = self._client.table("series").select("*").eq("id", str(series_id)).execute().data
         parsed = TypeAdapter(list[Series]).validate_python(rows)
         return parsed[0] if parsed else None
 
-    async def attendees(self, series_id: UUID) -> tuple[Attendee, ...]:
+    def attendees(self, series_id: UUID) -> tuple[Attendee, ...]:
         """Read members' public calendar labels."""
         rows = (
             self._client.table("series_attendees")
@@ -50,7 +50,7 @@ class SeriesRepositoryImpl(SeriesRepository):
         )
         return TypeAdapter(tuple[Attendee, ...]).validate_python(rows)
 
-    async def occurrences(self, series_id: UUID) -> list[Occurrence]:
+    def occurrences(self, series_id: UUID) -> list[Occurrence]:
         """Read the invoker-security overview."""
         rows = (
             self._client.table("occurrence_overview")
@@ -62,7 +62,7 @@ class SeriesRepositoryImpl(SeriesRepository):
         )
         return TypeAdapter(list[Occurrence]).validate_python(rows)
 
-    async def open_action_count(self, series_id: UUID) -> int:
+    def open_action_count(self, series_id: UUID) -> int:
         """Count open actions without loading their text."""
         result = (
             self._client.table("memory_items")
@@ -74,7 +74,7 @@ class SeriesRepositoryImpl(SeriesRepository):
         )
         return result.count or 0
 
-    async def save_settings(
+    def save_settings(
         self,
         access: CreatorAccess,
         settings: SeriesSettings,
@@ -100,7 +100,7 @@ class SeriesRepositoryImpl(SeriesRepository):
             .execute()
         )
 
-    async def delete(self, access: CreatorAccess) -> None:
+    def delete(self, access: CreatorAccess) -> None:
         """Remove only the checked creator's series."""
         self._client.table("series").delete().eq("id", str(access.series_id)).eq(
             "created_by", str(access.user_id)

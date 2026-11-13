@@ -31,16 +31,16 @@ def test_agenda_notes_and_slack_share_one_budget() -> None:
     assert "n" * 20000 in prompt and "s" * 1000 in prompt
 
 
-async def test_optional_proposal_reports_unavailable_model_without_losing_budget_signal() -> None:
+def test_optional_proposal_reports_unavailable_model_without_losing_budget_signal() -> None:
     with patch("src.infrastructure.services.agenda_generation_service.invoke_claude", return_value=None) as invoke:
-        result = await AgendaGenerationService().propose(agenda_context())
+        result = AgendaGenerationService().propose(agenda_context())
     assert result.content is None and result.truncated is False
     invoke.assert_called_once()
 
 
-async def test_oversized_agenda_metadata_skips_only_optional_proposals() -> None:
+def test_oversized_agenda_metadata_skips_only_optional_proposals() -> None:
     with patch("src.infrastructure.services.agenda_generation_service.invoke_claude") as invoke:
-        result = await AgendaGenerationService().propose(replace(agenda_context(), title="x" * MAX_AGENDA_INPUT_CHARS))
+        result = AgendaGenerationService().propose(replace(agenda_context(), title="x" * MAX_AGENDA_INPUT_CHARS))
     assert result.content is None and result.truncated
     invoke.assert_not_called()
 

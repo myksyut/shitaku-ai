@@ -14,14 +14,14 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
     def __init__(self, client: Client) -> None:
         self._client = client
 
-    async def create(self, integration: SlackIntegration) -> SlackIntegration:
+    def create(self, integration: SlackIntegration) -> SlackIntegration:
         """Create the owner's integration."""
         self._client.table("slack_integrations").insert(
             TypeAdapter(SlackIntegration).dump_python(integration, mode="json")
         ).execute()
         return integration
 
-    async def get_by_id(self, integration_id: UUID, user_id: UUID) -> SlackIntegration | None:
+    def get_by_id(self, integration_id: UUID, user_id: UUID) -> SlackIntegration | None:
         """Read only the selected owner's binding."""
         rows = (
             self._client.table("slack_integrations")
@@ -34,7 +34,7 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
         items = TypeAdapter(list[SlackIntegration]).validate_python(rows)
         return items[0] if items else None
 
-    async def get_by_workspace(self, user_id: UUID, workspace_id: str) -> SlackIntegration | None:
+    def get_by_workspace(self, user_id: UUID, workspace_id: str) -> SlackIntegration | None:
         """Find a workspace under its authenticated owner."""
         rows = (
             self._client.table("slack_integrations")
@@ -47,7 +47,7 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
         items = TypeAdapter(list[SlackIntegration]).validate_python(rows)
         return items[0] if items else None
 
-    async def get_all(self, user_id: UUID) -> list[SlackIntegration]:
+    def get_all(self, user_id: UUID) -> list[SlackIntegration]:
         """List personal workspace bindings."""
         rows = (
             self._client.table("slack_integrations")
@@ -59,7 +59,7 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
         )
         return TypeAdapter(list[SlackIntegration]).validate_python(rows)
 
-    async def update(self, integration: SlackIntegration) -> SlackIntegration:
+    def update(self, integration: SlackIntegration) -> SlackIntegration:
         """Update credentials only within their owner's row."""
         self._client.table("slack_integrations").update(
             {
@@ -70,7 +70,7 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
         ).eq("id", str(integration.id)).eq("user_id", str(integration.user_id)).execute()
         return integration
 
-    async def delete(self, integration_id: UUID, user_id: UUID) -> bool:
+    def delete(self, integration_id: UUID, user_id: UUID) -> bool:
         """Disconnect without removing the owner's shared series."""
         return bool(
             self._client.table("slack_integrations")

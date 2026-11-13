@@ -1,7 +1,7 @@
 """GoogleDriveClient tests with mocked HTTP responses."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -24,8 +24,7 @@ class TestGoogleDriveClient:
         with pytest.raises(ValueError, match="access_token is required"):
             GoogleDriveClient(access_token="")
 
-    @pytest.mark.asyncio
-    async def test_search_transcript_files_success(self, client: GoogleDriveClient) -> None:
+    def test_search_transcript_files_success(self, client: GoogleDriveClient) -> None:
         """Meet Recordingsフォルダからファイルを検索できる"""
         # Arrange
         mock_response_folder = MagicMock()
@@ -56,14 +55,14 @@ class TestGoogleDriveClient:
             "nextPageToken": None,
         }
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.get.side_effect = [mock_response_folder, mock_response_files]
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = None
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.Client", return_value=mock_client):
             # Act
-            files = await client.search_transcript_files()
+            files = client.search_transcript_files()
 
         # Assert
         assert len(files) == 2
@@ -71,44 +70,42 @@ class TestGoogleDriveClient:
         assert files[0].name == "定例会議 2024-01-15"
         assert files[1].id == "doc_002"
 
-    @pytest.mark.asyncio
-    async def test_search_transcript_files_folder_not_found(self, client: GoogleDriveClient) -> None:
+    def test_search_transcript_files_folder_not_found(self, client: GoogleDriveClient) -> None:
         """フォルダが見つからない場合は空リストを返す"""
         # Arrange
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"files": []}
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.get.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = None
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.Client", return_value=mock_client):
             # Act
-            files = await client.search_transcript_files()
+            files = client.search_transcript_files()
 
         # Assert
         assert files == []
 
-    @pytest.mark.asyncio
-    async def test_search_transcript_files_api_error(self, client: GoogleDriveClient) -> None:
+    def test_search_transcript_files_api_error(self, client: GoogleDriveClient) -> None:
         """APIエラー時に例外を発生させる"""
         # Arrange
         mock_response = MagicMock()
         mock_response.status_code = 401
         mock_response.json.return_value = {"error": {"message": "Invalid Credentials"}}
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.get.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = None
 
         with (
-            patch("httpx.AsyncClient", return_value=mock_client),
+            patch("httpx.Client", return_value=mock_client),
             pytest.raises(ValueError, match="Google Drive API error"),
         ):
-            await client.search_transcript_files()
+            client.search_transcript_files()
 
 
 class TestDriveFile:

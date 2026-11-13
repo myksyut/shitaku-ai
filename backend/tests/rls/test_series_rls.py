@@ -439,12 +439,12 @@ def test_member_and_outsider_extraction_cannot_change_any_state(world: World, ta
     )
 
 
-async def test_memory_repository_maps_real_composite_origin_join(world: World) -> None:
+def test_memory_repository_maps_real_composite_origin_join(world: World) -> None:
     from uuid import UUID
 
     from src.infrastructure.repositories.team_memory_repository_impl import TeamMemoryRepositoryImpl
 
-    items = await TeamMemoryRepositoryImpl(world.users["B"].client).list_items(UUID(world.sid))
+    items = TeamMemoryRepositoryImpl(world.users["B"].client).list_items(UUID(world.sid))
     assert len(items) == 1 and items[0].kind == "action_item"
     assert items[0].origin_occurrence_id == UUID(world.past)
 
@@ -1055,22 +1055,20 @@ def test_calendar_snapshot_cancels_missing_slots_only_inside_fetched_window(
     ).execute().data == [{"is_cancelled": False}]
 
 
-async def test_missing_creator_calendar_event_cancels_all_future_occurrences(
-    world: World, service_client: Client
-) -> None:
-    from unittest.mock import AsyncMock, MagicMock
+def test_missing_creator_calendar_event_cancels_all_future_occurrences(world: World, service_client: Client) -> None:
+    from unittest.mock import MagicMock
     from uuid import UUID
 
     from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
     from src.infrastructure.external.series_credentials import GoogleApis, SeriesCredentials
     from src.infrastructure.repositories.series_repository_impl import SeriesRepositoryImpl
 
-    series = await SeriesRepositoryImpl(world.users["A"].client).get(UUID(world.sid))
+    series = SeriesRepositoryImpl(world.users["A"].client).get(UUID(world.sid))
     assert series is not None
-    credentials, calendar = AsyncMock(spec=SeriesCredentials), AsyncMock()
+    credentials, calendar = MagicMock(spec=SeriesCredentials), MagicMock()
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
     calendar.snapshot.return_value = None
-    assert await SeriesCalendarMirror(service_client, credentials).refresh(series) == "event_not_found"
+    assert SeriesCalendarMirror(service_client, credentials).refresh(series) == "event_not_found"
     assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
         "id", world.oid
     ).execute().data == [{"is_cancelled": True}]
@@ -1188,8 +1186,8 @@ def test_topic_author_uses_calendar_name_then_verified_email_and_blocks_forgery(
     assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == "メンバー"
 
 
-async def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_client: Client) -> None:
-    from unittest.mock import AsyncMock
+def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_client: Client) -> None:
+    from unittest.mock import MagicMock
     from uuid import UUID
 
     from src.domain.entities.series import SeriesError
@@ -1202,23 +1200,23 @@ async def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, se
         "id", world.sid
     ).execute()
     repository = SeriesRepositoryImpl(world.users["A"].client)
-    before = await repository.get(UUID(world.sid))
-    credentials = AsyncMock(spec=SeriesCredentials)
+    before = repository.get(UUID(world.sid))
+    credentials = MagicMock(spec=SeriesCredentials)
     credentials.google_for_series.side_effect = CredentialUnavailableError("not_connected")
     mirror = SeriesCalendarMirror(service_client, credentials)
     with pytest.raises(SeriesError) as error:
-        await mirror.refresh_for_join(world.sid)
+        mirror.refresh_for_join(world.sid)
     assert error.value.status == 409
-    await mirror.refresh_for_join(world.sid)
-    credentials.google_for_series.assert_awaited_once()
-    after = await repository.get(UUID(world.sid))
+    mirror.refresh_for_join(world.sid)
+    credentials.google_for_series.assert_called_once()
+    after = repository.get(UUID(world.sid))
     assert before is not None and after is not None
     assert after.calendar_synced_at == before.calendar_synced_at
     assert after.calendar_refresh_attempted_at is not None and after.calendar_refresh_attempted_at > old
 
 
-async def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World, service_client: Client) -> None:
-    from unittest.mock import AsyncMock, MagicMock
+def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World, service_client: Client) -> None:
+    from unittest.mock import MagicMock
 
     from pydantic import TypeAdapter
 
@@ -1237,10 +1235,10 @@ async def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World,
             "attendees_omitted": True,
         }
     )
-    credentials, calendar = AsyncMock(spec=SeriesCredentials), AsyncMock()
+    credentials, calendar = MagicMock(spec=SeriesCredentials), MagicMock()
     calendar.snapshot.return_value = snapshot
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
-    await SeriesCalendarMirror(service_client, credentials).refresh_for_join(world.sid)
+    SeriesCalendarMirror(service_client, credentials).refresh_for_join(world.sid)
     assert world.users["B"].client.table("series").select("calendar_sync_error").eq("id", world.sid).execute().data == [
         {"calendar_sync_error": "attendees_omitted"}
     ]

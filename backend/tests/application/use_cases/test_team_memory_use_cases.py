@@ -1,6 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 from src.application.use_cases.team_memory_use_cases import ExtractOccurrenceMemory
@@ -10,7 +10,7 @@ from src.domain.entities.team_memory import ActionItem, Decision, ExtractedMemor
 from tests.application.use_cases.test_series_use_cases import make_series
 
 
-async def test_current_untouched_extraction_is_not_prompted_as_existing_references() -> None:
+def test_current_untouched_extraction_is_not_prompted_as_existing_references() -> None:
     sid, owner, oid, now = uuid4(), uuid4(), uuid4(), datetime.now(UTC)
     start = now - timedelta(days=1)
     current = ActionItem(
@@ -43,7 +43,7 @@ async def test_current_untouched_extraction_is_not_prompted_as_existing_referenc
         for d in range(1, 26)
     ]
     reversed_decision = replace(prior_decisions[0], id=uuid4(), resolution="reversed", closed_at=now)
-    memory, series, knowledge, dictionary, extractor = (AsyncMock() for _ in range(5))
+    memory, series, knowledge, dictionary, extractor = (MagicMock() for _ in range(5))
     series.get.return_value = make_series(sid, owner)
     series.occurrences.return_value = [Occurrence(oid, sid, start, start, False, None, 1, now, 0, False)]
     series.attendees.return_value = ()
@@ -52,9 +52,7 @@ async def test_current_untouched_extraction_is_not_prompted_as_existing_referenc
     memory.list_items.return_value = [current, decision, human, manual, previous, *prior_decisions, reversed_decision]
     memory.apply_extraction.return_value = ExtractionApplyResult(0, 0)
     extractor.extract.return_value = ExtractedMemory((), (), False)
-    await ExtractOccurrenceMemory(memory, series, knowledge, dictionary, extractor).execute(
-        CreatorAccess(sid, owner), oid
-    )
+    ExtractOccurrenceMemory(memory, series, knowledge, dictionary, extractor).execute(CreatorAccess(sid, owner), oid)
     context = extractor.extract.call_args.args[0]
     assert {item.id for item in context.references.values()} == {
         human.id,

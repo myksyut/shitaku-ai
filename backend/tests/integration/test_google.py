@@ -11,7 +11,7 @@ Google Workspace連携機能の統合テスト
 
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -65,7 +65,7 @@ def mock_google_oauth_client() -> Generator[MagicMock, None, None]:
         )
 
         # exchange_codeのモック（非同期）
-        mock_instance.exchange_code = AsyncMock(
+        mock_instance.exchange_code = MagicMock(
             return_value=GoogleTokenResponse(
                 access_token="test_access_token",
                 refresh_token="test_refresh_token",
@@ -76,7 +76,7 @@ def mock_google_oauth_client() -> Generator[MagicMock, None, None]:
         )
 
         # get_user_infoのモック（非同期）
-        mock_instance.get_user_info = AsyncMock(
+        mock_instance.get_user_info = MagicMock(
             return_value=GoogleUserInfo(
                 email="test@example.com",
                 name="Test User",
@@ -94,12 +94,12 @@ def mock_google_oauth_client() -> Generator[MagicMock, None, None]:
 def mock_repository() -> MagicMock:
     """GoogleIntegrationRepositoryをモック化."""
     mock_repo = MagicMock()
-    mock_repo.get_all = AsyncMock(return_value=[])
-    mock_repo.get_by_id = AsyncMock(return_value=None)
-    mock_repo.get_by_email = AsyncMock(return_value=None)
-    mock_repo.create = AsyncMock()
-    mock_repo.update = AsyncMock()
-    mock_repo.delete = AsyncMock(return_value=True)
+    mock_repo.get_all = MagicMock(return_value=[])
+    mock_repo.get_by_id = MagicMock(return_value=None)
+    mock_repo.get_by_email = MagicMock(return_value=None)
+    mock_repo.create = MagicMock()
+    mock_repo.update = MagicMock()
+    mock_repo.delete = MagicMock(return_value=True)
     return mock_repo
 
 
@@ -107,9 +107,9 @@ def mock_repository() -> MagicMock:
 def mock_oauth_state_repository() -> MagicMock:
     """OAuthStateRepositoryをモック化."""
     mock_repo = MagicMock()
-    mock_repo.create = AsyncMock(side_effect=lambda x: x)
-    mock_repo.get_and_delete = AsyncMock(return_value=None)
-    mock_repo.cleanup_expired = AsyncMock(return_value=0)
+    mock_repo.create = MagicMock(side_effect=lambda x: x)
+    mock_repo.get_and_delete = MagicMock(return_value=None)
+    mock_repo.cleanup_expired = MagicMock(return_value=0)
     return mock_repo
 
 
@@ -125,9 +125,9 @@ def mock_repository_with_integration(mock_repository: MagicMock) -> MagicMock:
         created_at=datetime.now(),
         updated_at=None,
     )
-    mock_repository.get_all = AsyncMock(return_value=[integration])
-    mock_repository.get_by_id = AsyncMock(return_value=integration)
-    mock_repository.get_by_email = AsyncMock(return_value=integration)
+    mock_repository.get_all = MagicMock(return_value=[integration])
+    mock_repository.get_by_id = MagicMock(return_value=integration)
+    mock_repository.get_by_email = MagicMock(return_value=integration)
     return mock_repository
 
 
@@ -171,7 +171,7 @@ class TestGoogleIntegration:
             created_at=datetime.now(),
             updated_at=None,
         )
-        mock_repository.create = AsyncMock(return_value=new_integration)
+        mock_repository.create = MagicMock(return_value=new_integration)
 
         # 暗号化をモック
         with patch("src.application.use_cases.google_auth_use_cases.encrypt_google_token") as mock_encrypt:
@@ -197,7 +197,7 @@ class TestGoogleIntegration:
                 expires_at=now + timedelta(minutes=5),
                 created_at=now,
             )
-            mock_oauth_state_repository.get_and_delete = AsyncMock(return_value=oauth_state)
+            mock_oauth_state_repository.get_and_delete = MagicMock(return_value=oauth_state)
 
             # Act & Assert (正常系): 正しいstateでコールバック
             response = authenticated_client.get(
@@ -213,7 +213,7 @@ class TestGoogleIntegration:
 
         # Act & Assert (異常系): 不正なstateでコールバック
         # 無効なstateの場合、get_and_deleteがNoneを返す
-        mock_oauth_state_repository.get_and_delete = AsyncMock(return_value=None)
+        mock_oauth_state_repository.get_and_delete = MagicMock(return_value=None)
         response_invalid = authenticated_client.get(
             "/api/v1/google/callback?code=test_code&state=invalid_state",
             follow_redirects=False,
@@ -257,12 +257,12 @@ class TestGoogleIntegration:
         # 保存されたOAuthStateをキャプチャ
         captured_oauth_state: OAuthState | None = None
 
-        async def capture_create(oauth_state: OAuthState) -> OAuthState:
+        def capture_create(oauth_state: OAuthState) -> OAuthState:
             nonlocal captured_oauth_state
             captured_oauth_state = oauth_state
             return oauth_state
 
-        mock_oauth_state_repository.create = AsyncMock(side_effect=capture_create)
+        mock_oauth_state_repository.create = MagicMock(side_effect=capture_create)
 
         try:
             # Act: GET /api/v1/google/auth
@@ -399,7 +399,7 @@ class TestGoogleIntegration:
     ) -> None:
         """存在しない連携削除で404が返却される"""
         # Arrange: 削除がFalseを返すリポジトリ
-        mock_repository.delete = AsyncMock(return_value=False)
+        mock_repository.delete = MagicMock(return_value=False)
         app.dependency_overrides[get_repository] = lambda: mock_repository
 
         try:
@@ -468,7 +468,7 @@ class TestGoogleIntegration:
     ) -> None:
         """既存連携がない場合、400エラーが返却される"""
         # Arrange: 連携が見つからないリポジトリ
-        mock_repository.get_by_id = AsyncMock(return_value=None)
+        mock_repository.get_by_id = MagicMock(return_value=None)
         app.dependency_overrides[get_repository] = lambda: mock_repository
         app.dependency_overrides[get_oauth_state_repository] = lambda: mock_oauth_state_repository
 

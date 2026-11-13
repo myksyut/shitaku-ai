@@ -18,41 +18,41 @@ def get_dictionary(client: Client = Depends(get_user_supabase_client)) -> Dictio
 
 
 @router.get("")
-async def list_entries(
+def list_entries(
     access: MemberAccess = Depends(member_access), use_cases: DictionaryUseCases = Depends(get_dictionary)
 ) -> list[DictionaryEntryView]:
     """Read the series' shared vocabulary."""
-    return [DictionaryEntryView.model_validate(e) for e in await use_cases.list_entries(access)]
+    return [DictionaryEntryView.model_validate(e) for e in use_cases.list_entries(access)]
 
 
 @router.post("", status_code=201)
-async def create_entry(
+def create_entry(
     request: DictionaryEntryCreate,
     access: CreatorAccess = Depends(creator_access),
     use_cases: DictionaryUseCases = Depends(get_dictionary),
 ) -> DictionaryEntryView:
     """Create a series-scoped vocabulary entry."""
     return DictionaryEntryView.model_validate(
-        await use_cases.create(access, request.canonical_name, request.category, request.aliases, request.description)
+        use_cases.create(access, request.canonical_name, request.category, request.aliases, request.description)
     )
 
 
 @router.put("/{entry_id}")
-async def update_entry(
+def update_entry(
     entry_id: UUID,
     request: DictionaryEntryUpdate,
     access: CreatorAccess = Depends(creator_access),
     use_cases: DictionaryUseCases = Depends(get_dictionary),
 ) -> DictionaryEntryView:
     """Apply only explicitly supplied vocabulary changes."""
-    return DictionaryEntryView.model_validate(await use_cases.update(access, entry_id, request.changes()))
+    return DictionaryEntryView.model_validate(use_cases.update(access, entry_id, request.changes()))
 
 
 @router.delete("/{entry_id}", status_code=204)
-async def delete_entry(
+def delete_entry(
     entry_id: UUID,
     access: CreatorAccess = Depends(creator_access),
     use_cases: DictionaryUseCases = Depends(get_dictionary),
 ) -> None:
     """Delete only the creator's selected series entry."""
-    await use_cases.delete(access, entry_id)
+    use_cases.delete(access, entry_id)
