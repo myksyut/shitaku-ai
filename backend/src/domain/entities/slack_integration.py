@@ -1,7 +1,4 @@
-"""SlackIntegration and SlackMessage entities for domain layer.
-
-Pure Python entities without external dependencies.
-"""
+"""Personal Slack integration credentials."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -38,34 +35,3 @@ class SlackIntegration:
         """
         self.encrypted_access_token = encrypted_token
         self.updated_at = datetime.now()
-
-
-@dataclass
-class SlackMessage:
-    """Slackメッセージを表すエンティティ.
-
-    Attributes:
-        id: Unique identifier for the message.
-        integration_id: ID of the SlackIntegration this message belongs to.
-        channel_id: Slack channel ID (e.g., C01234567).
-        message_ts: Slack's unique timestamp identifier for the message.
-        user_name: Display name of the message author.
-        text: Message content.
-        posted_at: Timestamp when the message was posted.
-    """
-
-    id: UUID
-    integration_id: UUID
-    channel_id: str
-    message_ts: str
-    user_name: str
-    text: str
-    posted_at: datetime
-
-    def to_display_text(self) -> str:
-        """表示用テキストを生成.
-
-        Returns:
-            Formatted string for display: [YYYY-MM-DD HH:MM] user_name: text
-        """
-        return f"[{self.posted_at.strftime('%Y-%m-%d %H:%M')}] {self.user_name}: {self.text}"

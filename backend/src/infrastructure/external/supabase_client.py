@@ -45,8 +45,7 @@ def get_supabase_client() -> Client | None:
     if settings.SUPABASE_URL is None:
         return None
 
-    # Prefer service key (bypasses RLS), fall back to publishable key
-    key = settings.SUPABASE_SERVICE_KEY or settings.SUPABASE_KEY
+    key = settings.SUPABASE_SERVICE_KEY
     if key is None:
         return None
 

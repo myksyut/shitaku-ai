@@ -1,6 +1,5 @@
 """Slack API endpoints."""
 
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,11 +11,11 @@ from src.application.use_cases.slack_use_cases import (
     DeleteSlackIntegrationUseCase,
     GetSlackChannelsUseCase,
     GetSlackIntegrationsUseCase,
-    GetSlackMessagesUseCase,
     HandleSlackCallbackUseCase,
     StartSlackOAuthUseCase,
 )
 from src.config import settings
+from src.infrastructure.external.series_credentials import SeriesCredentials
 from src.infrastructure.external.supabase_client import get_supabase_client
 from src.infrastructure.repositories.oauth_state_repository_impl import (
     OAuthStateRepositoryImpl,
@@ -26,12 +25,12 @@ from src.infrastructure.repositories.slack_integration_repository_impl import (
 )
 from src.presentation.api.v1.dependencies import (
     get_current_user_id,
+    get_series_credentials,
     get_user_supabase_client,
 )
 from src.presentation.schemas.slack import (
     SlackChannelResponse,
     SlackIntegrationResponse,
-    SlackMessageResponse,
     SlackOAuthStartResponse,
 )
 
@@ -184,80 +183,23 @@ async def delete_slack_integration(
 async def get_slack_channels(
     integration_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
-    repository: SlackIntegrationRepositoryImpl = Depends(get_repository),
+    credentials: SeriesCredentials = Depends(get_series_credentials),
 ) -> list[SlackChannelResponse]:
     """Slackチャンネル一覧を取得する.
 
     Args:
         integration_id: 連携ID.
         user_id: ユーザーID（DI）.
-        repository: Slack連携リポジトリ（DI）.
+        credentials: Personal credential boundary.
 
     Returns:
         List of SlackChannelResponse.
     """
-    use_case = GetSlackChannelsUseCase(repository)
+    use_case = GetSlackChannelsUseCase(credentials)
 
     try:
         channels = await use_case.execute(user_id, integration_id)
         return [SlackChannelResponse(id=c.id, name=c.name) for c in channels]
-    except SlackApiError as e:
-        if e.response.get("error") == "ratelimited":
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Slack API rate limit exceeded. Please try again later.",
-            ) from e
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Slack API error: {e.response.get('error', 'unknown')}",
-        ) from e
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
-
-@router.get(
-    "/integrations/{integration_id}/channels/{channel_id}/messages",
-    response_model=list[SlackMessageResponse],
-)
-async def get_slack_messages(
-    integration_id: UUID,
-    channel_id: str,
-    oldest: datetime = Query(..., description="取得開始日時（ISO8601形式）"),
-    latest: datetime | None = Query(None, description="取得終了日時（ISO8601形式、省略時は現在）"),
-    user_id: UUID = Depends(get_current_user_id),
-    repository: SlackIntegrationRepositoryImpl = Depends(get_repository),
-) -> list[SlackMessageResponse]:
-    """期間指定でSlackメッセージを取得する.
-
-    Args:
-        integration_id: 連携ID.
-        channel_id: チャンネルID.
-        oldest: 取得開始日時.
-        latest: 取得終了日時（省略時は現在）.
-        user_id: ユーザーID（DI）.
-        repository: Slack連携リポジトリ（DI）.
-
-    Returns:
-        List of SlackMessageResponse.
-    """
-    use_case = GetSlackMessagesUseCase(repository)
-
-    try:
-        messages = await use_case.execute(
-            user_id=user_id,
-            integration_id=integration_id,
-            channel_id=channel_id,
-            oldest=oldest,
-            latest=latest,
-        )
-        return [
-            SlackMessageResponse(
-                user_name=m.user_name,
-                text=m.text,
-                posted_at=m.posted_at.isoformat(),
-            )
-            for m in messages
-        ]
     except SlackApiError as e:
         if e.response.get("error") == "ratelimited":
             raise HTTPException(

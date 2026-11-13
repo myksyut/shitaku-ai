@@ -1,7 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from postgrest.exceptions import APIError
+from starlette.requests import Request
 
 from src.config import settings
+from src.domain.entities.series import SeriesError
 from src.presentation.api.v1.router import api_router
 
 
@@ -24,6 +28,15 @@ def create_app() -> FastAPI:
 
     # ルーター登録
     app.include_router(api_router, prefix=settings.API_V1_STR)
+
+    @app.exception_handler(SeriesError)
+    async def series_error_handler(request: Request, error: SeriesError) -> JSONResponse:
+        return JSONResponse({"detail": error.detail}, status_code=error.status)
+
+    @app.exception_handler(APIError)
+    async def database_error_handler(request: Request, error: APIError) -> JSONResponse:
+        code = {"P0002": 404, "42501": 403, "23503": 422, "23514": 422, "23505": 409}.get(error.code or "", 500)
+        return JSONResponse({"detail": "Database operation rejected"}, status_code=code)
 
     return app
 
