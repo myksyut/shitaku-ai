@@ -136,6 +136,8 @@ describe('mutation query scope', () => {
             slack_messages: 0,
             slack_error: null,
             calendar_error: null,
+            proposal_error: null,
+            truncated: false,
           },
         })
       }),

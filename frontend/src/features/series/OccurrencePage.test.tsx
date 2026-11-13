@@ -69,6 +69,8 @@ describe('occurrence permissions', () => {
             slack_messages: 0,
             calendar_error: 'scope_missing',
             slack_error: 'not_in_channel',
+            proposal_error: 'llm_unavailable',
+            truncated: true,
           },
         })
       }),
@@ -78,6 +80,9 @@ describe('occurrence permissions', () => {
     expect(await screen.findByText('Googleカレンダーの権限が不足しています')).toBeInTheDocument()
     expect(screen.getByText('Slackボットがチャンネルに参加していません')).toBeInTheDocument()
     expect(screen.queryByText('scope_missing')).not.toBeInTheDocument()
+    expect(screen.getByText('AIの提案を生成できませんでした（必須セクションは作成済み）')).toBeInTheDocument()
+    expect(screen.getByText('入力が長いため一部を省略して生成しました')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '議題', exact: true })).toBeInTheDocument()
     expect(screen.queryByText('not_in_channel')).not.toBeInTheDocument()
   })
 })

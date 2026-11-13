@@ -1,6 +1,6 @@
 import type { SeriesRole } from './types'
 
-const SYNC_ERROR_MESSAGES: Record<'calendar' | 'slack', Readonly<Record<string, string>>> = {
+const SYNC_ERROR_MESSAGES: Record<'calendar' | 'slack' | 'proposal', Readonly<Record<string, string>>> = {
   calendar: {
     not_connected: '作成者のGoogle連携が切れています',
     scope_missing: 'Googleカレンダーの権限が不足しています',
@@ -14,6 +14,9 @@ const SYNC_ERROR_MESSAGES: Record<'calendar' | 'slack', Readonly<Record<string, 
     not_in_channel: 'Slackボットがチャンネルに参加していません',
     rate_limited: 'Slackの利用制限に達しました',
     slack_unavailable: 'Slackを読み込めませんでした',
+  },
+  proposal: {
+    llm_unavailable: 'AIの提案を生成できませんでした（必須セクションは作成済み）',
   },
 }
 

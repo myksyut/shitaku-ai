@@ -48,7 +48,7 @@ export const series: SeriesDetail = {
   occurrences: [occurrence.occurrence],
   settings: { description: null, minutes_count: 3, slack_message_days: 7 },
   slack: null,
-  calendar: { synced_at: '2026-01-01T00:00:00Z', error: null, google_connected: true },
+  calendar: { integration_id: 'google-1', synced_at: '2026-01-01T00:00:00Z', error: null, google_connected: true },
 }
 export const actionItem: MemoryItem = {
   id: 'action-1',
@@ -69,7 +69,17 @@ export const server = setupServer(
   http.get(`${API}/series/series-1/memory`, () => HttpResponse.json({ items: [actionItem] })),
   http.get(`${API}/series/series-1/dictionary`, () => HttpResponse.json([])),
   http.get(`${API}/series/series-1/occurrences/occurrence-1`, () => HttpResponse.json(occurrence)),
-  http.get(`${API}/google/integrations`, () => HttpResponse.json([])),
+  http.get(`${API}/google/integrations`, () =>
+    HttpResponse.json([
+      {
+        id: 'google-1',
+        email: 'creator@example.com',
+        granted_scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+        created_at: '',
+        updated_at: null,
+      },
+    ]),
+  ),
   http.get(`${API}/slack/integrations`, () => HttpResponse.json([])),
 )
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))

@@ -56,6 +56,10 @@ function OccurrenceWorkspace({ series, detail }: { series: SeriesDetail; detail:
             {sources.calendar_error && (
               <ErrorNotice>{calendarSyncErrorMessage(sources.calendar_error, series.role)}</ErrorNotice>
             )}
+            {sources.proposal_error && (
+              <ErrorNotice>{syncErrorMessage('proposal', sources.proposal_error)}</ErrorNotice>
+            )}
+            {sources.truncated && <ErrorNotice>入力が長いため一部を省略して生成しました</ErrorNotice>}
           </div>
         )}
         {detail.agenda ? (
