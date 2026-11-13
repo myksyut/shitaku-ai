@@ -23,7 +23,7 @@ def parse_email(value: object) -> str | None:
 
 @dataclass(frozen=True, slots=True)
 class MemberAccess:
-    """Proof that the caller is a series member."""
+    """Caller and series membership context."""
 
     series_id: UUID
     user_id: UUID
@@ -31,7 +31,7 @@ class MemberAccess:
 
 @dataclass(frozen=True, slots=True)
 class CreatorAccess(MemberAccess):
-    """Proof that the caller created the series."""
+    """Caller and series creator context."""
 
 
 @dataclass(frozen=True, slots=True)

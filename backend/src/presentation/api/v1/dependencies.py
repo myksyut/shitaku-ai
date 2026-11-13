@@ -119,8 +119,8 @@ def member_access(
     role = repository.role_of_caller(series_id)
     if role is None:
         raise HTTPException(404, "Series not found")
-    proof = CreatorAccess if role == "creator" else MemberAccess
-    return proof(series_id, user_id)
+    access_type = CreatorAccess if role == "creator" else MemberAccess
+    return access_type(series_id, user_id)
 
 
 def creator_access(access: MemberAccess = Depends(member_access)) -> CreatorAccess:

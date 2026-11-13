@@ -23,7 +23,7 @@ class KnowledgeRepository(ABC):
 
     @abstractmethod
     def add(self, access: CreatorAccess, occurrence_id: UUID, draft: KnowledgeDraft) -> Knowledge:
-        """Persist selected content under the creator's proof."""
+        """Persist selected content in the creator's series."""
 
     @abstractmethod
     def delete(self, access: CreatorAccess, knowledge_id: UUID) -> None:

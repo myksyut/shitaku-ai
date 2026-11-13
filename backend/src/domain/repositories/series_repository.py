@@ -18,7 +18,7 @@ class SeriesRepository(ABC):
 
     @abstractmethod
     def role_of_caller(self, series_id: UUID) -> SeriesRole | None:
-        """Read the database membership proof for one series."""
+        """Read the caller's membership role for one series."""
 
     @abstractmethod
     def list_summaries(self, user_id: UUID) -> list[SeriesSummary]:
