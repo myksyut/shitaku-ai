@@ -9,6 +9,7 @@ from src.domain.entities.knowledge import Knowledge
 from src.domain.entities.series import CreatorAccess, Occurrence, SlackChannelRef
 from src.domain.entities.team_memory import ActionItem
 from src.infrastructure.external.slack_client import SlackMessageData
+from src.infrastructure.services.agenda_generation_service import AgendaProposal
 from tests.application.use_cases.test_series_use_cases import make_series
 
 
@@ -50,7 +51,7 @@ async def test_agenda_uses_bound_channels_newest_100_and_keeps_required_content(
     slack.get_messages.return_value = messages
     credentials.slack_for_series.return_value = slack
     mirror.refresh.return_value = None
-    writer.propose.return_value = None
+    writer.propose.return_value = AgendaProposal(None, False)
 
     async def save(access: CreatorAccess, oid: UUID, text: str) -> Agenda:
         return Agenda(oid, sid, text, now, now)
@@ -62,6 +63,7 @@ async def test_agenda_uses_bound_channels_newest_100_and_keeps_required_content(
     assert "Do not omit this topic" in result.agenda.content
     assert "Do not omit this action" in result.agenda.content
     assert "1回持ち越し" in result.agenda.content
+    assert result.sources.proposal_error == "llm_unavailable" and result.sources.truncated is False
     assert result.sources.slack_messages == 100
     assert result.sources.topics == 1 and result.sources.carried_action_items == 1
     assert [call.args[0] for call in slack.get_messages.call_args_list] == ["chosen-1", "chosen-2"]
@@ -102,7 +104,7 @@ async def test_minutes_count_selects_documents_even_from_older_occurrences() -> 
     content.save_generated.return_value = Agenda(target.id, sid, "", now, now)
     knowledge.for_occurrences.side_effect = lambda series_id, ids: [k for k in notes if k.occurrence_id in ids]
     mirror.refresh.return_value = None
-    writer.propose.return_value = None
+    writer.propose.return_value = AgendaProposal(None, False)
     result = await GenerateAgenda(series, content, memory, knowledge, dictionary, credentials, mirror, writer).execute(
         CreatorAccess(sid, owner), target.id
     )
@@ -112,3 +114,37 @@ async def test_minutes_count_selects_documents_even_from_older_occurrences() -> 
         "Older document",
     ]
     assert result.sources.knowledge == 2
+
+
+async def test_agenda_generation_survives_calendar_mirror_database_errors() -> None:
+    from postgrest.exceptions import APIError
+
+    from src.domain.entities.series import CalendarSnapshot
+    from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
+    from src.infrastructure.external.series_credentials import GoogleApis
+
+    sid, owner, now = uuid4(), uuid4(), datetime.now(UTC)
+    target = Occurrence(uuid4(), sid, now, now, False, None, 0, None, 0, False)
+    series, content, memory, knowledge, dictionary, credentials, writer = (AsyncMock() for _ in range(7))
+    series.get.return_value = make_series(sid, owner)
+    series.occurrences.return_value = [target]
+    content.topics.return_value = []
+    content.save_generated.return_value = Agenda(target.id, sid, "Saved", now, now)
+    memory.list_items.return_value = []
+    knowledge.for_occurrences.return_value = []
+    dictionary.list_entries.return_value = []
+    writer.propose.return_value = AgendaProposal(None, False)
+    calendar = AsyncMock()
+    calendar.snapshot.return_value = CalendarSnapshot(
+        "uid", "event", "Weekly", None, (), False, (), now - timedelta(days=35), now + timedelta(days=35)
+    )
+    credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
+    service, started, failed = MagicMock(), MagicMock(), MagicMock()
+    started.execute.return_value.data = True
+    failed.execute.side_effect = APIError({"code": "XX000", "message": "Mirror unavailable", "details": "", "hint": ""})
+    service.rpc.side_effect = [started, failed]
+    result = await GenerateAgenda(
+        series, content, memory, knowledge, dictionary, credentials, SeriesCalendarMirror(service, credentials), writer
+    ).execute(CreatorAccess(sid, owner), target.id)
+    assert result.agenda.content == "Saved" and result.sources.calendar_error == "calendar_unavailable"
+    content.save_generated.assert_awaited_once()

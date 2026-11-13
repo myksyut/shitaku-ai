@@ -110,6 +110,7 @@ class Series:
     slack_channels: tuple[SlackChannelRef, ...]
     calendar_synced_at: datetime
     calendar_sync_error: CalendarErrorCode | None
+    calendar_refresh_attempted_at: datetime | None = None
 
     @property
     def slack(self) -> SlackSource | None:

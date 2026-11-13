@@ -102,9 +102,18 @@ class GoogleCalendarClient:
     async def list_recurring_masters(self) -> list[CalendarSnapshot]:
         """Offer live recurring masters from the selected primary calendar."""
         now = datetime.now(UTC)
-        events = await self._pages("calendars/primary/events", {"singleEvents": "false", "maxResults": "2500"})
+        window_end = now + timedelta(days=365)
+        events = await self._pages(
+            "calendars/primary/events",
+            {
+                "singleEvents": "false",
+                "maxResults": "2500",
+                "timeMin": now.isoformat(),
+                "timeMax": window_end.isoformat(),
+            },
+        )
         return [
-            parse_snapshot(e, [], now - timedelta(days=35), now + timedelta(days=35))
+            parse_snapshot(e, [], now, window_end)
             for e in events
             if e.recurrence and e.ical_uid and e.status != "cancelled"
         ]

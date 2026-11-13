@@ -1186,3 +1186,61 @@ def test_topic_author_uses_calendar_name_then_verified_email_and_blocks_forgery(
         .data
     )
     assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == "メンバー"
+
+
+async def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_client: Client) -> None:
+    from unittest.mock import AsyncMock
+    from uuid import UUID
+
+    from src.domain.entities.series import SeriesError
+    from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
+    from src.infrastructure.external.series_credentials import CredentialUnavailableError, SeriesCredentials
+    from src.infrastructure.repositories.series_repository_impl import SeriesRepositoryImpl
+
+    old = datetime.now(UTC) - timedelta(minutes=3)
+    service_client.table("series").update({"calendar_refresh_attempted_at": old.isoformat()}).eq(
+        "id", world.sid
+    ).execute()
+    repository = SeriesRepositoryImpl(world.users["A"].client)
+    before = await repository.get(UUID(world.sid))
+    credentials = AsyncMock(spec=SeriesCredentials)
+    credentials.google_for_series.side_effect = CredentialUnavailableError("not_connected")
+    mirror = SeriesCalendarMirror(service_client, credentials)
+    with pytest.raises(SeriesError) as error:
+        await mirror.refresh_for_join(world.sid)
+    assert error.value.status == 409
+    await mirror.refresh_for_join(world.sid)
+    credentials.google_for_series.assert_awaited_once()
+    after = await repository.get(UUID(world.sid))
+    assert before is not None and after is not None
+    assert after.calendar_synced_at == before.calendar_synced_at
+    assert after.calendar_refresh_attempted_at is not None and after.calendar_refresh_attempted_at > old
+
+
+async def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World, service_client: Client) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from pydantic import TypeAdapter
+
+    from src.domain.entities.series import CalendarSnapshot
+    from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
+    from src.infrastructure.external.series_credentials import GoogleApis, SeriesCredentials
+
+    service_client.table("series").update(
+        {"calendar_refresh_attempted_at": (datetime.now(UTC) - timedelta(minutes=3)).isoformat()}
+    ).eq("id", world.sid).execute()
+    snapshot = TypeAdapter(CalendarSnapshot).validate_python(
+        {
+            **world.snapshot,
+            "ical_uid": world.sid,
+            "event_id": "event",
+            "attendees_omitted": True,
+        }
+    )
+    credentials, calendar = AsyncMock(spec=SeriesCredentials), AsyncMock()
+    calendar.snapshot.return_value = snapshot
+    credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
+    await SeriesCalendarMirror(service_client, credentials).refresh_for_join(world.sid)
+    assert world.users["B"].client.table("series").select("calendar_sync_error").eq("id", world.sid).execute().data == [
+        {"calendar_sync_error": "attendees_omitted"}
+    ]

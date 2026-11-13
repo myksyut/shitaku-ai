@@ -80,3 +80,14 @@ async def test_cancelled_master_without_recurrence_is_missing() -> None:
     )
     with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=response)):
         assert await GoogleCalendarClient("token").snapshot("gone", datetime.now(UTC)) is None
+
+
+async def test_calendar_picker_bounds_the_recurring_master_query() -> None:
+    before = datetime.now(UTC)
+    response = httpx.Response(200, json={"items": []}, request=httpx.Request("GET", "https://calendar.test"))
+    with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=response)) as get:
+        assert await GoogleCalendarClient("token").list_recurring_masters() == []
+    parameters = get.call_args.kwargs["params"]
+    lower, upper = datetime.fromisoformat(parameters["timeMin"]), datetime.fromisoformat(parameters["timeMax"])
+    assert before <= lower <= datetime.now(UTC)
+    assert (upper - lower).days == 365

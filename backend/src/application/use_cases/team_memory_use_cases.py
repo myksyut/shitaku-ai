@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from src.domain.entities.series import CreatorAccess, MemberAccess, SeriesError
-from src.domain.entities.team_memory import ActionItem, MemoryItem, NewActionItem, NewMemory, Resolution
+from src.domain.entities.team_memory import ActionItem, Decision, MemoryItem, NewActionItem, NewMemory, Resolution
 from src.domain.repositories.dictionary_repository import DictionaryRepository
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
 from src.domain.repositories.series_repository import SeriesRepository
@@ -120,7 +120,11 @@ class ExtractOccurrenceMemory:
             and i.origin_start_at <= occurrence.start_at
             and not (i.origin_occurrence_id == occurrence_id and i.extracted and i.human_updated_at is None)
         ]
-        references = {f"{i.kind[0].upper()}{n}": i for n, i in enumerate(eligible, 1)}
+        open_work = [i for i in eligible if not isinstance(i, Decision)]
+        decisions = sorted(
+            (i for i in reversed(eligible) if isinstance(i, Decision)), key=lambda i: i.origin_start_at, reverse=True
+        )[:20]
+        references = {f"{i.kind[0].upper()}{n}": i for n, i in enumerate([*open_work, *decisions], 1)}
         context = ExtractionContext(
             occurrence_id,
             series.title,

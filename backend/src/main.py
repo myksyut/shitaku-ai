@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -7,6 +9,8 @@ from starlette.requests import Request
 from src.config import settings
 from src.domain.entities.series import SeriesError
 from src.presentation.api.v1.router import api_router
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -35,6 +39,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(APIError)
     async def database_error_handler(request: Request, error: APIError) -> JSONResponse:
+        logger.warning("Database API error: code=%s message=%s details=%s", error.code, error.message, error.details)
         code = {"P0002": 404, "42501": 403, "23503": 422, "23514": 422, "23505": 409}.get(error.code or "", 500)
         return JSONResponse({"detail": "Database operation rejected"}, status_code=code)
 

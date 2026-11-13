@@ -33,6 +33,7 @@ def make_series(sid: UUID, owner: UUID, synced: datetime | None = None) -> Serie
         (),
         synced or datetime.now(UTC),
         None,
+        calendar_refresh_attempted_at=synced,
     )
 
 
@@ -100,6 +101,7 @@ async def test_claim_rejects_unverified_participant_without_writing() -> None:
 async def test_join_refresh_is_throttled_and_uses_creator_calendar(fresh: bool) -> None:
     series = make_series(uuid4(), uuid4(), datetime.now(UTC) - timedelta(seconds=30 if fresh else 180))
     client = MagicMock()
+    client.rpc.return_value.execute.return_value.data = True
     client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
         TypeAdapter(Series).dump_python(series, mode="json")
     ]

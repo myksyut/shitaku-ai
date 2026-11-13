@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
 from slack_sdk.errors import SlackApiError, SlackClientError
@@ -46,6 +47,8 @@ class AgendaSources:
     slack_messages: int
     slack_error: SlackErrorCode | None
     calendar_error: CalendarErrorCode | None
+    truncated: bool
+    proposal_error: Literal["llm_unavailable"] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,11 +146,19 @@ class GenerateAgenda:
         )
         proposal = await self.writer.propose(context)
         agenda = await self.content.save_generated(
-            access, occurrence_id, render_agenda(topics, actions, issues, proposal)
+            access, occurrence_id, render_agenda(topics, actions, issues, proposal.content)
         )
         return GeneratedAgenda(
             agenda,
             AgendaSources(
-                len(topics), len(actions), len(issues), len(knowledge), len(slack), slack_error, calendar_error
+                len(topics),
+                len(actions),
+                len(issues),
+                len(knowledge),
+                len(slack),
+                slack_error,
+                calendar_error,
+                proposal.truncated,
+                "llm_unavailable" if proposal.content is None else None,
             ),
         )

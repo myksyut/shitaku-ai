@@ -1,7 +1,9 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
+from postgrest.exceptions import APIError
 from pydantic import TypeAdapter
 from supabase import Client
 
@@ -17,6 +19,8 @@ _HTTP_ERROR_CODES: dict[int, CalendarErrorCode] = {
     404: "event_not_found",
     410: "event_not_found",
 }
+
+logger = logging.getLogger(__name__)
 
 
 class SeriesCalendarMirror:
@@ -67,10 +71,24 @@ class SeriesCalendarMirror:
             },
         ).execute()
 
-    async def refresh(self, series: Series) -> CalendarErrorCode | None:
+    async def refresh(self, series: Series, *, throttle: bool = False) -> CalendarErrorCode | None:
         """Refresh the creator's calendar without deleting retained content on failure."""
         fetched_at = datetime.now(UTC)
         try:
+            started = (
+                self._client.rpc(
+                    "begin_calendar_refresh",
+                    {
+                        "p_series_id": str(series.id),
+                        "p_attempted_at": fetched_at.isoformat(),
+                        "p_throttle": throttle,
+                    },
+                )
+                .execute()
+                .data
+            )
+            if not TypeAdapter(bool).validate_python(started):
+                return series.calendar_sync_error
             apis = await self._credentials.google_for_series(series, "calendar")
             snapshot = await apis.calendar.snapshot(series.creator_event_id, fetched_at)
             if snapshot is None or snapshot.ical_uid != series.ical_uid:
@@ -89,9 +107,12 @@ class SeriesCalendarMirror:
             error_code = error.code
         except httpx.HTTPStatusError as error:
             error_code = _HTTP_ERROR_CODES.get(error.response.status_code, "calendar_unavailable")
-        except (SeriesError, ValueError, httpx.HTTPError):
+        except (SeriesError, ValueError, httpx.HTTPError, APIError):
             error_code = "calendar_unavailable"
-        self._client.table("series").update({"calendar_sync_error": error_code}).eq("id", str(series.id)).execute()
+        try:
+            self._client.table("series").update({"calendar_sync_error": error_code}).eq("id", str(series.id)).execute()
+        except APIError as error:
+            logger.warning("Calendar error persistence failed: code=%s message=%s", error.code, error.message)
         return error_code
 
     async def refresh_for_join(self, ical_uid: str) -> None:
@@ -101,7 +122,10 @@ class SeriesCalendarMirror:
         if not series_list:
             return
         series = series_list[0]
-        if datetime.now(UTC) - series.calendar_synced_at < timedelta(minutes=2):
+        if series.calendar_refresh_attempted_at is not None and datetime.now(
+            UTC
+        ) - series.calendar_refresh_attempted_at < timedelta(minutes=2):
             return
-        if await self.refresh(series):
+        error = await self.refresh(series, throttle=True)
+        if error not in (None, "attendees_omitted"):
             raise SeriesError(409, "calendar_unavailable")

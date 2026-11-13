@@ -77,39 +77,6 @@ class GoogleDriveClient:
         # フォルダ内のGoogle Docsを検索
         return await self._list_docs_in_folder(folder_id, max_results, created_after, created_before)
 
-    async def get_file_by_id(self, file_id: str) -> DriveFile | None:
-        """ファイルIDでファイル情報を取得する.
-
-        Args:
-            file_id: Google DriveのファイルID。
-
-        Returns:
-            DriveFileオブジェクト。見つからない場合はNone。
-
-        Raises:
-            ValueError: API呼び出しが失敗した場合。
-        """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{DRIVE_API_BASE}/files/{file_id}",
-                headers={"Authorization": f"Bearer {self._access_token}"},
-                params={
-                    "fields": "id,name,mimeType,createdTime,modifiedTime,webViewLink",
-                },
-            )
-
-            if response.status_code == 404:
-                return None
-
-            if response.status_code != 200:
-                error_data = response.json()
-                error_msg = error_data.get("error", {}).get("message", "Unknown error")
-                logger.error("Failed to get file: %s", error_msg)
-                raise ValueError(f"Google Drive API error: {error_msg}")
-
-            data = response.json()
-            return self._to_drive_file(data)
-
     async def _find_folder_by_name(self, folder_name: str) -> str | None:
         """フォルダ名でフォルダIDを検索する.
 
