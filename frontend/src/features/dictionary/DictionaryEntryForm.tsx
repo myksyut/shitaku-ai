@@ -1,26 +1,22 @@
-/**
- * AgentDictionaryForm component for creating/editing dictionary entries
- * Modal form with canonical_name, category, aliases, and description fields
- */
 import type { KeyboardEvent } from 'react'
 import { useState } from 'react'
 import { Button, Modal } from '../../components/ui'
-import { useCreateAgentDictionaryEntry, useUpdateAgentDictionaryEntry } from './hooks'
+import { useCreateDictionaryEntry, useUpdateDictionaryEntry } from './hooks'
 import { CATEGORY_LABELS, DICTIONARY_CATEGORIES, type DictionaryCategory, type DictionaryEntry } from './types'
 
-interface AgentDictionaryFormProps {
-  agentId: string
+interface DictionaryEntryFormProps {
+  seriesId: string
   entry: DictionaryEntry | null
   onClose: () => void
 }
 
-export function AgentDictionaryForm({ agentId, entry, onClose }: AgentDictionaryFormProps) {
+export function DictionaryEntryForm({ seriesId, entry, onClose }: DictionaryEntryFormProps) {
   const isEditing = entry !== null
-  const createEntry = useCreateAgentDictionaryEntry(agentId)
-  const updateEntry = useUpdateAgentDictionaryEntry(agentId)
+  const createEntry = useCreateDictionaryEntry(seriesId)
+  const updateEntry = useUpdateDictionaryEntry(seriesId)
 
   const [canonicalName, setCanonicalName] = useState(entry?.canonical_name ?? '')
-  const [category, setCategory] = useState<DictionaryCategory>(entry?.category ?? 'term')
+  const [category, setCategory] = useState<DictionaryCategory | null>(entry ? entry.category : 'term')
   const [aliases, setAliases] = useState<string[]>(entry?.aliases ?? [])
   const [aliasInput, setAliasInput] = useState('')
   const [description, setDescription] = useState(entry?.description ?? '')
@@ -124,11 +120,12 @@ export function AgentDictionaryForm({ agentId, entry, onClose }: AgentDictionary
           </label>
           <select
             id="category"
-            value={category}
-            onChange={(e) => setCategory(e.target.value as DictionaryCategory)}
+            value={category ?? ''}
+            onChange={(e) => setCategory(DICTIONARY_CATEGORIES.find((value) => value === e.target.value) ?? null)}
             className="input"
             aria-required="true"
           >
+            <option value="">未分類</option>
             {DICTIONARY_CATEGORIES.map((cat) => (
               <option key={cat} value={cat}>
                 {CATEGORY_LABELS[cat]}
@@ -232,7 +229,7 @@ export function AgentDictionaryForm({ agentId, entry, onClose }: AgentDictionary
             gap: 'var(--space-3)',
           }}
         >
-          <Button variant="ghost" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={isPending}>
             キャンセル
           </Button>
           <Button variant="primary" type="submit" isLoading={isPending}>
