@@ -61,7 +61,7 @@ class OccurrenceUseCases:
 
     def occurrence(self, access: MemberAccess, occurrence_id: UUID) -> Occurrence:
         """Resolve IDs only through the checked series aggregate."""
-        occurrence = next((o for o in self.series.occurrences(access.series_id) if o.id == occurrence_id), None)
+        occurrence = self.series.get_occurrence(access.series_id, occurrence_id)
         if occurrence is None:
             raise SeriesError(404, "Occurrence not found")
         return occurrence

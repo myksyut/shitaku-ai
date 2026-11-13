@@ -43,7 +43,7 @@ def test_topics_reject_cancelled_or_started_occurrences(cancelled: bool, days: i
     use_cases, series, content, _, _ = make_use_cases()
     sid = uuid4()
     target = occurrence(sid, cancelled=cancelled, days=days)
-    series.occurrences.return_value = [target]
+    series.get_occurrence.return_value = target
     with pytest.raises(SeriesError) as error:
         use_cases.submit_topic(MemberAccess(sid, uuid4()), target.id, "Topic", None)
     assert error.value.status == 422
@@ -54,7 +54,7 @@ def test_drive_candidates_are_live_creator_scoped_and_windowed() -> None:
     use_cases, series, _, knowledge, credentials = make_use_cases()
     sid, owner = uuid4(), uuid4()
     target = occurrence(sid)
-    series.occurrences.return_value = [target]
+    series.get_occurrence.return_value = target
     series.get.return_value = make_series(sid, owner)
     lower, upper = target.start_at - timedelta(hours=1), target.start_at + timedelta(hours=24)
     files = [

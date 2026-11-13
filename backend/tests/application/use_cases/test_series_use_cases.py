@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from pydantic import TypeAdapter
 
 from src.application.use_cases.series_use_cases import CalendarUseCases
-from src.domain.entities.series import Attendee, CalendarSnapshot, CreatorAccess, Series, SeriesError
+from src.domain.entities.series import Attendee, CalendarClaim, CalendarSnapshot, CreatorAccess, Series, SeriesError
 from src.domain.repositories.series_repository import SeriesRepository
 from src.infrastructure.external.google_calendar_client import GoogleCalendarClient
 from src.infrastructure.external.google_docs_client import GoogleDocsClient
@@ -41,9 +41,9 @@ def make_series(sid: UUID, owner: UUID, synced: datetime | None = None) -> Serie
 def test_claim_outcomes_recheck_the_callers_visibility(outcome: str) -> None:
     sid, uid = uuid4(), uuid4()
     repository = MagicMock(spec=SeriesRepository)
-    repository.get.return_value = make_series(sid, uid)
-    repository.roles.side_effect = (
-        [{sid: "member"}] if outcome == "already_member" else [{}, {sid: "member"} if outcome == "joined" else {}]
+    visible = make_series(sid, uid)
+    repository.get.side_effect = (
+        [visible] if outcome == "already_member" else [None, visible if outcome == "joined" else None]
     )
     calendar = MagicMock(spec=GoogleCalendarClient)
     calendar.snapshot.return_value = CalendarSnapshot(
@@ -62,7 +62,7 @@ def test_claim_outcomes_recheck_the_callers_visibility(outcome: str) -> None:
         calendar, MagicMock(spec=GoogleDriveClient), MagicMock(spec=GoogleDocsClient)
     )
     mirror = MagicMock(spec=SeriesCalendarMirror)
-    mirror.claim.return_value = sid if outcome == "created" else None
+    mirror.claim.return_value = CalendarClaim(sid, outcome == "created")
     use_case = CalendarUseCases(repository, credentials, mirror)
     if outcome == "forbidden":
         with pytest.raises(SeriesError) as error:
@@ -71,6 +71,8 @@ def test_claim_outcomes_recheck_the_callers_visibility(outcome: str) -> None:
     else:
         assert use_case.claim(uid, uuid4(), "event", frozenset({"member@example.com"})) == (outcome, sid)
     assert mirror.refresh_for_join.call_count == (1 if outcome in ("joined", "forbidden") else 0)
+    assert repository.get.call_count == (0 if outcome == "created" else 1 if outcome == "already_member" else 2)
+    assert all(call.args == (sid,) for call in repository.get.call_args_list)
 
 
 def test_claim_rejects_unverified_participant_without_writing() -> None:
@@ -128,14 +130,14 @@ def test_join_refresh_is_throttled_and_uses_creator_calendar(fresh: bool) -> Non
 def test_access_dependency_hides_outsiders_and_distinguishes_members() -> None:
     repository = MagicMock()
     sid, uid = uuid4(), uuid4()
-    repository.roles.return_value = {}
+    repository.role_of_caller.return_value = None
     with pytest.raises(HTTPException) as missing:
         member_access(sid, uid, repository)
     assert missing.value.status_code == 404
-    repository.roles.return_value = {sid: "member"}
+    repository.role_of_caller.return_value = "member"
     access = member_access(sid, uid, repository)
     with pytest.raises(HTTPException) as forbidden:
         creator_access(access)
     assert forbidden.value.status_code == 403
-    repository.roles.return_value = {sid: "creator"}
+    repository.role_of_caller.return_value = "creator"
     assert isinstance(member_access(sid, uid, repository), CreatorAccess)

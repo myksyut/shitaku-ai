@@ -32,9 +32,10 @@ calendar_router = APIRouter(prefix="/calendar", tags=["calendar"])
 @router.get("")
 def list_series(
     repository: SeriesRepositoryImpl = Depends(get_series_repository),
+    user_id: UUID = Depends(get_current_user_id),
 ) -> dict[str, list[SeriesSummary]]:
     """List the caller's shared series."""
-    return {"series": SeriesUseCases(repository).list_for_caller()}
+    return {"series": SeriesUseCases(repository).list_for_caller(user_id)}
 
 
 @calendar_router.get("/recurring-events")

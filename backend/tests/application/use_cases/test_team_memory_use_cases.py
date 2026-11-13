@@ -46,6 +46,7 @@ def test_current_untouched_extraction_is_not_prompted_as_existing_references() -
     memory, series, knowledge, dictionary, extractor = (MagicMock() for _ in range(5))
     series.get.return_value = make_series(sid, owner)
     series.occurrences.return_value = [Occurrence(oid, sid, start, start, False, None, 1, now, 0, False)]
+    series.get_occurrence.return_value = series.occurrences.return_value[0]
     series.attendees.return_value = ()
     knowledge.for_occurrences.return_value = [Knowledge(uuid4(), sid, oid, "upload", None, None, "Notes", "Notes", now)]
     dictionary.list_entries.return_value = []
@@ -61,3 +62,5 @@ def test_current_untouched_extraction_is_not_prompted_as_existing_references() -
         *(item.id for item in prior_decisions[:20]),
     }
     assert {item.id for item in context.already_recorded} == {human.id, manual.id}
+    series.get_occurrence.assert_called_once_with(sid, oid)
+    series.occurrences.assert_called_once_with(sid)

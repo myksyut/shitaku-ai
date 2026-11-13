@@ -49,28 +49,9 @@ class SeriesUseCases:
             ),
         )
 
-    def list_for_caller(self) -> list[SeriesSummary]:
-        """List only series proven visible by the database."""
-        result: list[SeriesSummary] = []
-        for sid, role in (self.repository.roles()).items():
-            series = self.repository.get(sid)
-            if series is None:
-                continue
-            next_occurrence = next(
-                (o for o in self.repository.occurrences(sid) if not o.is_cancelled and o.start_at > datetime.now(UTC)),
-                None,
-            )
-            result.append(
-                SeriesSummary(
-                    sid,
-                    series.title,
-                    role,
-                    OccurrenceSummary.of(next_occurrence) if next_occurrence else None,
-                    self.repository.open_action_count(sid),
-                    series.calendar_sync_error,
-                )
-            )
-        return result
+    def list_for_caller(self, user_id: UUID) -> list[SeriesSummary]:
+        """Read RLS-scoped summaries without per-series queries."""
+        return self.repository.list_summaries(user_id)
 
     def settings(
         self,
@@ -110,11 +91,7 @@ class CalendarUseCases:
     def choices(self, user_id: UUID, integration_id: UUID) -> list[CalendarEventChoice]:
         """Show existing series identifiers only when the caller can read them."""
         apis = self.credentials.google_for_user(user_id, integration_id, "calendar")
-        visible: dict[str, UUID] = {}
-        for sid in self.repository.roles():
-            series = self.repository.get(sid)
-            if series:
-                visible[series.ical_uid] = sid
+        visible = self.repository.visible_calendar_series()
         return [
             CalendarEventChoice(s.event_id, s.title, s.rrule, len(s.attendees), visible.get(s.ical_uid))
             for s in apis.calendar.list_recurring_masters()
@@ -134,21 +111,12 @@ class CalendarUseCases:
             raise SeriesError(404, "Calendar event not found")
         if not snapshot.rrule or not verified_emails.intersection(a.email for a in snapshot.attendees):
             raise SeriesError(422, "You are not a verified participant of this recurring event")
-        created_id = self.mirror.claim(snapshot, user_id, integration_id, fetched_at)
-        if created_id is not None:
-            return "created", created_id
-        visible = self._visible(snapshot.ical_uid)
-        if visible is not None:
-            return "already_member", visible
+        claim = self.mirror.claim(snapshot, user_id, integration_id, fetched_at)
+        if claim.created:
+            return "created", claim.series_id
+        if self.repository.get(claim.series_id) is not None:
+            return "already_member", claim.series_id
         self.mirror.refresh_for_join(snapshot.ical_uid)
-        visible = self._visible(snapshot.ical_uid)
-        if visible is None:
+        if self.repository.get(claim.series_id) is None:
             raise SeriesError(403, "You are not on the creator's calendar invite")
-        return "joined", visible
-
-    def _visible(self, ical_uid: str) -> UUID | None:
-        for sid in self.repository.roles():
-            series = self.repository.get(sid)
-            if series and series.ical_uid == ical_uid:
-                return sid
-        return None
+        return "joined", claim.series_id

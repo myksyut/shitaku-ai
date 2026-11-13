@@ -151,8 +151,8 @@ def test_table_crud_matrix(world: World, tag: str) -> None:
     client = world.users[tag].client
     roles = client.rpc("my_series_roles").execute().data
     assert roles == ([{"series_id": world.sid, "role": "creator" if tag == "A" else "member"}] if tag in "AB" else [])
-    for table in ("series", "series_attendees", "occurrences", *world.rows, "occurrence_overview"):
-        key = "id" if table == "series" else "series_id"
+    for table in ("series", "series_attendees", "occurrences", *world.rows, "occurrence_overview", "series_summary"):
+        key = "id" if table in ("series", "series_summary") else "series_id"
         result = client.table(table).select("*").eq(key, world.sid).execute()
         assert bool(result.data) == (tag in "AB"), (tag, table)
     for table in ("series_attendees", "occurrences"):
@@ -1242,3 +1242,27 @@ def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World, servi
     assert world.users["B"].client.table("series").select("calendar_sync_error").eq("id", world.sid).execute().data == [
         {"calendar_sync_error": "attendees_omitted"}
     ]
+
+
+def test_batched_series_read_models_keep_rls_roles_and_counts(world: World) -> None:
+    from uuid import UUID
+
+    from src.infrastructure.repositories.series_repository_impl import SeriesRepositoryImpl
+
+    sid = UUID(world.sid)
+    for tag, user in world.users.items():
+        repository = SeriesRepositoryImpl(user.client)
+        summaries = repository.list_summaries(user.id)
+        if tag not in ("A", "B"):
+            assert summaries == []
+            assert repository.visible_calendar_series() == {}
+            assert repository.get_occurrence(sid, UUID(world.oid)) is None
+            continue
+        assert len(summaries) == 1 and summaries[0].id == sid
+        assert summaries[0].role == ("creator" if tag == "A" else "member")
+        assert summaries[0].open_action_items == 1
+        assert summaries[0].next_occurrence is not None and summaries[0].next_occurrence.id == UUID(world.oid)
+        assert summaries[0].next_occurrence.has_agenda and summaries[0].next_occurrence.topic_count == 1
+        assert repository.visible_calendar_series() == {world.sid: sid}
+        assert repository.get_occurrence(sid, UUID(world.oid)) is not None
+        assert repository.get_occurrence(sid, uuid4()) is None

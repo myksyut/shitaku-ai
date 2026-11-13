@@ -37,7 +37,7 @@ class TeamMemoryUseCases:
         return with_carry_over(self.memory.list_items(access.series_id), occurrences, target, now)
 
     def _validate_draft(self, access: CreatorAccess, draft: NewMemory) -> None:
-        if not any(o.id == draft.origin_occurrence_id for o in self.series.occurrences(access.series_id)):
+        if self.series.get_occurrence(access.series_id, draft.origin_occurrence_id) is None:
             raise SeriesError(404, "Occurrence not found")
         if (
             isinstance(draft, NewActionItem)
@@ -101,7 +101,7 @@ class ExtractOccurrenceMemory:
     def execute(self, access: CreatorAccess, occurrence_id: UUID) -> ExtractionResult:
         """Timestamp the input before reading so concurrent minutes remain unextracted."""
         input_at = datetime.now(UTC)
-        occurrence = next((o for o in self.series.occurrences(access.series_id) if o.id == occurrence_id), None)
+        occurrence = self.series.get_occurrence(access.series_id, occurrence_id)
         if occurrence is None:
             raise SeriesError(404, "Occurrence not found")
         if occurrence.start_at > input_at:

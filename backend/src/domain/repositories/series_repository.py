@@ -8,6 +8,7 @@ from src.domain.entities.series import (
     Series,
     SeriesRole,
     SeriesSettings,
+    SeriesSummary,
     SlackSource,
 )
 
@@ -16,8 +17,16 @@ class SeriesRepository(ABC):
     """Caller-scoped series persistence."""
 
     @abstractmethod
-    def roles(self) -> dict[UUID, SeriesRole]:
-        """Read the database's single membership definition."""
+    def role_of_caller(self, series_id: UUID) -> SeriesRole | None:
+        """Read the database membership proof for one series."""
+
+    @abstractmethod
+    def list_summaries(self, user_id: UUID) -> list[SeriesSummary]:
+        """Read visible summaries with next occurrences and action counts in one query."""
+
+    @abstractmethod
+    def visible_calendar_series(self) -> dict[str, UUID]:
+        """Read visible iCalUID mappings in one RLS-scoped query."""
 
     @abstractmethod
     def get(self, series_id: UUID) -> Series | None:
@@ -32,8 +41,8 @@ class SeriesRepository(ABC):
         """Read occurrence counts in start order."""
 
     @abstractmethod
-    def open_action_count(self, series_id: UUID) -> int:
-        """Count unresolved actions."""
+    def get_occurrence(self, series_id: UUID, occurrence_id: UUID) -> Occurrence | None:
+        """Read one occurrence inside the access proof's aggregate."""
 
     @abstractmethod
     def save_settings(

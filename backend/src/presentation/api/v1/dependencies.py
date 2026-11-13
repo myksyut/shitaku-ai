@@ -116,7 +116,7 @@ def member_access(
     repository: SeriesRepositoryImpl = Depends(get_series_repository),
 ) -> MemberAccess:
     """Use the same membership function as database RLS."""
-    role = (repository.roles()).get(series_id)
+    role = repository.role_of_caller(series_id)
     if role is None:
         raise HTTPException(404, "Series not found")
     proof = CreatorAccess if role == "creator" else MemberAccess

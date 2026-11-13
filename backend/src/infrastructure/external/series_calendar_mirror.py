@@ -7,7 +7,7 @@ from postgrest.exceptions import APIError
 from pydantic import TypeAdapter
 from supabase import Client
 
-from src.domain.entities.series import CalendarErrorCode, CalendarSnapshot, Series, SeriesError
+from src.domain.entities.series import CalendarClaim, CalendarErrorCode, CalendarSnapshot, Series, SeriesError
 from src.infrastructure.external.series_credentials import CredentialUnavailableError, SeriesCredentials
 from src.infrastructure.external.supabase_client import get_supabase_client
 from src.infrastructure.repositories.google_integration_repository_impl import GoogleIntegrationRepositoryImpl
@@ -42,7 +42,7 @@ class SeriesCalendarMirror:
 
     def claim(
         self, snapshot: CalendarSnapshot, creator_id: UUID, integration_id: UUID, fetched_at: datetime
-    ) -> UUID | None:
+    ) -> CalendarClaim:
         """Atomically claim an unowned iCalUID and mirror its first snapshot."""
         rows = (
             self._client.rpc(
@@ -57,8 +57,10 @@ class SeriesCalendarMirror:
             .execute()
             .data
         )
-        parsed = TypeAdapter(list[dict[str, str | bool]]).validate_python(rows)
-        return UUID(str(parsed[0]["series_id"])) if parsed and parsed[0]["created"] is True else None
+        parsed = TypeAdapter(list[CalendarClaim]).validate_python(rows)
+        if not parsed:
+            raise SeriesError(409, "calendar_unavailable")
+        return parsed[0]
 
     def apply(self, series_id: UUID, snapshot: CalendarSnapshot, fetched_at: datetime) -> None:
         """Apply only snapshots newer than the database's last successful read."""

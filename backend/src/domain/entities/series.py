@@ -222,3 +222,11 @@ class SeriesError(Exception):
         self.status = status
         self.detail = detail
         super().__init__(detail)
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarClaim:
+    """The claimed series identity, whether newly created or already present."""
+
+    series_id: UUID
+    created: bool
