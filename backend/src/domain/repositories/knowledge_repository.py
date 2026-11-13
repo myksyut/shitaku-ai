@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from uuid import UUID
 
-from src.domain.entities.knowledge import Knowledge
+from src.domain.entities.knowledge import Knowledge, KnowledgeDraft
 from src.domain.entities.series import CreatorAccess
 
 
@@ -22,7 +22,7 @@ class KnowledgeRepository(ABC):
         """Exclude already shared Drive documents from live candidates."""
 
     @abstractmethod
-    def add(self, access: CreatorAccess, knowledge: Knowledge) -> Knowledge:
+    def add(self, access: CreatorAccess, occurrence_id: UUID, draft: KnowledgeDraft) -> Knowledge:
         """Persist selected content under the creator's proof."""
 
     @abstractmethod

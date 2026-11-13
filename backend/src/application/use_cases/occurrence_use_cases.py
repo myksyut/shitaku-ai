@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import httpx
 
 from src.domain.entities.agenda import Agenda, AgendaTopic
-from src.domain.entities.knowledge import Knowledge
+from src.domain.entities.knowledge import Knowledge, KnowledgeDraft
 from src.domain.entities.series import CreatorAccess, MemberAccess, Occurrence, SeriesError
 from src.domain.repositories.dictionary_repository import DictionaryRepository
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
@@ -122,10 +122,8 @@ class OccurrenceUseCases:
             normalized, warning, replacement_count = result.normalized_text, result.warning, result.replacement_count
         except NormalizationError as error:
             warning = str(error)
-        knowledge = Knowledge(
-            uuid4(), access.series_id, occurrence_id, "upload", None, None, text, normalized, datetime.now(UTC)
-        )
-        return AddKnowledgeResult(self.knowledge.add(access, knowledge), warning, replacement_count)
+        draft = KnowledgeDraft("upload", None, None, text, normalized)
+        return AddKnowledgeResult(self.knowledge.add(access, occurrence_id, draft), warning, replacement_count)
 
     def add_transcript(self, access: CreatorAccess, occurrence_id: UUID, google_doc_id: str) -> AddKnowledgeResult:
         """Import only a picked candidate from the creator's bound Drive."""
@@ -138,18 +136,8 @@ class OccurrenceUseCases:
             raise SeriesError(502, "Transcript unavailable") from error
         if document is None:
             raise SeriesError(404, "Transcript not found")
-        knowledge = Knowledge(
-            uuid4(),
-            access.series_id,
-            occurrence_id,
-            "meet_transcript",
-            google_doc_id,
-            document.title,
-            document.body_text,
-            document.body_text,
-            datetime.now(UTC),
-        )
-        return AddKnowledgeResult(self.knowledge.add(access, knowledge), None, 0)
+        draft = KnowledgeDraft("meet_transcript", google_doc_id, document.title, document.body_text, document.body_text)
+        return AddKnowledgeResult(self.knowledge.add(access, occurrence_id, draft), None, 0)
 
     def get_knowledge(self, access: MemberAccess, knowledge_id: UUID) -> Knowledge:
         """Read only selected shared content."""

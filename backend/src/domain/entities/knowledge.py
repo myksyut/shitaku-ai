@@ -17,3 +17,14 @@ class Knowledge:
     original_text: str
     normalized_text: str
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeDraft:
+    """Selected content before the database assigns identity and creation time."""
+
+    source: Literal["upload", "meet_transcript"]
+    google_doc_id: str | None
+    title: str | None
+    original_text: str
+    normalized_text: str

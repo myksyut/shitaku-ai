@@ -99,12 +99,12 @@ class ExtractOccurrenceMemory:
         self.knowledge, self.dictionary, self.extractor = knowledge, dictionary, extractor
 
     def execute(self, access: CreatorAccess, occurrence_id: UUID) -> ExtractionResult:
-        """Timestamp the input before reading so concurrent minutes remain unextracted."""
-        input_at = datetime.now(UTC)
+        """Mark only the newest knowledge timestamp actually included in the input."""
+        now = datetime.now(UTC)
         occurrence = self.series.get_occurrence(access.series_id, occurrence_id)
         if occurrence is None:
             raise SeriesError(404, "Occurrence not found")
-        if occurrence.start_at > input_at:
+        if occurrence.start_at > now:
             raise SeriesError(422, "Meeting has not started")
         series = self.series.get(access.series_id)
         if series is None:
@@ -112,6 +112,7 @@ class ExtractOccurrenceMemory:
         sources = self.knowledge.for_occurrences(access.series_id, [occurrence_id])
         if not sources:
             raise SeriesError(422, "Add meeting notes before extracting")
+        input_at = max(source.created_at for source in sources)
         items = self.memory.list_items(access.series_id)
         eligible = [
             i
