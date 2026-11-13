@@ -113,7 +113,13 @@ class ExtractOccurrenceMemory:
         if not sources:
             raise SeriesError(422, "Add meeting notes before extracting")
         items = await self.memory.list_items(access.series_id)
-        eligible = [i for i in items if i.closed_at is None and i.origin_start_at <= occurrence.start_at]
+        eligible = [
+            i
+            for i in items
+            if i.closed_at is None
+            and i.origin_start_at <= occurrence.start_at
+            and not (i.origin_occurrence_id == occurrence_id and i.extracted and i.human_updated_at is None)
+        ]
         references = {f"{i.kind[0].upper()}{n}": i for n, i in enumerate(eligible, 1)}
         context = ExtractionContext(
             occurrence_id,

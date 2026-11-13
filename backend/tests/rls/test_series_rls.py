@@ -380,7 +380,7 @@ def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, servi
         .eq("extraction_key", "issue-key")
         .execute()
         .data
-        == []
+        != []
     )
     service_client.table("knowledge").insert(
         {
@@ -1133,3 +1133,19 @@ def test_creator_relinks_google_after_disconnect_with_owned_calendar_scope(
     with pytest.raises(APIError) as error:
         world.users["A"].client.table("series").update({"google_integration_id": foreign}).eq("id", world.sid).execute()
     assert error.value.code == "23503"
+
+
+def test_reextraction_is_additive_and_never_deletes_omitted_items(world: World) -> None:
+    owner = world.users["A"].client
+    arguments = {"p_occurrence_id": world.past, "p_input_at": datetime.now(UTC).isoformat(), "p_closures": []}
+    for key in ("first", "second"):
+        assert owner.rpc(
+            "apply_extraction", {**arguments, "p_items": [{"kind": "open_issue", "body": key, "extraction_key": key}]}
+        ).execute().data == {"created": 1, "closed": 0}
+    before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    assert owner.rpc("apply_extraction", {**arguments, "p_items": []}).execute().data == {"created": 0, "closed": 0}
+    assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
+    for key in ("first", "second"):
+        assert owner.table("memory_items").select("body").eq("series_id", world.sid).eq(
+            "extraction_key", key
+        ).execute().data == [{"body": key}]
