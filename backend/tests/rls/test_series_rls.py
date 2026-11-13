@@ -650,9 +650,10 @@ def test_resolution_reopen_protects_human_choice_from_extraction(world: World) -
 
 
 def test_database_resolution_constraints_match_all_variants(world: World, service_client: Client) -> None:
-    allowed = {"decision": {"reversed"}, "action_item": {"done", "dropped"}, "open_issue": {"resolved", "dropped"}}
-    for kind, resolutions in allowed.items():
-        for resolution in ("reversed", "done", "dropped", "resolved"):
+    from src.domain.entities.team_memory import RESOLUTIONS_BY_KIND
+
+    for kind, resolutions in RESOLUTIONS_BY_KIND.items():
+        for resolution in (None, "reversed", "done", "dropped", "resolved"):
             payload: dict[str, JSON] = {
                 "series_id": world.sid,
                 "origin_occurrence_id": world.past,
@@ -660,9 +661,9 @@ def test_database_resolution_constraints_match_all_variants(world: World, servic
                 "body": "Constraint",
                 "extracted": False,
                 "resolution": resolution,
-                "closed_at": datetime.now(UTC).isoformat(),
+                "closed_at": datetime.now(UTC).isoformat() if resolution is not None else None,
             }
-            if resolution in resolutions:
+            if resolution is None or resolution in resolutions:
                 assert service_client.table("memory_items").insert(payload).execute().data
             else:
                 with pytest.raises(APIError) as error:

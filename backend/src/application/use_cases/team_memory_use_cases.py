@@ -72,7 +72,7 @@ class TeamMemoryUseCases:
         item = self._item(access, item_id)
         if not isinstance(access, CreatorAccess) and not isinstance(item, ActionItem):
             raise SeriesError(403, "Only the creator can change this item")
-        if not resolution_allowed(item, resolution, creator=isinstance(access, CreatorAccess)):
+        if not resolution_allowed(item, resolution):
             raise SeriesError(422, "Resolution does not fit memory kind")
         self.memory.set_resolution(access, item_id, resolution)
         return self.board(access)

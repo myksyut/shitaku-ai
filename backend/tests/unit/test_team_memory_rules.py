@@ -45,8 +45,7 @@ def test_carry_over_uses_strict_start_boundaries(
 
 @pytest.mark.parametrize("kind", ["decision", "action_item", "open_issue"])
 @pytest.mark.parametrize("resolution", [None, "reversed", "done", "dropped", "resolved"])
-@pytest.mark.parametrize("creator", [True, False])
-def test_resolution_kind_and_role_matrix(kind: str, resolution: Resolution | None, creator: bool) -> None:
+def test_resolution_kind_matrix(kind: str, resolution: Resolution | None) -> None:
     shared = {
         "id": uuid4(),
         "series_id": uuid4(),
@@ -85,6 +84,4 @@ def test_resolution_kind_and_role_matrix(kind: str, resolution: Resolution | Non
         "action_item": {None, "done", "dropped"},
         "open_issue": {None, "resolved", "dropped"},
     }
-    assert resolution_allowed(item, resolution, creator=creator) == (
-        (creator or kind == "action_item") and resolution in allowed[kind]
-    )
+    assert resolution_allowed(item, resolution) == (resolution in allowed[kind])

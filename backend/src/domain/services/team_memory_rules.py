@@ -32,8 +32,6 @@ def with_carry_over(
     ]
 
 
-def resolution_allowed(item: MemoryItem, resolution: Resolution | None, *, creator: bool) -> bool:
+def resolution_allowed(item: MemoryItem, resolution: Resolution | None) -> bool:
     """Return whether the resolution fits the item's kind."""
-    return (creator or isinstance(item, ActionItem)) and (
-        resolution is None or resolution in RESOLUTIONS_BY_KIND[item.kind]
-    )
+    return resolution is None or resolution in RESOLUTIONS_BY_KIND[item.kind]
