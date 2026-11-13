@@ -63,6 +63,8 @@ class CalendarSnapshot:
     attendees: tuple[Attendee, ...]
     attendees_omitted: bool
     occurrences: tuple[OccurrenceSlot, ...]
+    window_start: datetime
+    window_end: datetime
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -76,17 +76,39 @@ async def test_missing_or_replaced_calendar_event_emits_event_not_found(missing:
     client, credentials, calendar = MagicMock(), AsyncMock(), AsyncMock()
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
     calendar.snapshot.return_value = (
-        None if missing else CalendarSnapshot("different-uid", "event", "Other", None, (), False, ())
+        None
+        if missing
+        else CalendarSnapshot(
+            "different-uid",
+            "event",
+            "Other",
+            None,
+            (),
+            False,
+            (),
+            datetime.now(UTC) - timedelta(days=35),
+            datetime.now(UTC) + timedelta(days=35),
+        )
     )
     assert await SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == "event_not_found"
-    client.rpc.assert_not_called()
+    client.rpc.assert_called_once()
 
 
 @pytest.mark.parametrize("omitted", [True, False])
 async def test_calendar_success_emits_only_omitted_warning_or_none(omitted: bool) -> None:
     client, credentials, calendar = MagicMock(), AsyncMock(), AsyncMock()
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
-    calendar.snapshot.return_value = CalendarSnapshot("uid", "event", "Weekly", None, (), omitted, ())
+    calendar.snapshot.return_value = CalendarSnapshot(
+        "uid",
+        "event",
+        "Weekly",
+        None,
+        (),
+        omitted,
+        (),
+        datetime.now(UTC) - timedelta(days=35),
+        datetime.now(UTC) + timedelta(days=35),
+    )
     assert await SeriesCalendarMirror(client, credentials).refresh(make_series(uuid4(), uuid4())) == (
         "attendees_omitted" if omitted else None
     )

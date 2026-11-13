@@ -35,7 +35,9 @@ def test_snapshot_keeps_google_identity_and_drops_rooms() -> None:
     cancelled = CalendarEvent.model_validate(
         {"id": "deleted", "status": "cancelled", "originalStartTime": {"date": "2026-11-08"}}
     )
-    snapshot = parse_snapshot(master, [moved, cancelled])
+    snapshot = parse_snapshot(
+        master, [moved, cancelled], datetime(2026, 10, 1, tzinfo=UTC), datetime(2026, 12, 1, tzinfo=UTC)
+    )
     assert snapshot.ical_uid == "shared-uid"
     assert snapshot.event_id == "creator-id"
     assert [a.email for a in snapshot.attendees] == ["member@example.com", "owner@example.com"]
@@ -70,3 +72,11 @@ async def test_calendar_instances_are_paginated_and_include_cancelled() -> None:
     assert snapshot is not None and len(snapshot.occurrences) == 2
     assert get.call_args_list[1].kwargs["params"]["showDeleted"] == "true"
     assert get.call_args_list[2].kwargs["params"]["pageToken"] == "next"
+
+
+async def test_cancelled_master_without_recurrence_is_missing() -> None:
+    response = httpx.Response(
+        200, json={"id": "gone", "status": "cancelled"}, request=httpx.Request("GET", "https://calendar.test")
+    )
+    with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=response)):
+        assert await GoogleCalendarClient("token").snapshot("gone", datetime.now(UTC)) is None

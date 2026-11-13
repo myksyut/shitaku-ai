@@ -46,7 +46,15 @@ async def test_claim_outcomes_recheck_the_callers_visibility(outcome: str) -> No
     )
     calendar = AsyncMock(spec=GoogleCalendarClient)
     calendar.snapshot.return_value = CalendarSnapshot(
-        "uid", "event", "Weekly", "RRULE:FREQ=WEEKLY", (Attendee("member@example.com"),), False, ()
+        "uid",
+        "event",
+        "Weekly",
+        "RRULE:FREQ=WEEKLY",
+        (Attendee("member@example.com"),),
+        False,
+        (),
+        datetime.now(UTC) - timedelta(days=35),
+        datetime.now(UTC) + timedelta(days=35),
     )
     credentials = AsyncMock(spec=SeriesCredentials)
     credentials.google_for_user.return_value = GoogleApis(
@@ -67,7 +75,15 @@ async def test_claim_outcomes_recheck_the_callers_visibility(outcome: str) -> No
 async def test_claim_rejects_unverified_participant_without_writing() -> None:
     calendar = AsyncMock(spec=GoogleCalendarClient)
     calendar.snapshot.return_value = CalendarSnapshot(
-        "uid", "event", "Weekly", "RRULE:FREQ=WEEKLY", (Attendee("b@example.com"),), False, ()
+        "uid",
+        "event",
+        "Weekly",
+        "RRULE:FREQ=WEEKLY",
+        (Attendee("b@example.com"),),
+        False,
+        (),
+        datetime.now(UTC) - timedelta(days=35),
+        datetime.now(UTC) + timedelta(days=35),
     )
     credentials = AsyncMock(spec=SeriesCredentials)
     credentials.google_for_user.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
@@ -89,7 +105,17 @@ async def test_join_refresh_is_throttled_and_uses_creator_calendar(fresh: bool) 
     ]
     credentials = AsyncMock(spec=SeriesCredentials)
     calendar = AsyncMock(spec=GoogleCalendarClient)
-    calendar.snapshot.return_value = CalendarSnapshot("uid", "event", "Weekly", "RRULE:FREQ=WEEKLY", (), False, ())
+    calendar.snapshot.return_value = CalendarSnapshot(
+        "uid",
+        "event",
+        "Weekly",
+        "RRULE:FREQ=WEEKLY",
+        (),
+        False,
+        (),
+        datetime.now(UTC) - timedelta(days=35),
+        datetime.now(UTC) + timedelta(days=35),
+    )
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
     await SeriesCalendarMirror(client, credentials).refresh_for_join("uid")
     assert credentials.google_for_series.await_count == (0 if fresh else 1)

@@ -50,7 +50,9 @@ class CalendarPage(BaseModel):
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
 
 
-def parse_snapshot(master: CalendarEvent, instances: list[CalendarEvent]) -> CalendarSnapshot:
+def parse_snapshot(
+    master: CalendarEvent, instances: list[CalendarEvent], window_start: datetime, window_end: datetime
+) -> CalendarSnapshot:
     """Drop rooms, normalize people, and retain stable instance identities."""
     attendees: dict[str, Attendee] = {}
     people = [(p, False) for p in master.attendees]
@@ -74,6 +76,8 @@ def parse_snapshot(master: CalendarEvent, instances: list[CalendarEvent]) -> Cal
         tuple(attendees.values()),
         master.attendees_omitted,
         tuple(slots),
+        window_start,
+        window_end,
     )
 
 
@@ -97,8 +101,13 @@ class GoogleCalendarClient:
 
     async def list_recurring_masters(self) -> list[CalendarSnapshot]:
         """Offer live recurring masters from the selected primary calendar."""
+        now = datetime.now(UTC)
         events = await self._pages("calendars/primary/events", {"singleEvents": "false", "maxResults": "2500"})
-        return [parse_snapshot(e, []) for e in events if e.recurrence and e.ical_uid and e.status != "cancelled"]
+        return [
+            parse_snapshot(e, [], now - timedelta(days=35), now + timedelta(days=35))
+            for e in events
+            if e.recurrence and e.ical_uid and e.status != "cancelled"
+        ]
 
     async def snapshot(self, event_id: str, now: datetime) -> CalendarSnapshot | None:
         """Fetch a recurring master and its instances in the 35-day mirror window."""
@@ -109,17 +118,18 @@ class GoogleCalendarClient:
             return None
         response.raise_for_status()
         master = CalendarEvent.model_validate(response.json())
-        if not master.recurrence or not master.ical_uid:
-            raise ValueError("Event is not recurring")
         if master.status == "cancelled":
             return None
+        if not master.recurrence or not master.ical_uid:
+            raise ValueError("Event is not recurring")
+        window_start, window_end = now - timedelta(days=35), now + timedelta(days=35)
         instances = await self._pages(
             f"{path}/instances",
             {
-                "timeMin": (now - timedelta(days=35)).isoformat(),
-                "timeMax": (now + timedelta(days=35)).isoformat(),
+                "timeMin": window_start.isoformat(),
+                "timeMax": window_end.isoformat(),
                 "showDeleted": "true",
                 "maxResults": "2500",
             },
         )
-        return parse_snapshot(master, instances)
+        return parse_snapshot(master, instances, window_start, window_end)

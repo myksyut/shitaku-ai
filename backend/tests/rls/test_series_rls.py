@@ -67,6 +67,8 @@ def world(
             for tag in ("A", "B", "E")
         ],
         "occurrences": [{"original_start": future, "start_at": future}],
+        "window_start": (now - timedelta(days=35)).isoformat(),
+        "window_end": (now + timedelta(days=35)).isoformat(),
     }
     service_client.table("series").insert(
         {
@@ -213,6 +215,15 @@ def test_table_crud_matrix(world: World, tag: str) -> None:
 @pytest.mark.parametrize("tag", list("ABCDE"))
 def test_resolution_rpc_and_service_only_functions(world: World, tag: str, service_client: Client) -> None:
     client = world.users[tag].client
+    denied(
+        client.rpc(
+            "mark_calendar_event_missing",
+            {
+                "p_series_id": world.sid,
+                "p_fetched_at": datetime.now(UTC).isoformat(),
+            },
+        ).execute
+    )
     action = str(world.rows["memory_items"]["id"])
     decision = str(uuid4())
     service_client.table("memory_items").insert(
@@ -979,3 +990,88 @@ def test_malformed_extraction_http_cannot_delete_existing_extracted_memory(
                 .data
                 == marker
             )
+
+
+def test_calendar_snapshot_cancels_missing_slots_only_inside_fetched_window(
+    world: World, service_client: Client
+) -> None:
+    from pydantic import TypeAdapter
+
+    original = TypeAdapter(list[dict[str, str]]).validate_python(world.snapshot["occurrences"])[0]["original_start"]
+    base = datetime.fromisoformat(original) - timedelta(days=2)
+    outside = base + timedelta(days=10)
+    service_client.table("occurrences").insert(
+        {"series_id": world.sid, "original_start": outside.isoformat(), "start_at": outside.isoformat()}
+    ).execute()
+    snapshot = {
+        **world.snapshot,
+        "window_start": (base + timedelta(days=1)).isoformat(),
+        "window_end": (base + timedelta(days=5)).isoformat(),
+        "occurrences": [
+            {
+                "original_start": (base + timedelta(days=d)).isoformat(),
+                "start_at": (base + timedelta(days=d)).isoformat(),
+            }
+            for d in (2, 3)
+        ],
+    }
+    service_client.rpc(
+        "apply_calendar_snapshot",
+        {
+            "p_series_id": world.sid,
+            "p_snapshot": snapshot,
+            "p_fetched_at": (datetime.now(UTC) + timedelta(seconds=1)).isoformat(),
+        },
+    ).execute()
+    snapshot["occurrences"] = [
+        {"original_start": (base + timedelta(days=d)).isoformat(), "start_at": (base + timedelta(days=d)).isoformat()}
+        for d in (3, 4)
+    ]
+    service_client.rpc(
+        "apply_calendar_snapshot",
+        {
+            "p_series_id": world.sid,
+            "p_snapshot": snapshot,
+            "p_fetched_at": (datetime.now(UTC) + timedelta(seconds=2)).isoformat(),
+        },
+    ).execute()
+    for days, cancelled in ((2, True), (3, False), (4, False), (10, False)):
+        assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
+            "original_start", (base + timedelta(days=days)).isoformat()
+        ).execute().data == [{"is_cancelled": cancelled}]
+    assert (
+        world.users["B"]
+        .client.table("agenda_topics")
+        .select("id")
+        .eq("series_id", world.sid)
+        .eq("occurrence_id", world.oid)
+        .execute()
+        .data
+    )
+    assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
+        "id", world.past
+    ).execute().data == [{"is_cancelled": False}]
+
+
+async def test_missing_creator_calendar_event_cancels_all_future_occurrences(
+    world: World, service_client: Client
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+    from uuid import UUID
+
+    from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
+    from src.infrastructure.external.series_credentials import GoogleApis, SeriesCredentials
+    from src.infrastructure.repositories.series_repository_impl import SeriesRepositoryImpl
+
+    series = await SeriesRepositoryImpl(world.users["A"].client).get(UUID(world.sid))
+    assert series is not None
+    credentials, calendar = AsyncMock(spec=SeriesCredentials), AsyncMock()
+    credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
+    calendar.snapshot.return_value = None
+    assert await SeriesCalendarMirror(service_client, credentials).refresh(series) == "event_not_found"
+    assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
+        "id", world.oid
+    ).execute().data == [{"is_cancelled": True}]
+    assert world.users["B"].client.table("occurrences").select("is_cancelled").eq("series_id", world.sid).eq(
+        "id", world.past
+    ).execute().data == [{"is_cancelled": False}]

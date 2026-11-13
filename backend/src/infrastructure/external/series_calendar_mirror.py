@@ -74,6 +74,13 @@ class SeriesCalendarMirror:
             apis = await self._credentials.google_for_series(series, "calendar")
             snapshot = await apis.calendar.snapshot(series.creator_event_id, fetched_at)
             if snapshot is None or snapshot.ical_uid != series.ical_uid:
+                self._client.rpc(
+                    "mark_calendar_event_missing",
+                    {
+                        "p_series_id": str(series.id),
+                        "p_fetched_at": fetched_at.isoformat(),
+                    },
+                ).execute()
                 error_code: CalendarErrorCode = "event_not_found"
             else:
                 await self.apply(series.id, snapshot, fetched_at)
