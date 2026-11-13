@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Button, Card } from '../../components/ui'
 import { CalendarEventPicker } from './CalendarEventPicker'
 import { useMySeries } from './hooks'
+import { hasOccurrenceStarted } from './occurrence-time'
 import { Badge, ErrorNotice, formatStart } from './SeriesUi'
 import { calendarSyncErrorMessage } from './sync-errors'
 
@@ -52,7 +53,9 @@ export function SeriesListPage() {
               </p>
               <div className="flex flex-wrap gap-2">
                 <Badge>未完了のアクション{item.open_action_items}件</Badge>
-                {item.next_occurrence?.needs_extraction && <Badge>未抽出</Badge>}
+                {item.next_occurrence?.needs_extraction && hasOccurrenceStarted(item.next_occurrence.start_at) && (
+                  <Badge>未抽出</Badge>
+                )}
               </div>
               {item.calendar_sync_error && (
                 <ErrorNotice>{calendarSyncErrorMessage(item.calendar_sync_error, item.role)}</ErrorNotice>

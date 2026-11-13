@@ -7,11 +7,13 @@ export function KnowledgeUpload({
   onClose,
   pending,
   failed,
+  canExtract,
 }: {
   onUpload: (text: string) => void
   onClose: () => void
   pending: boolean
   failed: boolean
+  canExtract: boolean
 }) {
   const [text, setText] = useState('')
   return (
@@ -39,7 +41,7 @@ export function KnowledgeUpload({
             キャンセル
           </Button>
           <Button type="submit" isLoading={pending} disabled={!text.trim()}>
-            追加して抽出
+            {canExtract ? '追加して抽出' : '追加'}
           </Button>
         </div>
       </form>

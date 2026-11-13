@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Card } from '../../components/ui'
+import { hasOccurrenceStarted } from './occurrence-time'
 import { Badge, formatStart } from './SeriesUi'
 import type { OccurrenceSummary } from './types'
 
@@ -23,7 +24,7 @@ export function OccurrenceList({ seriesId, occurrences }: { seriesId: string; oc
                     {occurrence.has_agenda && <Badge>アジェンダあり</Badge>}
                     <Badge>議題{occurrence.topic_count}件</Badge>
                     <Badge>議事録{occurrence.knowledge_count}件</Badge>
-                    {occurrence.needs_extraction && <Badge>未抽出</Badge>}
+                    {occurrence.needs_extraction && hasOccurrenceStarted(occurrence.start_at) && <Badge>未抽出</Badge>}
                   </div>
                 </div>
                 <Link
