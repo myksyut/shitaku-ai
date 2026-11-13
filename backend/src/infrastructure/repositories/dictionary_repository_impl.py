@@ -1,17 +1,17 @@
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.dictionary_entry import DictionaryEntry
-from src.domain.entities.series import CreatorAccess, SeriesError
+from src.domain.entities.series import CreatorAccess
 from src.domain.repositories.dictionary_repository import DictionaryRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class DictionaryRepositoryImpl(DictionaryRepository):
     """Supabase vocabulary queries bounded by series ID."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def list_entries(self, series_id: UUID) -> list[DictionaryEntry]:
@@ -40,11 +40,9 @@ class DictionaryRepositoryImpl(DictionaryRepository):
         return items[0] if items else None
 
     def create(self, access: CreatorAccess, entry: DictionaryEntry) -> None:
-        """Derive the aggregate boundary from the proof, never request data."""
-        if entry.series_id != access.series_id:
-            raise SeriesError(404, "Series not found")
+        """Insert a vocabulary entry into the creator's series."""
         self._client.table("dictionary_entries").insert(
-            TypeAdapter(DictionaryEntry).dump_python(entry, mode="json")
+            {**TypeAdapter(DictionaryEntry).dump_python(entry, mode="json"), "series_id": str(access.series_id)}
         ).execute()
 
     def save(self, access: CreatorAccess, entry: DictionaryEntry) -> None:

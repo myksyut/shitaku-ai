@@ -2,21 +2,21 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.knowledge import Knowledge, KnowledgeDraft
 from src.domain.entities.series import CreatorAccess
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class KnowledgeRepositoryImpl(KnowledgeRepository):
     """Read and write only the explicitly selected series."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def for_occurrences(self, series_id: UUID, occurrence_ids: Sequence[UUID]) -> list[Knowledge]:
-        """Keep agenda and extraction sources inside their aggregate."""
+        """Read knowledge for the given occurrences of one series."""
         if not occurrence_ids:
             return []
         rows = (
@@ -31,7 +31,7 @@ class KnowledgeRepositoryImpl(KnowledgeRepository):
         return TypeAdapter(list[Knowledge]).validate_python(rows)
 
     def get(self, series_id: UUID, knowledge_id: UUID) -> Knowledge | None:
-        """Never resolve a document ID outside the access proof."""
+        """Read one knowledge document of the series."""
         rows = (
             self._client.table("knowledge")
             .select("*")
@@ -44,7 +44,7 @@ class KnowledgeRepositoryImpl(KnowledgeRepository):
         return items[0] if items else None
 
     def imported_doc_ids(self, series_id: UUID) -> frozenset[str]:
-        """Read shared Drive identities, not other series' documents."""
+        """Read Drive document IDs imported into the series."""
         rows = (
             self._client.table("knowledge")
             .select("google_doc_id")
@@ -56,7 +56,7 @@ class KnowledgeRepositoryImpl(KnowledgeRepository):
         return frozenset(r["google_doc_id"] for r in TypeAdapter(list[dict[str, str]]).validate_python(rows))
 
     def add(self, access: CreatorAccess, occurrence_id: UUID, draft: KnowledgeDraft) -> Knowledge:
-        """Persist selected content with database-owned identity and creation time."""
+        """Insert knowledge, or return the already-imported Drive document."""
         if draft.google_doc_id:
             rows = (
                 self._client.table("knowledge")

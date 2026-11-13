@@ -42,7 +42,7 @@ class TopicView(BaseModel):
 
 
 class AgendaView(BaseModel):
-    """Public agenda with no internal aggregate metadata."""
+    """An occurrence's agenda."""
 
     model_config = ConfigDict(from_attributes=True)
     occurrence_id: UUID
@@ -69,7 +69,7 @@ class KnowledgeSummary(BaseModel):
 
     @classmethod
     def of(cls, knowledge: Knowledge) -> "KnowledgeSummary":
-        """Expose only the selected normalized content."""
+        """Summarize knowledge as an excerpt."""
         return cls(
             id=knowledge.id,
             source=knowledge.source,

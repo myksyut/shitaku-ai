@@ -8,10 +8,10 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from supabase import Client, create_client
+from supabase import create_client
 
 from src.config import settings
-from src.infrastructure.external.supabase_client import create_user_supabase_client
+from src.infrastructure.external.supabase_client import ServiceClient, UserClient, create_user_supabase_client
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class RlsUser:
     id: UUID
     email: str
     access_token: str
-    client: Client
+    client: UserClient
 
 
 class RlsEnvironment(BaseSettings):
@@ -45,12 +45,12 @@ def rls_env() -> Iterator[RlsEnvironment]:
 
 
 @pytest.fixture(scope="session")
-def service_client(rls_env: RlsEnvironment) -> Client:
-    return create_client(rls_env.SUPABASE_URL, rls_env.SUPABASE_SERVICE_KEY)
+def service_client(rls_env: RlsEnvironment) -> ServiceClient:
+    return ServiceClient(create_client(rls_env.SUPABASE_URL, rls_env.SUPABASE_SERVICE_KEY))
 
 
 @pytest.fixture
-def make_user(rls_env: RlsEnvironment, service_client: Client) -> Iterator[Callable[[str], RlsUser]]:
+def make_user(rls_env: RlsEnvironment, service_client: ServiceClient) -> Iterator[Callable[[str], RlsUser]]:
     with ExitStack() as cleanup:
 
         def create_user(tag: str) -> RlsUser:

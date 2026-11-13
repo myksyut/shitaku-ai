@@ -27,7 +27,7 @@ class TeamMemoryRepository(ABC):
 
     @abstractmethod
     def set_resolution(self, access: MemberAccess, item_id: UUID, resolution: Resolution | None) -> None:
-        """Use the membership-checking status RPC."""
+        """Set or clear an item's resolution."""
 
     @abstractmethod
     def delete(self, access: CreatorAccess, item_id: UUID) -> None:

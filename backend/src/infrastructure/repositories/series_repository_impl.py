@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, TypeAdapter
-from supabase import Client
 
 from src.domain.entities.series import (
     Attendee,
@@ -17,6 +16,7 @@ from src.domain.entities.series import (
     SlackSource,
 )
 from src.domain.repositories.series_repository import SeriesRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class _SeriesSummaryRow(BaseModel):
@@ -31,17 +31,17 @@ class _SeriesSummaryRow(BaseModel):
 class SeriesRepositoryImpl(SeriesRepository):
     """Supabase series queries with explicit aggregate predicates."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def role_of_caller(self, series_id: UUID) -> SeriesRole | None:
-        """Read only the requested series' role under the caller's JWT."""
+        """Read the caller's role in one series."""
         rows = self._client.rpc("my_series_roles").eq("series_id", str(series_id)).execute().data
         parsed = TypeAdapter(list[dict[str, str]]).validate_python(rows)
         return TypeAdapter[SeriesRole](SeriesRole).validate_python(parsed[0]["role"]) if parsed else None
 
     def list_summaries(self, user_id: UUID) -> list[SeriesSummary]:
-        """Let the invoker-security view aggregate visible series in one statement."""
+        """List the caller's series summaries."""
         rows = self._client.table("series_summary").select("*").order("title").execute().data
         summaries = TypeAdapter(list[_SeriesSummaryRow]).validate_python(rows)
         return [
@@ -57,7 +57,7 @@ class SeriesRepositoryImpl(SeriesRepository):
         ]
 
     def visible_calendar_series(self) -> dict[str, UUID]:
-        """Expose no mapping for series hidden by the caller's RLS."""
+        """Map visible iCalUIDs to series IDs."""
         rows = self._client.table("series").select("id,ical_uid").execute().data
         return {r["ical_uid"]: UUID(r["id"]) for r in TypeAdapter(list[dict[str, str]]).validate_python(rows)}
 
@@ -68,7 +68,7 @@ class SeriesRepositoryImpl(SeriesRepository):
         return parsed[0] if parsed else None
 
     def attendees(self, series_id: UUID) -> tuple[Attendee, ...]:
-        """Read members' public calendar labels."""
+        """Read the series' attendees."""
         rows = (
             self._client.table("series_attendees")
             .select("*")
@@ -80,7 +80,7 @@ class SeriesRepositoryImpl(SeriesRepository):
         return TypeAdapter(tuple[Attendee, ...]).validate_python(rows)
 
     def occurrences(self, series_id: UUID) -> list[Occurrence]:
-        """Read the invoker-security overview."""
+        """Read the series' occurrences in start order."""
         rows = (
             self._client.table("occurrence_overview")
             .select("*")
@@ -92,7 +92,7 @@ class SeriesRepositoryImpl(SeriesRepository):
         return TypeAdapter(list[Occurrence]).validate_python(rows)
 
     def get_occurrence(self, series_id: UUID, occurrence_id: UUID) -> Occurrence | None:
-        """Resolve one occurrence without loading the series history."""
+        """Read one occurrence of the series."""
         rows = (
             self._client.table("occurrence_overview")
             .select("*")

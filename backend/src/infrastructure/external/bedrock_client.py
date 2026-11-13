@@ -1,5 +1,3 @@
-"""AWS Bedrock Claude invocation using bearer authentication."""
-
 import json
 import logging
 
@@ -87,7 +85,7 @@ def is_bedrock_configured() -> bool:
 
 
 class ToolBlock(BaseModel):
-    """Validate tool-use output before extraction-specific parsing."""
+    """A Claude response content block."""
 
     type: str
     name: str | None = None

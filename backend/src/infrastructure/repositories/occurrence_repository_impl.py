@@ -2,17 +2,17 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.agenda import Agenda, AgendaTopic
 from src.domain.entities.series import CreatorAccess, MemberAccess
 from src.domain.repositories.occurrence_repository import OccurrenceRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class OccurrenceRepositoryImpl(OccurrenceRepository):
-    """JWT-backed topic and agenda writes with explicit series predicates."""
+    """Supabase topic and agenda persistence."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def topics(self, series_id: UUID, occurrence_id: UUID) -> list[AgendaTopic]:
@@ -29,7 +29,7 @@ class OccurrenceRepositoryImpl(OccurrenceRepository):
         return TypeAdapter(list[AgendaTopic]).validate_python(rows)
 
     def topic(self, series_id: UUID, topic_id: UUID) -> AgendaTopic | None:
-        """Read a topic without permitting cross-series IDs."""
+        """Read one topic of the series."""
         rows = (
             self._client.table("agenda_topics")
             .select("*")
@@ -42,7 +42,7 @@ class OccurrenceRepositoryImpl(OccurrenceRepository):
         return items[0] if items else None
 
     def submit_topic(self, access: MemberAccess, occurrence_id: UUID, title: str, details: str | None) -> AgendaTopic:
-        """Let the database derive the caller's display label."""
+        """Insert the caller's topic."""
         rows = (
             self._client.table("agenda_topics")
             .insert(
@@ -60,7 +60,7 @@ class OccurrenceRepositoryImpl(OccurrenceRepository):
         return TypeAdapter(list[AgendaTopic]).validate_python(rows)[0]
 
     def delete_topic(self, access: MemberAccess, topic_id: UUID) -> None:
-        """Keep both authorship and aggregate filters for noncreator deletes."""
+        """Delete one topic of the series."""
         query = (
             self._client.table("agenda_topics").delete().eq("series_id", str(access.series_id)).eq("id", str(topic_id))
         )
@@ -82,7 +82,7 @@ class OccurrenceRepositoryImpl(OccurrenceRepository):
         return items[0] if items else None
 
     def save_generated(self, access: CreatorAccess, occurrence_id: UUID, content: str) -> Agenda:
-        """Save required sections and model proposals together."""
+        """Upsert the occurrence's generated agenda."""
         now = datetime.now(UTC)
         agenda = Agenda(occurrence_id, access.series_id, content, now, now)
         self._client.table("agendas").upsert(
@@ -91,7 +91,7 @@ class OccurrenceRepositoryImpl(OccurrenceRepository):
         return agenda
 
     def save_edit(self, access: CreatorAccess, occurrence_id: UUID, content: str) -> Agenda | None:
-        """Change content without losing the original generation timestamp."""
+        """Update an existing agenda's content."""
         rows = (
             self._client.table("agendas")
             .update({"content": content, "updated_at": datetime.now(UTC).isoformat()})

@@ -2,16 +2,16 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from supabase import Client
 
 from src.domain.entities.google_integration import GoogleIntegration
 from src.domain.repositories.google_integration_repository import GoogleIntegrationRepository
+from src.infrastructure.external.supabase_client import ServiceClient, UserClient
 
 
 class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
     """Personal Google credentials with explicit integration-owner predicates."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient | ServiceClient) -> None:
         self._client = client
 
     def create(self, integration: GoogleIntegration) -> GoogleIntegration:
@@ -34,7 +34,7 @@ class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
         return self._to_entity(result.data) if result is not None and result.data else None
 
     def get_by_email(self, user_id: UUID, email: str) -> GoogleIntegration | None:
-        """Find a personal email binding for OAuth reconnect."""
+        """Find a user's Google integration by email."""
         result = (
             self._client.table("google_integrations")
             .select("*")
@@ -46,7 +46,7 @@ class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
         return self._to_entity(result.data) if result is not None and result.data else None
 
     def get_all(self, user_id: UUID) -> list[GoogleIntegration]:
-        """List personal credential choices, never select one implicitly."""
+        """List the user's Google integrations."""
         rows = (
             self._client.table("google_integrations")
             .select("*")
@@ -70,7 +70,7 @@ class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
         return integration
 
     def delete(self, integration_id: UUID, user_id: UUID) -> bool:
-        """Disconnect credentials without deleting retained shared series."""
+        """Delete the user's Google integration."""
         return bool(
             self._client.table("google_integrations")
             .delete()
@@ -81,7 +81,6 @@ class GoogleIntegrationRepositoryImpl(GoogleIntegrationRepository):
         )
 
     def _to_entity(self, data: object) -> GoogleIntegration:
-        """Parse database rows without disabling type checking."""
         row = TypeAdapter(dict[str, object]).validate_python(data)
         return TypeAdapter(GoogleIntegration).validate_python(
             {**row, "granted_scopes": row.get("granted_scopes") or []}

@@ -4,32 +4,32 @@ from uuid import UUID
 
 from postgrest.types import JSON
 from pydantic import BaseModel, TypeAdapter
-from supabase import Client
 
-from src.domain.entities.series import CreatorAccess, MemberAccess, SeriesError
+from src.domain.entities.series import CreatorAccess, MemberAccess
 from src.domain.entities.team_memory import ExtractedMemory, ExtractionApplyResult, MemoryItem, NewMemory, Resolution
 from src.domain.repositories.team_memory_repository import TeamMemoryRepository
+from src.infrastructure.external.supabase_client import UserClient
 
 
 class OriginTime(BaseModel):
-    """The single composite occurrence join."""
+    """The embedded origin occurrence's start time."""
 
     start_at: datetime
 
 
 class MemoryRow(BaseModel):
-    """Validate the join before constructing the domain union."""
+    """A memory row's embedded origin occurrence."""
 
     origin: OriginTime
 
 
 def extraction_key(kind: str, body: str) -> str:
-    """Keep repeated extraction stable across whitespace-only changes."""
+    """Build the dedupe key for an extracted memory item."""
     return sha256(f"{kind}\0{' '.join(body.split())}".encode()).hexdigest()
 
 
 def memory_rows(raw: object) -> list[MemoryItem]:
-    """Parse kind-specific invariants at the database boundary."""
+    """Parse memory_items rows into domain memory items."""
     rows = TypeAdapter(list[dict[str, JSON]]).validate_python(raw)
     return [
         TypeAdapter(MemoryItem).validate_python(
@@ -40,9 +40,9 @@ def memory_rows(raw: object) -> list[MemoryItem]:
 
 
 class TeamMemoryRepositoryImpl(TeamMemoryRepository):
-    """Explicit series predicates plus JWT-backed database authorization."""
+    """Supabase team memory persistence."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: UserClient) -> None:
         self._client = client
 
     def list_items(self, series_id: UUID) -> list[MemoryItem]:
@@ -58,7 +58,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
         return memory_rows(rows)
 
     def get(self, series_id: UUID, item_id: UUID) -> MemoryItem | None:
-        """Prevent a foreign item ID from crossing the API's aggregate boundary."""
+        """Read one memory item of the series."""
         rows = (
             self._client.table("memory_items")
             .select("*,origin:occurrences(start_at)")
@@ -71,7 +71,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
         return items[0] if items else None
 
     def add(self, access: CreatorAccess, draft: NewMemory) -> None:
-        """Record human provenance from the authenticated creator."""
+        """Insert a human-authored memory item."""
         payload = TypeAdapter(dict[str, JSON]).validate_python(
             TypeAdapter[NewMemory](NewMemory).dump_python(draft, mode="json")
         )
@@ -85,7 +85,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
         ).execute()
 
     def edit(self, access: CreatorAccess, item_id: UUID, draft: NewMemory) -> None:
-        """Preserve kind and mark every human edit sticky."""
+        """Apply a human edit to a same-kind memory item."""
         payload = TypeAdapter(dict[str, JSON]).validate_python(
             TypeAdapter[NewMemory](NewMemory).dump_python(draft, mode="json")
         )
@@ -94,11 +94,14 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
         ).eq("id", str(item_id)).eq("kind", draft.kind).execute()
 
     def set_resolution(self, access: MemberAccess, item_id: UUID, resolution: Resolution | None) -> None:
-        """Check the aggregate before calling the definer RPC."""
-        if self.get(access.series_id, item_id) is None:
-            raise SeriesError(404, "Memory item not found")
+        """Set or clear an item's resolution."""
         self._client.rpc(
-            "set_memory_item_resolution", {"p_item_id": str(item_id), "p_resolution": resolution}
+            "set_memory_item_resolution",
+            {
+                "p_series_id": str(access.series_id),
+                "p_item_id": str(item_id),
+                "p_resolution": resolution,
+            },
         ).execute()
 
     def delete(self, access: CreatorAccess, item_id: UUID) -> None:
@@ -110,17 +113,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
     def apply_extraction(
         self, access: CreatorAccess, occurrence_id: UUID, extracted: ExtractedMemory, input_at: datetime
     ) -> ExtractionApplyResult:
-        """Apply only after an explicit aggregate-scoped occurrence read."""
-        occurrence = (
-            self._client.table("occurrences")
-            .select("id")
-            .eq("series_id", str(access.series_id))
-            .eq("id", str(occurrence_id))
-            .execute()
-            .data
-        )
-        if not occurrence:
-            raise SeriesError(404, "Occurrence not found")
+        """Persist extracted memory for one occurrence."""
         items: list[JSON] = []
         for draft in extracted.new_items:
             payload = TypeAdapter(dict[str, JSON]).validate_python(
@@ -131,6 +124,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
             self._client.rpc(
                 "apply_extraction",
                 {
+                    "p_series_id": str(access.series_id),
                     "p_occurrence_id": str(occurrence_id),
                     "p_input_at": input_at.isoformat(),
                     "p_items": items,

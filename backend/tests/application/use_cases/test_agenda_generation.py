@@ -11,6 +11,7 @@ from src.domain.entities.team_memory import ActionItem
 from src.infrastructure.external.slack_client import SlackMessageData
 from src.infrastructure.services.agenda_generation_service import AgendaProposal
 from tests.application.use_cases.test_series_use_cases import make_series
+from tests.client_fakes import as_service_client
 
 
 def test_agenda_uses_bound_channels_newest_100_and_keeps_required_content() -> None:
@@ -144,7 +145,14 @@ def test_agenda_generation_survives_calendar_mirror_database_errors() -> None:
     failed.execute.side_effect = APIError({"code": "XX000", "message": "Mirror unavailable", "details": "", "hint": ""})
     service.rpc.side_effect = [started, failed]
     result = GenerateAgenda(
-        series, content, memory, knowledge, dictionary, credentials, SeriesCalendarMirror(service, credentials), writer
+        series,
+        content,
+        memory,
+        knowledge,
+        dictionary,
+        credentials,
+        SeriesCalendarMirror(as_service_client(service), credentials),
+        writer,
     ).execute(CreatorAccess(sid, owner), target.id)
     assert result.agenda.content == "Saved" and result.sources.calendar_error == "calendar_unavailable"
     content.save_generated.assert_called_once()

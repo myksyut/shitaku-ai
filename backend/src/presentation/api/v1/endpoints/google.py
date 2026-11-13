@@ -4,7 +4,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
-from supabase import Client
 
 from src.application.use_cases.google_auth_use_cases import (
     DeleteGoogleIntegrationUseCase,
@@ -15,7 +14,7 @@ from src.application.use_cases.google_auth_use_cases import (
     SyncProviderTokenUseCase,
 )
 from src.config import settings
-from src.infrastructure.external.supabase_client import get_supabase_client
+from src.infrastructure.external.supabase_client import UserClient, get_supabase_client
 from src.infrastructure.repositories.google_integration_repository_impl import (
     GoogleIntegrationRepositoryImpl,
 )
@@ -37,7 +36,7 @@ router = APIRouter(prefix="/google", tags=["google"])
 
 
 def get_repository(
-    client: Client = Depends(get_user_supabase_client),
+    client: UserClient = Depends(get_user_supabase_client),
 ) -> GoogleIntegrationRepositoryImpl:
     """Get Google integration repository instance with user context."""
     return GoogleIntegrationRepositoryImpl(client)
@@ -58,7 +57,7 @@ def get_callback_repository() -> GoogleIntegrationRepositoryImpl:
 
 
 def get_oauth_state_repository(
-    client: Client = Depends(get_user_supabase_client),
+    client: UserClient = Depends(get_user_supabase_client),
 ) -> OAuthStateRepositoryImpl:
     """Get OAuth state repository instance with user context."""
     return OAuthStateRepositoryImpl(client)

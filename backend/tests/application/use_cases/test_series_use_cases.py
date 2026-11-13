@@ -15,6 +15,7 @@ from src.infrastructure.external.google_drive_client import GoogleDriveClient
 from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
 from src.infrastructure.external.series_credentials import GoogleApis, SeriesCredentials
 from src.presentation.api.v1.dependencies import creator_access, member_access
+from tests.client_fakes import as_service_client
 
 
 def make_series(sid: UUID, owner: UUID, synced: datetime | None = None) -> Series:
@@ -121,7 +122,7 @@ def test_join_refresh_is_throttled_and_uses_creator_calendar(fresh: bool) -> Non
         datetime.now(UTC) + timedelta(days=35),
     )
     credentials.google_for_series.return_value = GoogleApis(calendar, MagicMock(), MagicMock())
-    SeriesCalendarMirror(client, credentials).refresh_for_join("uid")
+    SeriesCalendarMirror(as_service_client(client), credentials).refresh_for_join("uid")
     assert credentials.google_for_series.call_count == (0 if fresh else 1)
     if not fresh:
         assert credentials.google_for_series.call_args.args == (series, "calendar")

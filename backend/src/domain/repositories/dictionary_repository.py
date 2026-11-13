@@ -6,7 +6,7 @@ from src.domain.entities.series import CreatorAccess
 
 
 class DictionaryRepository(ABC):
-    """Vocabulary shared only within the access proof's series."""
+    """Series vocabulary persistence."""
 
     @abstractmethod
     def list_entries(self, series_id: UUID) -> list[DictionaryEntry]:

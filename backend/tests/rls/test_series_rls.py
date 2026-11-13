@@ -6,8 +6,9 @@ from uuid import uuid4
 import pytest
 from postgrest.exceptions import APIError
 from postgrest.types import JSON
-from supabase import Client, create_client
+from supabase import create_client
 
+from src.infrastructure.external.supabase_client import ServiceClient
 from tests.rls.conftest import RlsEnvironment, RlsUser
 
 
@@ -26,7 +27,9 @@ class World:
 
 @pytest.fixture
 def world(
-    make_user: Callable[[str], RlsUser], add_identity: Callable[[RlsUser, str, bool, str], None], service_client: Client
+    make_user: Callable[[str], RlsUser],
+    add_identity: Callable[[RlsUser, str, bool, str], None],
+    service_client: ServiceClient,
 ) -> Iterator[World]:
     users = {tag: make_user(tag) for tag in "ABCDE"}
     add_identity(users["B"], users["D"].email.upper(), True, "google")
@@ -214,7 +217,7 @@ def test_table_crud_matrix(world: World, tag: str) -> None:
 
 
 @pytest.mark.parametrize("tag", list("ABCDE"))
-def test_resolution_rpc_and_service_only_functions(world: World, tag: str, service_client: Client) -> None:
+def test_resolution_rpc_and_service_only_functions(world: World, tag: str, service_client: ServiceClient) -> None:
     client = world.users[tag].client
     denied(
         client.rpc(
@@ -238,7 +241,9 @@ def test_resolution_rpc_and_service_only_functions(world: World, tag: str, servi
         }
     ).execute()
     for iid, resolution in ((action, "done"), (decision, "reversed")):
-        call = client.rpc("set_memory_item_resolution", {"p_item_id": iid, "p_resolution": resolution}).execute
+        call = client.rpc(
+            "set_memory_item_resolution", {"p_item_id": iid, "p_resolution": resolution, "p_series_id": world.sid}
+        ).execute
         if tag == "A" or (tag == "B" and iid == action):
             assert call().data
         else:
@@ -273,6 +278,7 @@ def test_resolution_rpc_and_service_only_functions(world: World, tag: str, servi
                     "p_items": [],
                     "p_closures": [],
                     "p_input_at": datetime.now(UTC).isoformat(),
+                    "p_series_id": world.sid,
                 },
             ).execute(),
             "P0002",
@@ -333,7 +339,7 @@ def test_credentials_private_and_composite_binding(world: World) -> None:
     assert error.value.code == "23503"
 
 
-def test_snapshot_revocation_freshness_and_disconnect(world: World, service_client: Client) -> None:
+def test_snapshot_revocation_freshness_and_disconnect(world: World, service_client: ServiceClient) -> None:
     newer = datetime.now(UTC) + timedelta(seconds=2)
     snapshot: dict[str, JSON] = {**world.snapshot, "attendees": []}
     service_client.rpc(
@@ -354,7 +360,7 @@ def test_snapshot_revocation_freshness_and_disconnect(world: World, service_clie
     assert series == [{"google_integration_id": None}]
 
 
-def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, service_client: Client) -> None:
+def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, service_client: ServiceClient) -> None:
     from pydantic import TypeAdapter
 
     owner = world.users["A"].client
@@ -364,14 +370,20 @@ def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, servi
         {"kind": "open_issue", "body": "Temporary issue", "extraction_key": "issue-key"},
     ]
     arguments = {"p_occurrence_id": world.past, "p_items": items, "p_closures": [], "p_input_at": input_at.isoformat()}
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 2, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 2,
+        "closed": 0,
+    }
     before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
     owner.table("memory_items").update({"body": "Human correction", "human_updated_at": input_at.isoformat()}).eq(
         "series_id", world.sid
     ).eq("extraction_key", "action-key").execute()
-    owner.rpc("apply_extraction", {**arguments, "p_items": []}).execute()
+    owner.rpc("apply_extraction", {**arguments, "p_items": [], "p_series_id": world.sid}).execute()
     assert owner.table("memory_items").select("body").eq("series_id", world.sid).eq(
         "extraction_key", "action-key"
     ).execute().data == [{"body": "Human correction"}]
@@ -408,7 +420,9 @@ def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, servi
 
 
 @pytest.mark.parametrize("tag", ["B", "C"])
-def test_member_and_outsider_extraction_cannot_change_any_state(world: World, tag: str, service_client: Client) -> None:
+def test_member_and_outsider_extraction_cannot_change_any_state(
+    world: World, tag: str, service_client: ServiceClient
+) -> None:
     before_items = (
         service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
     )
@@ -424,6 +438,7 @@ def test_member_and_outsider_extraction_cannot_change_any_state(world: World, ta
                 "p_items": [{"kind": "decision", "body": "Forged", "extraction_key": "forged"}],
                 "p_closures": [{"item_id": str(world.rows["memory_items"]["id"]), "resolution": "done"}],
                 "p_input_at": datetime.now(UTC).isoformat(),
+                "p_series_id": world.sid,
             },
         )
         .execute(),
@@ -519,7 +534,7 @@ def bedrock_stub(
 
 def test_real_http_member_topic_creator_agenda_memory_and_dictionary(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     bedrock_stub: str,
 ) -> None:
     from fastapi.testclient import TestClient
@@ -627,7 +642,7 @@ def test_resolution_reopen_protects_human_choice_from_extraction(world: World) -
     action = str(world.rows["memory_items"]["id"])
     for resolution in ("done", None):
         world.users["B"].client.rpc(
-            "set_memory_item_resolution", {"p_item_id": action, "p_resolution": resolution}
+            "set_memory_item_resolution", {"p_item_id": action, "p_resolution": resolution, "p_series_id": world.sid}
         ).execute()
     result = (
         world.users["A"]
@@ -638,6 +653,7 @@ def test_resolution_reopen_protects_human_choice_from_extraction(world: World) -
                 "p_items": [],
                 "p_closures": [{"item_id": action, "resolution": "done"}],
                 "p_input_at": datetime.now(UTC).isoformat(),
+                "p_series_id": world.sid,
             },
         )
         .execute()
@@ -649,10 +665,11 @@ def test_resolution_reopen_protects_human_choice_from_extraction(world: World) -
     ).execute().data == [{"resolution": None, "closed_at": None}]
 
 
-def test_database_resolution_constraints_match_all_variants(world: World, service_client: Client) -> None:
-    allowed = {"decision": {"reversed"}, "action_item": {"done", "dropped"}, "open_issue": {"resolved", "dropped"}}
-    for kind, resolutions in allowed.items():
-        for resolution in ("reversed", "done", "dropped", "resolved"):
+def test_database_resolution_constraints_match_all_variants(world: World, service_client: ServiceClient) -> None:
+    from src.domain.entities.team_memory import RESOLUTIONS_BY_KIND
+
+    for kind, resolutions in RESOLUTIONS_BY_KIND.items():
+        for resolution in (None, "reversed", "done", "dropped", "resolved"):
             payload: dict[str, JSON] = {
                 "series_id": world.sid,
                 "origin_occurrence_id": world.past,
@@ -660,9 +677,9 @@ def test_database_resolution_constraints_match_all_variants(world: World, servic
                 "body": "Constraint",
                 "extracted": False,
                 "resolution": resolution,
-                "closed_at": datetime.now(UTC).isoformat(),
+                "closed_at": datetime.now(UTC).isoformat() if resolution is not None else None,
             }
-            if resolution in resolutions:
+            if resolution is None or resolution in resolutions:
                 assert service_client.table("memory_items").insert(payload).execute().data
             else:
                 with pytest.raises(APIError) as error:
@@ -678,10 +695,7 @@ def test_anonymous_cannot_read_team_tables_or_call_team_rpcs(world: World, rls_e
     denied(
         anonymous.rpc(
             "set_memory_item_resolution",
-            {
-                "p_item_id": str(world.rows["memory_items"]["id"]),
-                "p_resolution": "done",
-            },
+            {"p_item_id": str(world.rows["memory_items"]["id"]), "p_resolution": "done", "p_series_id": world.sid},
         ).execute
     )
     denied(
@@ -692,6 +706,7 @@ def test_anonymous_cannot_read_team_tables_or_call_team_rpcs(world: World, rls_e
                 "p_items": [],
                 "p_closures": [],
                 "p_input_at": datetime.now(UTC).isoformat(),
+                "p_series_id": world.sid,
             },
         ).execute
     )
@@ -705,7 +720,7 @@ def test_anonymous_cannot_read_team_tables_or_call_team_rpcs(world: World, rls_e
 
 def test_service_claim_is_atomic_and_duplicate_claim_does_not_apply_joiners_snapshot(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
 ) -> None:
     from pydantic import TypeAdapter
 
@@ -748,7 +763,7 @@ def test_service_claim_is_atomic_and_duplicate_claim_does_not_apply_joiners_snap
         service_client.table("series").delete().eq("ical_uid", ical_uid).execute()
 
 
-def test_omitted_guest_snapshot_keeps_last_trusted_membership(world: World, service_client: Client) -> None:
+def test_omitted_guest_snapshot_keeps_last_trusted_membership(world: World, service_client: ServiceClient) -> None:
     service_client.rpc(
         "apply_calendar_snapshot",
         {
@@ -762,7 +777,7 @@ def test_omitted_guest_snapshot_keeps_last_trusted_membership(world: World, serv
     ]
 
 
-def test_calendar_error_constraint_accepts_only_public_codes(world: World, service_client: Client) -> None:
+def test_calendar_error_constraint_accepts_only_public_codes(world: World, service_client: ServiceClient) -> None:
     codes = (
         "not_connected",
         "scope_missing",
@@ -794,7 +809,10 @@ def test_out_of_order_extraction_cannot_overwrite_newer_state(world: World) -> N
         "p_items": [{"kind": "decision", "body": "Newer result", "extraction_key": "newer"}],
         "p_closures": [],
     }
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 1,
+        "closed": 0,
+    }
     before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
     stale = (
         owner.rpc(
@@ -804,6 +822,7 @@ def test_out_of_order_extraction_cannot_overwrite_newer_state(world: World) -> N
                 "p_input_at": (newer - timedelta(seconds=1)).isoformat(),
                 "p_items": [{"kind": "decision", "body": "Older result", "extraction_key": "older"}],
                 "p_closures": [{"item_id": str(world.rows["memory_items"]["id"]), "resolution": "done"}],
+                "p_series_id": world.sid,
             },
         )
         .execute()
@@ -819,7 +838,7 @@ def test_out_of_order_extraction_cannot_overwrite_newer_state(world: World) -> N
 
 def test_stale_extraction_http_returns_conflict_without_changes(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     bedrock_stub: str,
 ) -> None:
     from fastapi.testclient import TestClient
@@ -857,7 +876,10 @@ def test_reextraction_closes_same_occurrence_items_before_replacing_them(world: 
             {"kind": "action_item", "body": "Action resolved during this meeting", "extraction_key": "same-occurrence"}
         ],
     }
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 1,
+        "closed": 0,
+    }
     rows = (
         owner.table("memory_items")
         .select("id")
@@ -868,11 +890,17 @@ def test_reextraction_closes_same_occurrence_items_before_replacing_them(world: 
     )
     item_id = TypeAdapter(list[dict[str, str]]).validate_python(rows)[0]["id"]
     closures = {**arguments, "p_items": [], "p_closures": [{"item_id": item_id, "resolution": "done"}]}
-    assert owner.rpc("apply_extraction", closures).execute().data == {"created": 0, "closed": 1}
+    assert owner.rpc("apply_extraction", {**closures, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 1,
+    }
     assert owner.table("memory_items").select("id,resolution,human_updated_at").eq("series_id", world.sid).eq(
         "id", item_id
     ).execute().data == [{"id": item_id, "resolution": "done", "human_updated_at": None}]
-    assert owner.rpc("apply_extraction", closures).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**closures, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     assert owner.table("memory_items").select("id").eq("series_id", world.sid).eq("id", item_id).execute().data == [
         {"id": item_id}
     ]
@@ -881,7 +909,7 @@ def test_reextraction_closes_same_occurrence_items_before_replacing_them(world: 
 @pytest.mark.parametrize("state", ["untouched", "human_edited", "closed", "manual"])
 def test_reextraction_corrects_only_untouched_open_extracted_metadata(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     state: str,
 ) -> None:
     from pydantic import TypeAdapter
@@ -901,7 +929,10 @@ def test_reextraction_corrects_only_untouched_open_extracted_metadata(
         "p_items": [original],
         "p_closures": [],
     }
-    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_series_id": world.sid}).execute().data == {
+        "created": 1,
+        "closed": 0,
+    }
     rows = (
         owner.table("memory_items")
         .select("id")
@@ -925,16 +956,25 @@ def test_reextraction_corrects_only_untouched_open_extracted_metadata(
         ).execute()
     corrected = {**original, "assignee_email": world.users["D"].email, "due_on": "2026-12-20"}
     updated = {**arguments, "p_input_at": (input_at + timedelta(seconds=1)).isoformat(), "p_items": [corrected]}
-    assert owner.rpc("apply_extraction", updated).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**updated, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     expected_assignee = world.users["D"].email.lower() if state == "untouched" else None
     expected_due = "2026-12-20" if state == "untouched" else "2026-11-20"
     assert owner.table("memory_items").select("id,assignee_email,due_on").eq("series_id", world.sid).eq(
         "id", item_id
     ).execute().data == [{"id": item_id, "assignee_email": expected_assignee, "due_on": expected_due}]
-    assert owner.rpc("apply_extraction", updated).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**updated, "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     if state == "untouched":
         cleared = {**updated, "p_items": [{**original, "due_on": None}]}
-        assert owner.rpc("apply_extraction", cleared).execute().data == {"created": 0, "closed": 0}
+        assert owner.rpc("apply_extraction", {**cleared, "p_series_id": world.sid}).execute().data == {
+            "created": 0,
+            "closed": 0,
+        }
         assert owner.table("memory_items").select("id,assignee_email,due_on").eq("series_id", world.sid).eq(
             "id", item_id
         ).execute().data == [{"id": item_id, "assignee_email": None, "due_on": None}]
@@ -942,7 +982,7 @@ def test_reextraction_corrects_only_untouched_open_extracted_metadata(
 
 def test_malformed_extraction_http_cannot_delete_existing_extracted_memory(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     bedrock_stub: str,
     bedrock_extraction_payload: dict[str, JSON],
 ) -> None:
@@ -959,6 +999,7 @@ def test_malformed_extraction_http_cannot_delete_existing_extracted_memory(
             "p_input_at": datetime.now(UTC).isoformat(),
             "p_items": [{"kind": "open_issue", "body": "Must survive malformed output", "extraction_key": "preserved"}],
             "p_closures": [],
+            "p_series_id": world.sid,
         },
     ).execute()
     before = service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
@@ -1006,7 +1047,7 @@ def test_malformed_extraction_http_cannot_delete_existing_extracted_memory(
 
 
 def test_calendar_snapshot_cancels_missing_slots_only_inside_fetched_window(
-    world: World, service_client: Client
+    world: World, service_client: ServiceClient
 ) -> None:
     from pydantic import TypeAdapter
 
@@ -1066,7 +1107,9 @@ def test_calendar_snapshot_cancels_missing_slots_only_inside_fetched_window(
     ).execute().data == [{"is_cancelled": False}]
 
 
-def test_missing_creator_calendar_event_cancels_all_future_occurrences(world: World, service_client: Client) -> None:
+def test_missing_creator_calendar_event_cancels_all_future_occurrences(
+    world: World, service_client: ServiceClient
+) -> None:
     from unittest.mock import MagicMock
     from uuid import UUID
 
@@ -1089,7 +1132,7 @@ def test_missing_creator_calendar_event_cancels_all_future_occurrences(world: Wo
 
 
 def test_creator_relinks_google_after_disconnect_with_owned_calendar_scope(
-    world: World, service_client: Client
+    world: World, service_client: ServiceClient
 ) -> None:
     from fastapi.testclient import TestClient
 
@@ -1151,10 +1194,18 @@ def test_reextraction_is_additive_and_never_deletes_omitted_items(world: World) 
     arguments = {"p_occurrence_id": world.past, "p_input_at": datetime.now(UTC).isoformat(), "p_closures": []}
     for key in ("first", "second"):
         assert owner.rpc(
-            "apply_extraction", {**arguments, "p_items": [{"kind": "open_issue", "body": key, "extraction_key": key}]}
+            "apply_extraction",
+            {
+                **arguments,
+                "p_items": [{"kind": "open_issue", "body": key, "extraction_key": key}],
+                "p_series_id": world.sid,
+            },
         ).execute().data == {"created": 1, "closed": 0}
     before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
-    assert owner.rpc("apply_extraction", {**arguments, "p_items": []}).execute().data == {"created": 0, "closed": 0}
+    assert owner.rpc("apply_extraction", {**arguments, "p_items": [], "p_series_id": world.sid}).execute().data == {
+        "created": 0,
+        "closed": 0,
+    }
     assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
     for key in ("first", "second"):
         assert owner.table("memory_items").select("body").eq("series_id", world.sid).eq(
@@ -1163,7 +1214,7 @@ def test_reextraction_is_additive_and_never_deletes_omitted_items(world: World) 
 
 
 def test_topic_author_uses_calendar_name_then_verified_email_and_blocks_forgery(
-    world: World, service_client: Client
+    world: World, service_client: ServiceClient
 ) -> None:
     from pydantic import TypeAdapter
 
@@ -1197,7 +1248,7 @@ def test_topic_author_uses_calendar_name_then_verified_email_and_blocks_forgery(
     assert TypeAdapter(list[dict[str, JSON]]).validate_python(rows)[0]["author_label"] == "メンバー"
 
 
-def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_client: Client) -> None:
+def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_client: ServiceClient) -> None:
     from unittest.mock import MagicMock
     from uuid import UUID
 
@@ -1226,7 +1277,7 @@ def test_failed_join_refresh_is_throttled_by_last_attempt(world: World, service_
     assert after.calendar_refresh_attempted_at is not None and after.calendar_refresh_attempted_at > old
 
 
-def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World, service_client: Client) -> None:
+def test_join_refresh_accepts_omitted_attendees_as_a_warning(world: World, service_client: ServiceClient) -> None:
     from unittest.mock import MagicMock
 
     from pydantic import TypeAdapter
@@ -1304,7 +1355,7 @@ def test_knowledge_creation_time_is_database_owned(world: World, bedrock_stub: s
 
 def test_document_committed_after_extraction_read_remains_unextracted(
     world: World,
-    service_client: Client,
+    service_client: ServiceClient,
     bedrock_stub: str,
     before_bedrock_tool_reply: list[Callable[[], None]],
 ) -> None:
@@ -1366,3 +1417,97 @@ def test_document_committed_after_extraction_read_remains_unextracted(
         .data
     )
     assert TypeAdapter(list[dict[str, datetime]]).validate_python(marker) == [{"extracted_at": inserted[0].created_at}]
+
+
+@pytest.mark.parametrize("removal", ["delete_integration", "clear_binding"])
+def test_slack_disconnect_clears_stored_channels_atomically(
+    world: World, service_client: ServiceClient, removal: str
+) -> None:
+    integration_id = str(uuid4())
+    service_client.table("slack_integrations").insert(
+        {
+            "id": integration_id,
+            "user_id": str(world.users["A"].id),
+            "workspace_id": integration_id,
+            "workspace_name": "Selected workspace",
+            "encrypted_access_token": "unused",
+        }
+    ).execute()
+    channels = [{"id": "selected-channel", "name": "Selected channel"}]
+    owner = world.users["A"].client
+    owner.table("series").update({"slack_integration_id": integration_id, "slack_channels": channels}).eq(
+        "id", world.sid
+    ).execute()
+    if removal == "delete_integration":
+        owner.table("slack_integrations").delete().eq("id", integration_id).eq(
+            "user_id", str(world.users["A"].id)
+        ).execute()
+    else:
+        owner.table("series").update({"slack_integration_id": None}).eq("id", world.sid).execute()
+    assert world.users["B"].client.table("series").select("id,slack_integration_id,slack_channels").eq(
+        "id", world.sid
+    ).execute().data == [{"id": world.sid, "slack_integration_id": None, "slack_channels": []}]
+    with pytest.raises(APIError) as error:
+        owner.table("series").update({"slack_channels": channels}).eq("id", world.sid).execute()
+    assert error.value.code == "23514"
+
+
+def test_memory_rpcs_reject_ids_from_a_different_owned_series(world: World, service_client: ServiceClient) -> None:
+    other = str(uuid4())
+    service_client.table("series").insert(
+        {
+            "id": other,
+            "ical_uid": other,
+            "created_by": str(world.users["A"].id),
+            "creator_event_id": "other",
+            "title": "Other",
+        }
+    ).execute()
+    owner = world.users["A"].client
+    before = owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data
+    try:
+        denied(
+            owner.rpc(
+                "set_memory_item_resolution",
+                {
+                    "p_series_id": other,
+                    "p_item_id": str(world.rows["memory_items"]["id"]),
+                    "p_resolution": "done",
+                },
+            ).execute,
+            "P0002",
+        )
+        denied(
+            owner.rpc(
+                "apply_extraction",
+                {
+                    "p_series_id": other,
+                    "p_occurrence_id": world.past,
+                    "p_items": [{"kind": "decision", "body": "Wrong series", "extraction_key": "wrong"}],
+                    "p_closures": [{"item_id": str(world.rows["memory_items"]["id"]), "resolution": "done"}],
+                    "p_input_at": datetime.now(UTC).isoformat(),
+                },
+            ).execute,
+            "P0002",
+        )
+        assert owner.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
+        assert owner.table("memory_items").select("id").eq("series_id", other).execute().data == []
+        assert owner.table("occurrences").select("extracted_at").eq("series_id", world.sid).eq(
+            "id", world.past
+        ).execute().data == [{"extracted_at": None}]
+    finally:
+        service_client.table("series").delete().eq("id", other).execute()
+
+
+def test_dictionary_repository_uses_access_series_in_real_database(world: World) -> None:
+    from uuid import UUID
+
+    from src.domain.entities.dictionary_entry import DictionaryEntry
+    from src.domain.entities.series import CreatorAccess
+    from src.infrastructure.repositories.dictionary_repository_impl import DictionaryRepositoryImpl
+
+    entry = DictionaryEntry(uuid4(), uuid4(), "Context-owned term", None, datetime.now(UTC))
+    DictionaryRepositoryImpl(world.users["A"].client).create(CreatorAccess(UUID(world.sid), world.users["A"].id), entry)
+    assert world.users["B"].client.table("dictionary_entries").select("series_id,canonical_name").eq(
+        "series_id", world.sid
+    ).eq("id", str(entry.id)).execute().data == [{"series_id": world.sid, "canonical_name": "Context-owned term"}]

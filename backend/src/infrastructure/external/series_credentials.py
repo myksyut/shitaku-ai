@@ -33,7 +33,7 @@ class CredentialUnavailableError(SeriesError):
 
 @dataclass(frozen=True, slots=True)
 class GoogleApis:
-    """API clients, never raw credentials."""
+    """Google API clients for one integration."""
 
     calendar: GoogleCalendarClient
     drive: GoogleDriveClient
@@ -87,7 +87,7 @@ class SeriesCredentials:
         return integration
 
     def validate_calendar_integration(self, user_id: UUID, integration_id: UUID) -> None:
-        """Validate ownership and scopes without refreshing credentials."""
+        """Check an integration's owner and calendar scope."""
         self._google_integration(user_id, integration_id, "calendar")
 
     def google_for_user(
@@ -96,7 +96,7 @@ class SeriesCredentials:
         integration_id: UUID,
         need: Literal["calendar", "drive"],
     ) -> GoogleApis:
-        """Open the caller's selected integration."""
+        """Open API clients for a user's Google integration."""
         integration = self._google_integration(user_id, integration_id, need)
         token, refresh_token = self._google_token(integration.encrypted_refresh_token)
         if token.refresh_token and refresh_token != token.refresh_token:

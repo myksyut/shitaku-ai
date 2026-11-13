@@ -62,7 +62,7 @@ RECORD_MEETING_MEMORY: dict[str, object] = {
 
 @dataclass(frozen=True, slots=True)
 class ExtractionContext:
-    """Only the current occurrence's knowledge and this series' validated references."""
+    """Inputs for extracting one occurrence's memory."""
 
     occurrence_id: UUID
     title: str
@@ -110,7 +110,6 @@ class _NewItemOutput(BaseModel):
     @field_validator("due_on", mode="before")
     @classmethod
     def parse_due_on(cls, value: object) -> date | None:
-        """Accept only canonical ISO dates or an absent deadline."""
         if value is None:
             return None
         if not isinstance(value, str):
@@ -149,7 +148,7 @@ def _new_item(raw: _NewItemOutput, context: ExtractionContext) -> NewMemory:
 
 
 def parse_extraction(raw: dict[str, object], context: ExtractionContext, *, truncated: bool = False) -> ExtractedMemory:
-    """Reject malformed output before resolving references or applying any changes."""
+    """Validate tool output into new items and closures."""
     try:
         output = _ExtractionOutput.model_validate(raw)
     except ValidationError as error:
@@ -176,7 +175,7 @@ class MeetingMemoryExtractor:
     """One forced Bedrock tool invocation per extraction."""
 
     def extract(self, context: ExtractionContext) -> ExtractedMemory:
-        """Fail visibly if no structured output is available."""
+        """Extract team memory from an occurrence's minutes."""
         prompt, truncated = build_extraction_prompt(context)
         result = invoke_claude_tool(prompt, RECORD_MEETING_MEMORY)
         if result is None:

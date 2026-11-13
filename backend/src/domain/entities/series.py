@@ -23,7 +23,7 @@ def parse_email(value: object) -> str | None:
 
 @dataclass(frozen=True, slots=True)
 class MemberAccess:
-    """Membership proof issued by the API dependency."""
+    """Caller and series membership context."""
 
     series_id: UUID
     user_id: UUID
@@ -31,7 +31,7 @@ class MemberAccess:
 
 @dataclass(frozen=True, slots=True)
 class CreatorAccess(MemberAccess):
-    """Creator proof issued by the API dependency."""
+    """Caller and series creator context."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +69,7 @@ class CalendarSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class SlackChannelRef:
-    """A selected channel, without credentials."""
+    """A selected Slack channel."""
 
     id: str
     name: str
@@ -114,7 +114,7 @@ class Series:
 
     @property
     def slack(self) -> SlackSource | None:
-        """Ignore stale channels after disconnect."""
+        """The bound Slack source, if any."""
         return SlackSource(self.slack_integration_id, self.slack_channels) if self.slack_integration_id else None
 
 
@@ -155,7 +155,7 @@ class OccurrenceSummary:
 
     @classmethod
     def of(cls, occurrence: Occurrence) -> "OccurrenceSummary":
-        """Project content counts without internal identifiers."""
+        """Summarize an occurrence."""
         return cls(
             occurrence.id,
             occurrence.start_at,
@@ -179,7 +179,7 @@ class CalendarStatus:
 
 @dataclass(frozen=True, slots=True)
 class SeriesDetail:
-    """Member-visible series, never containing tokens."""
+    """A series as shown to its members."""
 
     id: UUID
     title: str

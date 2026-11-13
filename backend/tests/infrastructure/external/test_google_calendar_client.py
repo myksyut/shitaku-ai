@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from src.infrastructure.external.google_calendar_client import CalendarEvent, GoogleCalendarClient, parse_snapshot
+from src.infrastructure.external.google_calendar_client import (
+    MIRROR_WINDOW,
+    CalendarEvent,
+    GoogleCalendarClient,
+    parse_snapshot,
+)
 
 
 def test_snapshot_keeps_google_identity_and_drops_rooms() -> None:
@@ -67,11 +72,16 @@ def test_calendar_instances_are_paginated_and_include_cancelled() -> None:
             httpx.Response(200, json=data, request=httpx.Request("GET", "https://calendar.test")) for data in responses
         ]
     )
+    now = datetime(2026, 11, 1, tzinfo=UTC)
     with patch("httpx.Client.get", new=get):
-        snapshot = GoogleCalendarClient("token").snapshot("event", datetime(2026, 11, 1, tzinfo=UTC))
+        snapshot = GoogleCalendarClient("token").snapshot("event", now)
     assert snapshot is not None and len(snapshot.occurrences) == 2
     assert get.call_args_list[1].kwargs["params"]["showDeleted"] == "true"
     assert get.call_args_list[2].kwargs["params"]["pageToken"] == "next"
+    assert snapshot.window_start == now - MIRROR_WINDOW and snapshot.window_end == now + MIRROR_WINDOW
+    parameters = get.call_args_list[1].kwargs["params"]
+    assert datetime.fromisoformat(parameters["timeMin"]) == now - MIRROR_WINDOW
+    assert datetime.fromisoformat(parameters["timeMax"]) == now + MIRROR_WINDOW
 
 
 def test_cancelled_master_without_recurrence_is_missing() -> None:

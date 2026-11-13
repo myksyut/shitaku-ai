@@ -1,10 +1,10 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from supabase import Client
 
 from src.application.use_cases.dictionary_use_cases import DictionaryUseCases
 from src.domain.entities.series import CreatorAccess, MemberAccess
+from src.infrastructure.external.supabase_client import UserClient
 from src.infrastructure.repositories.dictionary_repository_impl import DictionaryRepositoryImpl
 from src.presentation.api.v1.dependencies import creator_access, get_user_supabase_client, member_access
 from src.presentation.schemas.dictionary import DictionaryEntryCreate, DictionaryEntryUpdate, DictionaryEntryView
@@ -12,7 +12,7 @@ from src.presentation.schemas.dictionary import DictionaryEntryCreate, Dictionar
 router = APIRouter(prefix="/series/{series_id}/dictionary", tags=["dictionary"])
 
 
-def get_dictionary(client: Client = Depends(get_user_supabase_client)) -> DictionaryUseCases:
+def get_dictionary(client: UserClient = Depends(get_user_supabase_client)) -> DictionaryUseCases:
     """Use the caller's JWT for shared vocabulary persistence."""
     return DictionaryUseCases(DictionaryRepositoryImpl(client))
 

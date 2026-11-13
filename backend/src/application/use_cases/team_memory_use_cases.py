@@ -59,7 +59,7 @@ class TeamMemoryUseCases:
         return self.board(access)
 
     def edit(self, access: CreatorAccess, item_id: UUID, draft: NewMemory) -> list[MemoryItem]:
-        """Editing cannot change an item's kind."""
+        """Edit a memory item."""
         item = self._item(access, item_id)
         if item.kind != draft.kind:
             raise SeriesError(422, "Memory kind cannot change")
@@ -68,11 +68,11 @@ class TeamMemoryUseCases:
         return self.board(access)
 
     def resolve(self, access: MemberAccess, item_id: UUID, resolution: Resolution | None) -> list[MemoryItem]:
-        """Members may resolve actions; only creators may change other kinds."""
+        """Set or clear a memory item's resolution."""
         item = self._item(access, item_id)
         if not isinstance(access, CreatorAccess) and not isinstance(item, ActionItem):
             raise SeriesError(403, "Only the creator can change this item")
-        if not resolution_allowed(item, resolution, creator=isinstance(access, CreatorAccess)):
+        if not resolution_allowed(item, resolution):
             raise SeriesError(422, "Resolution does not fit memory kind")
         self.memory.set_resolution(access, item_id, resolution)
         return self.board(access)
@@ -99,7 +99,7 @@ class ExtractOccurrenceMemory:
         self.knowledge, self.dictionary, self.extractor = knowledge, dictionary, extractor
 
     def execute(self, access: CreatorAccess, occurrence_id: UUID) -> ExtractionResult:
-        """Mark only the newest knowledge timestamp actually included in the input."""
+        """Extract and save team memory from one occurrence's minutes."""
         now = datetime.now(UTC)
         occurrence = self.series.get_occurrence(access.series_id, occurrence_id)
         if occurrence is None:

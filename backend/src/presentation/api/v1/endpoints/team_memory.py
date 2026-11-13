@@ -1,10 +1,10 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from supabase import Client
 
 from src.application.use_cases.team_memory_use_cases import ExtractOccurrenceMemory, TeamMemoryUseCases
 from src.domain.entities.series import CreatorAccess, MemberAccess
+from src.infrastructure.external.supabase_client import UserClient
 from src.infrastructure.repositories.dictionary_repository_impl import DictionaryRepositoryImpl
 from src.infrastructure.repositories.knowledge_repository_impl import KnowledgeRepositoryImpl
 from src.infrastructure.repositories.series_repository_impl import SeriesRepositoryImpl
@@ -28,13 +28,13 @@ from src.presentation.schemas.team_memory import (
 router = APIRouter(prefix="/series/{series_id}", tags=["memory"])
 
 
-def get_memory(client: Client = Depends(get_user_supabase_client)) -> TeamMemoryRepositoryImpl:
+def get_memory(client: UserClient = Depends(get_user_supabase_client)) -> TeamMemoryRepositoryImpl:
     """Use the caller's JWT for every memory operation."""
     return TeamMemoryRepositoryImpl(client)
 
 
-def get_extractor(client: Client = Depends(get_user_supabase_client)) -> ExtractOccurrenceMemory:
-    """Keep extraction persistence under the authenticated creator's RLS."""
+def get_extractor(client: UserClient = Depends(get_user_supabase_client)) -> ExtractOccurrenceMemory:
+    """Build the extractor with caller-scoped repositories."""
     return ExtractOccurrenceMemory(
         TeamMemoryRepositoryImpl(client),
         SeriesRepositoryImpl(client),

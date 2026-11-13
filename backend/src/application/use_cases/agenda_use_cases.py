@@ -59,7 +59,7 @@ class GeneratedAgenda:
 
 
 class GenerateAgenda:
-    """Guarantee required content before adding any optional model proposals."""
+    """Generate and save an occurrence's agenda."""
 
     def __init__(
         self,

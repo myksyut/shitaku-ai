@@ -5,6 +5,7 @@ from uuid import uuid4
 from src.domain.entities.knowledge import KnowledgeDraft
 from src.domain.entities.series import CreatorAccess
 from src.infrastructure.repositories.knowledge_repository_impl import KnowledgeRepositoryImpl
+from tests.client_fakes import as_user_client
 
 
 def test_repository_omits_database_owned_fields_and_returns_persisted_timestamp() -> None:
@@ -24,7 +25,7 @@ def test_repository_omits_database_owned_fields_and_returns_persisted_timestamp(
             "created_at": timestamp.isoformat(),
         }
     ]
-    saved = KnowledgeRepositoryImpl(client).add(
+    saved = KnowledgeRepositoryImpl(as_user_client(client)).add(
         CreatorAccess(sid, uid), oid, KnowledgeDraft("upload", None, None, "Original", "Normalized")
     )
     payload = client.table.return_value.insert.call_args.args[0]
