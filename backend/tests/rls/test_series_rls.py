@@ -816,3 +816,37 @@ def test_stale_extraction_http_returns_conflict_without_changes(
     assert (
         service_client.table("memory_items").select("*").eq("series_id", world.sid).order("id").execute().data == before
     )
+
+
+def test_reextraction_closes_same_occurrence_items_before_replacing_them(world: World) -> None:
+    from pydantic import TypeAdapter
+
+    owner = world.users["A"].client
+    input_at = datetime.now(UTC).isoformat()
+    arguments = {
+        "p_occurrence_id": world.past,
+        "p_input_at": input_at,
+        "p_closures": [],
+        "p_items": [
+            {"kind": "action_item", "body": "Action resolved during this meeting", "extraction_key": "same-occurrence"}
+        ],
+    }
+    assert owner.rpc("apply_extraction", arguments).execute().data == {"created": 1, "closed": 0}
+    rows = (
+        owner.table("memory_items")
+        .select("id")
+        .eq("series_id", world.sid)
+        .eq("extraction_key", "same-occurrence")
+        .execute()
+        .data
+    )
+    item_id = TypeAdapter(list[dict[str, str]]).validate_python(rows)[0]["id"]
+    closures = {**arguments, "p_items": [], "p_closures": [{"item_id": item_id, "resolution": "done"}]}
+    assert owner.rpc("apply_extraction", closures).execute().data == {"created": 0, "closed": 1}
+    assert owner.table("memory_items").select("id,resolution,human_updated_at").eq("series_id", world.sid).eq(
+        "id", item_id
+    ).execute().data == [{"id": item_id, "resolution": "done", "human_updated_at": None}]
+    assert owner.rpc("apply_extraction", closures).execute().data == {"created": 0, "closed": 0}
+    assert owner.table("memory_items").select("id").eq("series_id", world.sid).eq("id", item_id).execute().data == [
+        {"id": item_id}
+    ]
