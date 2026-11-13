@@ -13,7 +13,7 @@ MAX_AGENDA_INPUT_CHARS = 40000
 
 @dataclass(frozen=True, slots=True)
 class AgendaContext:
-    """Only sources selected inside the creator's series."""
+    """Inputs for an agenda proposal."""
 
     title: str
     description: str | None
@@ -35,7 +35,7 @@ class AgendaProposal:
 
 
 def build_agenda_prompt(context: AgendaContext) -> tuple[str | None, bool]:
-    """Ask only for discussion proposals; required sections are rendered by code."""
+    """Build the proposal prompt within the input budget."""
     data = {
         "series": context.title,
         "description": context.description,
@@ -76,7 +76,7 @@ class AgendaGenerationService:
     """Generate only the optional proposal section."""
 
     def propose(self, context: AgendaContext) -> AgendaProposal:
-        """Keep model failure separate from deterministic agenda requirements."""
+        """Request discussion proposals from the model."""
         prompt, truncated = build_agenda_prompt(context)
         if prompt is None:
             return AgendaProposal(None, truncated)

@@ -18,7 +18,7 @@ from src.infrastructure.external.series_credentials import GoogleApis, SeriesCre
 
 @dataclass(frozen=True, slots=True)
 class OccurrenceContent:
-    """The occurrence's shared content before public-field projection."""
+    """An occurrence with its agenda, topics and knowledge."""
 
     occurrence: Occurrence
     agenda: Agenda | None
@@ -28,7 +28,7 @@ class OccurrenceContent:
 
 @dataclass(frozen=True, slots=True)
 class TranscriptCandidate:
-    """A live, unpersisted Drive document choice."""
+    """A Drive transcript the creator can import."""
 
     google_doc_id: str
     name: str
@@ -76,14 +76,14 @@ class OccurrenceUseCases:
         )
 
     def submit_topic(self, access: MemberAccess, occurrence_id: UUID, title: str, details: str | None) -> AgendaTopic:
-        """Reject started and cancelled meetings before the RLS recheck."""
+        """Post the caller's topic on a future occurrence."""
         occurrence = self.occurrence(access, occurrence_id)
         if occurrence.is_cancelled or occurrence.start_at <= datetime.now(UTC):
             raise SeriesError(422, "Topics require a future noncancelled occurrence")
         return self.content.submit_topic(access, occurrence_id, title, details)
 
     def delete_topic(self, access: MemberAccess, topic_id: UUID) -> None:
-        """Only the author or series creator can withdraw a suggestion."""
+        """Withdraw a topic."""
         topic = self.content.topic(access.series_id, topic_id)
         if topic is None:
             raise SeriesError(404, "Topic not found")
@@ -105,13 +105,13 @@ class OccurrenceUseCases:
         return apis, [f for f in files if f.mime_type == GOOGLE_DOCS_MIME_TYPE and lower <= f.created_time <= upper]
 
     def transcript_candidates(self, access: CreatorAccess, occurrence_id: UUID) -> list[TranscriptCandidate]:
-        """List live creator Drive candidates without storing unselected documents."""
+        """List Drive transcripts the creator can import for an occurrence."""
         _, files = self._drive_files(access, occurrence_id)
         imported = self.knowledge.imported_doc_ids(access.series_id)
         return [TranscriptCandidate(f.id, f.name, f.created_time) for f in files if f.id not in imported]
 
     def add_upload(self, access: CreatorAccess, occurrence_id: UUID, text: str) -> AddKnowledgeResult:
-        """Normalize only against this series' dictionary, reporting failures."""
+        """Save uploaded minutes normalized with the series dictionary."""
         self.occurrence(access, occurrence_id)
         dictionary = self.dictionary.list_entries(access.series_id)
         warning = None

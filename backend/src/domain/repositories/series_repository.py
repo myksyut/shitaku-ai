@@ -22,11 +22,11 @@ class SeriesRepository(ABC):
 
     @abstractmethod
     def list_summaries(self, user_id: UUID) -> list[SeriesSummary]:
-        """Read visible summaries with next occurrences and action counts in one query."""
+        """Read visible series summaries with next occurrence and open action counts."""
 
     @abstractmethod
     def visible_calendar_series(self) -> dict[str, UUID]:
-        """Read visible iCalUID mappings in one RLS-scoped query."""
+        """Map visible iCalUIDs to series IDs."""
 
     @abstractmethod
     def get(self, series_id: UUID) -> Series | None:
@@ -42,7 +42,7 @@ class SeriesRepository(ABC):
 
     @abstractmethod
     def get_occurrence(self, series_id: UUID, occurrence_id: UUID) -> Occurrence | None:
-        """Read one occurrence inside the access proof's aggregate."""
+        """Read one occurrence of the series."""
 
     @abstractmethod
     def save_settings(

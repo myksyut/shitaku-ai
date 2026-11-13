@@ -71,7 +71,7 @@ class SlackIntegrationRepositoryImpl(SlackIntegrationRepository):
         return integration
 
     def delete(self, integration_id: UUID, user_id: UUID) -> bool:
-        """Disconnect without removing the owner's shared series."""
+        """Delete the user's Slack integration."""
         return bool(
             self._client.table("slack_integrations")
             .delete()

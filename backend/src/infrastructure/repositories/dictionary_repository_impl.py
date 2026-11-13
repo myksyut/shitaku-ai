@@ -40,7 +40,7 @@ class DictionaryRepositoryImpl(DictionaryRepository):
         return items[0] if items else None
 
     def create(self, access: CreatorAccess, entry: DictionaryEntry) -> None:
-        """Derive the aggregate boundary from the proof, never request data."""
+        """Insert a vocabulary entry into the creator's series."""
         if entry.series_id != access.series_id:
             raise SeriesError(404, "Series not found")
         self._client.table("dictionary_entries").insert(

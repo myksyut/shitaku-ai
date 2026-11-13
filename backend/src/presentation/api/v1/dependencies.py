@@ -115,7 +115,7 @@ def member_access(
     user_id: UUID = Depends(get_current_user_id),
     repository: SeriesRepositoryImpl = Depends(get_series_repository),
 ) -> MemberAccess:
-    """Use the same membership function as database RLS."""
+    """Resolve the caller's series role or raise 404."""
     role = repository.role_of_caller(series_id)
     if role is None:
         raise HTTPException(404, "Series not found")
@@ -124,7 +124,7 @@ def member_access(
 
 
 def creator_access(access: MemberAccess = Depends(member_access)) -> CreatorAccess:
-    """Distinguish a member's forbidden operation from an invisible series."""
+    """Require the series creator role."""
     if not isinstance(access, CreatorAccess):
         raise HTTPException(403, "Only the series creator can do this")
     return access

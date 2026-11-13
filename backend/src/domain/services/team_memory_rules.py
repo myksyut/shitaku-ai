@@ -9,7 +9,7 @@ from src.domain.entities.team_memory import RESOLUTIONS_BY_KIND, ActionItem, Mem
 def carry_over_count(
     item: ActionItem | OpenIssue, occurrences: Sequence[Occurrence], target_start: datetime, now: datetime
 ) -> int:
-    """Count noncancelled meetings strictly between origin and target while open."""
+    """Count past meetings an open item has been carried over."""
     return sum(
         1
         for o in occurrences
@@ -23,7 +23,7 @@ def carry_over_count(
 def with_carry_over(
     items: Sequence[MemoryItem], occurrences: Sequence[Occurrence], target_start: datetime, now: datetime
 ) -> list[MemoryItem]:
-    """Project derived counts without mutating stored memory."""
+    """Attach carry-over counts to open items."""
     return [
         replace(item, carry_over=carry_over_count(item, occurrences, target_start, now))
         if isinstance(item, ActionItem | OpenIssue)
@@ -33,7 +33,7 @@ def with_carry_over(
 
 
 def resolution_allowed(item: MemoryItem, resolution: Resolution | None, *, creator: bool) -> bool:
-    """Keep the application check aligned with the database kind constraints."""
+    """Return whether the resolution fits the item's kind."""
     return (creator or isinstance(item, ActionItem)) and (
         resolution is None or resolution in RESOLUTIONS_BY_KIND[item.kind]
     )

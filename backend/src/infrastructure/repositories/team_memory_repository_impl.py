@@ -12,24 +12,24 @@ from src.domain.repositories.team_memory_repository import TeamMemoryRepository
 
 
 class OriginTime(BaseModel):
-    """The single composite occurrence join."""
+    """The embedded origin occurrence's start time."""
 
     start_at: datetime
 
 
 class MemoryRow(BaseModel):
-    """Validate the join before constructing the domain union."""
+    """A memory row's embedded origin occurrence."""
 
     origin: OriginTime
 
 
 def extraction_key(kind: str, body: str) -> str:
-    """Keep repeated extraction stable across whitespace-only changes."""
+    """Build the dedupe key for an extracted memory item."""
     return sha256(f"{kind}\0{' '.join(body.split())}".encode()).hexdigest()
 
 
 def memory_rows(raw: object) -> list[MemoryItem]:
-    """Parse kind-specific invariants at the database boundary."""
+    """Parse memory_items rows into domain memory items."""
     rows = TypeAdapter(list[dict[str, JSON]]).validate_python(raw)
     return [
         TypeAdapter(MemoryItem).validate_python(
@@ -40,7 +40,7 @@ def memory_rows(raw: object) -> list[MemoryItem]:
 
 
 class TeamMemoryRepositoryImpl(TeamMemoryRepository):
-    """Explicit series predicates plus JWT-backed database authorization."""
+    """Supabase team memory persistence."""
 
     def __init__(self, client: Client) -> None:
         self._client = client
@@ -58,7 +58,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
         return memory_rows(rows)
 
     def get(self, series_id: UUID, item_id: UUID) -> MemoryItem | None:
-        """Prevent a foreign item ID from crossing the API's aggregate boundary."""
+        """Read one memory item of the series."""
         rows = (
             self._client.table("memory_items")
             .select("*,origin:occurrences(start_at)")
@@ -71,7 +71,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
         return items[0] if items else None
 
     def add(self, access: CreatorAccess, draft: NewMemory) -> None:
-        """Record human provenance from the authenticated creator."""
+        """Insert a human-authored memory item."""
         payload = TypeAdapter(dict[str, JSON]).validate_python(
             TypeAdapter[NewMemory](NewMemory).dump_python(draft, mode="json")
         )
@@ -85,7 +85,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
         ).execute()
 
     def edit(self, access: CreatorAccess, item_id: UUID, draft: NewMemory) -> None:
-        """Preserve kind and mark every human edit sticky."""
+        """Apply a human edit to a same-kind memory item."""
         payload = TypeAdapter(dict[str, JSON]).validate_python(
             TypeAdapter[NewMemory](NewMemory).dump_python(draft, mode="json")
         )
@@ -94,7 +94,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
         ).eq("id", str(item_id)).eq("kind", draft.kind).execute()
 
     def set_resolution(self, access: MemberAccess, item_id: UUID, resolution: Resolution | None) -> None:
-        """Check the aggregate before calling the definer RPC."""
+        """Set or clear an item's resolution."""
         if self.get(access.series_id, item_id) is None:
             raise SeriesError(404, "Memory item not found")
         self._client.rpc(
@@ -110,7 +110,7 @@ class TeamMemoryRepositoryImpl(TeamMemoryRepository):
     def apply_extraction(
         self, access: CreatorAccess, occurrence_id: UUID, extracted: ExtractedMemory, input_at: datetime
     ) -> ExtractionApplyResult:
-        """Apply only after an explicit aggregate-scoped occurrence read."""
+        """Persist extracted memory for one occurrence."""
         occurrence = (
             self._client.table("occurrences")
             .select("id")

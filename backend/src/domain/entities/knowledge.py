@@ -6,7 +6,7 @@ from uuid import UUID
 
 @dataclass(frozen=True, slots=True)
 class Knowledge:
-    """Only explicitly imported meeting content enters shared storage."""
+    """Meeting content shared with one occurrence."""
 
     id: UUID
     series_id: UUID

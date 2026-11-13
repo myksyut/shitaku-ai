@@ -30,7 +30,7 @@ class NewActionRequest(BaseModel):
     @field_validator("assignee_email")
     @classmethod
     def normalize_assignee(cls, value: str | None) -> str | None:
-        """Normalize addresses at the HTTP boundary."""
+        """Normalize and validate the assignee email."""
         if value is None:
             return None
         parsed = parse_email(value)
@@ -57,14 +57,14 @@ def memory_draft(request: NewMemoryRequest) -> NewMemory:
 
 
 class ResolutionRequest(BaseModel):
-    """A kind-checked resolution or explicit reopen."""
+    """A resolution, or null to reopen."""
 
     model_config = ConfigDict(extra="forbid")
     resolution: Resolution | None
 
 
 class MemoryView(BaseModel):
-    """Only fields in the shared wire contract."""
+    """Fields common to every memory item view."""
 
     model_config = ConfigDict(from_attributes=True)
     id: UUID
@@ -110,7 +110,7 @@ class TeamMemoryResponse(BaseModel):
 
 
 def memory_response(items: list[MemoryItem]) -> TeamMemoryResponse:
-    """Remove internal provenance and authorization fields."""
+    """Project memory items into the public response."""
     return TeamMemoryResponse(items=TypeAdapter(list[PublicMemory]).validate_python(items, from_attributes=True))
 
 

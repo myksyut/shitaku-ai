@@ -55,7 +55,7 @@ def get_content(
 def get_generator(
     client: Client = Depends(get_user_supabase_client), credentials: SeriesCredentials = Depends(get_series_credentials)
 ) -> GenerateAgenda:
-    """Use privileged access only inside the calendar mirror."""
+    """Build the agenda generator for the caller."""
     return GenerateAgenda(
         SeriesRepositoryImpl(client),
         OccurrenceRepositoryImpl(client),
@@ -109,7 +109,7 @@ def transcript_candidates(
     access: CreatorAccess = Depends(creator_access),
     use_cases: OccurrenceUseCases = Depends(get_content),
 ) -> dict[str, list[TranscriptCandidate]]:
-    """Read creator Drive candidates live; unpicked files are never stored."""
+    """List the creator's Drive transcripts for an occurrence."""
     return {"candidates": use_cases.transcript_candidates(access, occurrence_id)}
 
 

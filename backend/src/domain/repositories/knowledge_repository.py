@@ -19,7 +19,7 @@ class KnowledgeRepository(ABC):
 
     @abstractmethod
     def imported_doc_ids(self, series_id: UUID) -> frozenset[str]:
-        """Exclude already shared Drive documents from live candidates."""
+        """Read Drive document IDs already imported into the series."""
 
     @abstractmethod
     def add(self, access: CreatorAccess, occurrence_id: UUID, draft: KnowledgeDraft) -> Knowledge:

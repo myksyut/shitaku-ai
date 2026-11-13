@@ -25,7 +25,7 @@ class DictionaryUseCases:
         aliases: list[str],
         description: str | None,
     ) -> DictionaryEntry:
-        """Assign identity and series ownership on the server."""
+        """Create a vocabulary entry in the series."""
         entry = DictionaryEntry(
             uuid4(),
             access.series_id,
@@ -39,7 +39,7 @@ class DictionaryUseCases:
         return entry
 
     def update(self, access: CreatorAccess, entry_id: UUID, changes: DictionaryChanges) -> DictionaryEntry:
-        """Preserve absent fields while allowing explicit nullable-field clearing."""
+        """Apply partial changes to a vocabulary entry."""
         entry = self.repository.get(access.series_id, entry_id)
         if entry is None:
             raise SeriesError(404, "Dictionary entry not found")
@@ -48,7 +48,7 @@ class DictionaryUseCases:
         return updated
 
     def delete(self, access: CreatorAccess, entry_id: UUID) -> None:
-        """Reject foreign entry IDs before deleting."""
+        """Delete a vocabulary entry from the series."""
         if self.repository.get(access.series_id, entry_id) is None:
             raise SeriesError(404, "Dictionary entry not found")
         self.repository.delete(access, entry_id)

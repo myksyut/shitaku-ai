@@ -101,7 +101,7 @@ def save_settings(
 def sync_calendar(
     access: CreatorAccess = Depends(creator_access), repository: SeriesRepositoryImpl = Depends(get_series_repository)
 ) -> SeriesDetail:
-    """Refresh calendar state without changing creator-owned settings."""
+    """Refresh the series from the creator's calendar."""
     series = repository.get(access.series_id)
     if series is None:
         raise SeriesError(404, "Series not found")

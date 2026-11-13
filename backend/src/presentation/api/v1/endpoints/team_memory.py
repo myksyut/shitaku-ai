@@ -34,7 +34,7 @@ def get_memory(client: Client = Depends(get_user_supabase_client)) -> TeamMemory
 
 
 def get_extractor(client: Client = Depends(get_user_supabase_client)) -> ExtractOccurrenceMemory:
-    """Keep extraction persistence under the authenticated creator's RLS."""
+    """Build the extractor with caller-scoped repositories."""
     return ExtractOccurrenceMemory(
         TeamMemoryRepositoryImpl(client),
         SeriesRepositoryImpl(client),

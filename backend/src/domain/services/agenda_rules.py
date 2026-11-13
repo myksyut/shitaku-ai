@@ -21,7 +21,7 @@ def _topic_line(topic: AgendaTopic) -> str:
 def render_agenda(
     topics: Sequence[AgendaTopic], actions: Sequence[ActionItem], issues: Sequence[OpenIssue], proposal: str | None
 ) -> str:
-    """Keep every required item even when the model contributes nothing."""
+    """Render the required agenda sections and the optional proposal."""
     sections = [
         "## 事前に投稿された議題",
         *[_topic_line(t) for t in topics],

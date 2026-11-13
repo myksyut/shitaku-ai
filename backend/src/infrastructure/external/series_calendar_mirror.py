@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class SeriesCalendarMirror:
-    """The sole privileged writer of calendar-owned series state."""
+    """Mirror calendar state into series with the service-role client."""
 
     def __init__(self, client: Client, credentials: SeriesCredentials) -> None:
         self._client = client
@@ -32,7 +32,7 @@ class SeriesCalendarMirror:
 
     @classmethod
     def create(cls) -> "SeriesCalendarMirror":
-        """Construct the restricted service-role boundary."""
+        """Build a mirror backed by the service-role client."""
         client = get_supabase_client()
         if client is None:
             raise SeriesError(503, "Calendar mirror is not configured")
@@ -63,7 +63,7 @@ class SeriesCalendarMirror:
         return parsed[0]
 
     def apply(self, series_id: UUID, snapshot: CalendarSnapshot, fetched_at: datetime) -> None:
-        """Apply only snapshots newer than the database's last successful read."""
+        """Apply a calendar snapshot to the series."""
         self._client.rpc(
             "apply_calendar_snapshot",
             {
@@ -74,7 +74,7 @@ class SeriesCalendarMirror:
         ).execute()
 
     def refresh(self, series: Series, *, throttle: bool = False) -> CalendarErrorCode | None:
-        """Refresh the creator's calendar without deleting retained content on failure."""
+        """Refresh the series from the creator's calendar and return any sync error."""
         fetched_at = datetime.now(UTC)
         try:
             started = (
@@ -118,7 +118,7 @@ class SeriesCalendarMirror:
         return error_code
 
     def refresh_for_join(self, ical_uid: str) -> None:
-        """Re-read the trusted invite; reveal no series data to the caller."""
+        """Refresh a series' attendees before a join is re-checked."""
         rows = self._client.table("series").select("*").eq("ical_uid", ical_uid).execute().data
         series_list = TypeAdapter(list[Series]).validate_python(rows)
         if not series_list:

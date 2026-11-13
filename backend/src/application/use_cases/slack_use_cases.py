@@ -246,6 +246,6 @@ class GetSlackChannelsUseCase:
         self.credentials = credentials
 
     def execute(self, user_id: UUID, integration_id: UUID) -> list[SlackChannel]:
-        """Resolve credentials through the shared credential boundary."""
+        """List channels of the caller's Slack integration."""
         client = self.credentials.slack_for_user(user_id, integration_id)
         return client.get_channels()

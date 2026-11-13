@@ -33,7 +33,7 @@ class DictionaryEntryUpdate(BaseModel):
         return value
 
     def changes(self) -> DictionaryChanges:
-        """Preserve omission independently from explicit nullable-field clearing."""
+        """Return only the fields the request supplied."""
         result: DictionaryChanges = {}
         if self.canonical_name is not None:
             result["canonical_name"] = self.canonical_name
@@ -47,7 +47,7 @@ class DictionaryEntryUpdate(BaseModel):
 
 
 class DictionaryEntryView(BaseModel):
-    """Only the vocabulary fields in the shared API contract."""
+    """A series vocabulary entry."""
 
     model_config = ConfigDict(from_attributes=True)
     id: UUID

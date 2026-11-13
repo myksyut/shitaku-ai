@@ -14,7 +14,7 @@ RESOLUTIONS_BY_KIND: dict[MemoryKind, frozenset[str]] = {
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MemoryBase:
-    """Shared provenance, separate from kind-specific invariants."""
+    """Fields shared by every memory item."""
 
     id: UUID
     series_id: UUID
@@ -71,7 +71,7 @@ class NewDecision:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class NewActionItem:
-    """A new action with attendee-bound assignment."""
+    """A new action item with an optional assignee and due date."""
 
     body: str
     origin_occurrence_id: UUID

@@ -28,7 +28,7 @@ class SeriesUseCases:
         self.repository = repository
 
     def detail(self, access: MemberAccess) -> SeriesDetail:
-        """Project a series without personal integration credentials."""
+        """Read the caller's view of a series."""
         series = self.repository.get(access.series_id)
         if series is None:
             raise SeriesError(404, "Series not found")
@@ -50,7 +50,7 @@ class SeriesUseCases:
         )
 
     def list_for_caller(self, user_id: UUID) -> list[SeriesSummary]:
-        """Read RLS-scoped summaries without per-series queries."""
+        """List the caller's series summaries."""
         return self.repository.list_summaries(user_id)
 
     def settings(
@@ -62,7 +62,7 @@ class SeriesUseCases:
         integration_id: UUID | None,
         channel_ids: list[str],
     ) -> SeriesDetail:
-        """Resolve selected channel names from the creator's own Slack."""
+        """Save the creator's settings and integration bindings."""
         if google_integration_id is not None:
             credentials.validate_calendar_integration(access.user_id, google_integration_id)
         slack = None
@@ -89,7 +89,7 @@ class CalendarUseCases:
         self.mirror = mirror
 
     def choices(self, user_id: UUID, integration_id: UUID) -> list[CalendarEventChoice]:
-        """Show existing series identifiers only when the caller can read them."""
+        """List the caller's recurring events with any visible series ID."""
         apis = self.credentials.google_for_user(user_id, integration_id, "calendar")
         visible = self.repository.visible_calendar_series()
         return [
@@ -100,7 +100,7 @@ class CalendarUseCases:
     def claim(
         self, user_id: UUID, integration_id: UUID, event_id: str, verified_emails: frozenset[str]
     ) -> tuple[str, UUID]:
-        """Re-check membership with the caller's JWT after the privileged boundary."""
+        """Claim or join the series for a recurring event."""
         fetched_at = datetime.now(UTC)
         apis = self.credentials.google_for_user(user_id, integration_id, "calendar")
         try:

@@ -106,5 +106,4 @@ class OAuthStateRepositoryImpl:
         return deleted_count
 
     def _to_entity(self, data: object) -> OAuthState:
-        """Parse persisted state at the database boundary."""
         return TypeAdapter(OAuthState).validate_python(data)

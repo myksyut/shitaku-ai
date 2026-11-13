@@ -10,7 +10,7 @@ CALENDAR_API_URL = "https://www.googleapis.com/calendar/v3"
 
 
 class CalendarPerson(BaseModel):
-    """Untrusted Google person fields."""
+    """A Google Calendar attendee or organizer."""
 
     email: str | None = None
     display_name: str | None = Field(default=None, alias="displayName")
@@ -24,7 +24,7 @@ class CalendarTime(BaseModel):
     date: str | None = None
 
     def instant(self) -> datetime | None:
-        """Represent all-day slots at UTC midnight."""
+        """Return the slot start as an aware datetime."""
         return self.date_time or (datetime.fromisoformat(self.date).replace(tzinfo=UTC) if self.date else None)
 
 
@@ -82,7 +82,7 @@ def parse_snapshot(
 
 
 class GoogleCalendarClient:
-    """Read calendar snapshots without storing unselected events."""
+    """Google Calendar API client for the primary calendar."""
 
     def __init__(self, access_token: str) -> None:
         self._headers = {"Authorization": f"Bearer {access_token}"}
@@ -119,7 +119,7 @@ class GoogleCalendarClient:
         ]
 
     def snapshot(self, event_id: str, now: datetime) -> CalendarSnapshot | None:
-        """Fetch a recurring master and its instances in the 35-day mirror window."""
+        """Fetch a recurring master and its instances around now."""
         path = f"calendars/primary/events/{quote(event_id, safe='')}"
         with httpx.Client(timeout=30) as client:
             response = client.get(f"{CALENDAR_API_URL}/{path}", headers=self._headers)

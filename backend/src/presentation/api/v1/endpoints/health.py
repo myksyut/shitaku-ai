@@ -16,7 +16,7 @@ def health_check() -> dict[str, str]:
 
 @router.get("/health/services", response_model=ServiceHealthResponse)
 def service_health_check() -> ServiceHealthResponse:
-    """Probe public service endpoints without privileged database access."""
+    """Report Supabase and Bedrock reachability."""
     database = auth = False
     details: dict[str, str | None] = {}
     if settings.SUPABASE_URL and settings.SUPABASE_KEY:
