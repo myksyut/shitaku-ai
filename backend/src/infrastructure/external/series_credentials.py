@@ -57,12 +57,11 @@ class SeriesCredentials:
         if not scopes.issubset(integration.granted_scopes):
             raise CredentialUnavailableError("Google scope missing")
         try:
-            token = await GoogleOAuthClient().refresh_access_token(
-                decrypt_google_token(integration.encrypted_refresh_token)
-            )
+            refresh_token = decrypt_google_token(integration.encrypted_refresh_token)
+            token = await GoogleOAuthClient().refresh_access_token(refresh_token)
         except (ValueError, InvalidToken, httpx.HTTPError) as error:
             raise CredentialUnavailableError("Google credentials unavailable") from error
-        if token.refresh_token and decrypt_google_token(integration.encrypted_refresh_token) != token.refresh_token:
+        if token.refresh_token and refresh_token != token.refresh_token:
             integration.update_token(encrypt_google_token(token.refresh_token))
             await self._google.update(integration)
         return GoogleApis(

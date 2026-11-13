@@ -9,13 +9,14 @@ import pytest
 
 from src.config import settings
 from src.domain.entities.knowledge import Knowledge
-from src.domain.entities.series import Attendee
+from src.domain.entities.series import Attendee, SeriesError
 from src.domain.entities.team_memory import ActionItem, Decision, NewActionItem
 from src.infrastructure.external.bedrock_client import invoke_claude_tool
 from src.infrastructure.services.meeting_memory_extractor import (
     MAX_INPUT_CHARS,
     RECORD_MEETING_MEMORY,
     ExtractionContext,
+    MeetingMemoryExtractor,
     build_extraction_prompt,
     parse_extraction,
 )
@@ -118,3 +119,14 @@ def test_tool_request_uses_configured_endpoint_and_forces_named_tool(monkeypatch
     assert requests[0].url.host == "bedrock.local"
     assert body["tool_choice"] == {"type": "tool", "name": "record_meeting_memory"}
     assert body["tools"] == [RECORD_MEETING_MEMORY]
+
+
+@pytest.mark.parametrize("raw", [None, {}, {"new_items": []}, {"new_items": [], "closures": None}])
+async def test_malformed_tool_input_fails_instead_of_erasing_prior_extraction(raw: dict[str, object] | None) -> None:
+    with (
+        patch("src.infrastructure.services.meeting_memory_extractor.invoke_claude_tool", return_value=raw) as invoke,
+        pytest.raises(SeriesError) as error,
+    ):
+        await MeetingMemoryExtractor().extract(context())
+    assert error.value.status == 502
+    invoke.assert_called_once()

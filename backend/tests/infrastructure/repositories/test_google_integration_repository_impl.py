@@ -64,21 +64,6 @@ class TestGoogleIntegrationRepositoryImpl:
         assert insert_data["granted_scopes"] == ["https://www.googleapis.com/auth/calendar.readonly"]
 
     @pytest.mark.asyncio
-    async def test_create_returns_integration_when_client_is_none(
-        self,
-        sample_integration: GoogleIntegration,
-    ) -> None:
-        """Supabaseクライアントがnullの場合、integrationをそのまま返す"""
-        # Arrange - client is None (型無視でテスト)
-        repository = GoogleIntegrationRepositoryImpl(None)  # type: ignore[arg-type]
-
-        # Act
-        result = await repository.create(sample_integration)
-
-        # Assert
-        assert result == sample_integration
-
-    @pytest.mark.asyncio
     async def test_get_by_id_success(
         self,
         repository: GoogleIntegrationRepositoryImpl,

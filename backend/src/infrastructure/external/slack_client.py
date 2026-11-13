@@ -6,7 +6,7 @@ Provides methods for interacting with Slack workspace data.
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -124,7 +124,7 @@ class SlackClient:
             params: dict[str, str | int] = {
                 "channel": channel_id,
                 "oldest": str(oldest.timestamp()),
-                "limit": 1000,
+                "limit": 100,
             }
             if latest:
                 params["latest"] = str(latest.timestamp())
@@ -144,7 +144,7 @@ class SlackClient:
                             ts=ts,
                             user_name=user_name,
                             text=msg.get("text", ""),
-                            posted_at=datetime.fromtimestamp(float(ts)),
+                            posted_at=datetime.fromtimestamp(float(ts), tz=UTC),
                             thread_ts=msg.get("thread_ts"),
                             reply_count=int(msg.get("reply_count", 0)),
                         )

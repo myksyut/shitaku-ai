@@ -6,9 +6,9 @@ from uuid import uuid4
 import pytest
 from postgrest.exceptions import APIError
 from postgrest.types import JSON
-from supabase import Client
+from supabase import Client, create_client
 
-from tests.rls.conftest import RlsUser
+from tests.rls.conftest import RlsEnvironment, RlsUser
 
 
 @dataclass
@@ -29,10 +29,9 @@ def world(
     make_user: Callable[[str], RlsUser], add_identity: Callable[[RlsUser, str, bool, str], None], service_client: Client
 ) -> Iterator[World]:
     users = {tag: make_user(tag) for tag in "ABCDE"}
-    add_identity(users["B"], users["B"].email.upper(), True, "google")
+    add_identity(users["B"], users["D"].email.upper(), True, "google")
     add_identity(users["E"], users["E"].email, False, "google")
-    # The email-provider account claims the attendee's address, without a Google identity.
-    add_identity(users["D"], users["B"].email, True, "email")
+    add_identity(users["D"], users["D"].email, True, "email")
     sid, oid, past, cancelled, integration, foreign_slack = (str(uuid4()) for _ in range(6))
     now = datetime.now(UTC)
     future = (now + timedelta(days=2)).isoformat()
@@ -60,7 +59,12 @@ def world(
         "rrule": "RRULE:FREQ=WEEKLY",
         "attendees_omitted": False,
         "attendees": [
-            {"email": users[tag].email, "display_name": tag, "is_organizer": tag == "A"} for tag in ("A", "B", "E")
+            {
+                "email": users["D"].email if tag == "B" else users[tag].email,
+                "display_name": tag,
+                "is_organizer": tag == "A",
+            }
+            for tag in ("A", "B", "E")
         ],
         "occurrences": [{"original_start": future, "start_at": future}],
     }
@@ -338,6 +342,8 @@ def test_snapshot_revocation_freshness_and_disconnect(world: World, service_clie
 
 
 def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, service_client: Client) -> None:
+    from pydantic import TypeAdapter
+
     owner = world.users["A"].client
     input_at = datetime.now(UTC)
     items = [
@@ -383,8 +389,8 @@ def test_extraction_is_idempotent_and_human_edits_are_sticky(world: World, servi
         .execute()
         .data
     )
-    assert overview == [
-        {"extracted_at": input_at.isoformat(), "latest_knowledge_at": (input_at + timedelta(seconds=1)).isoformat()}
+    assert TypeAdapter(list[dict[str, datetime]]).validate_python(overview) == [
+        {"extracted_at": input_at, "latest_knowledge_at": input_at + timedelta(seconds=1)}
     ]
 
 
@@ -428,3 +434,298 @@ async def test_memory_repository_maps_real_composite_origin_join(world: World) -
     items = await TeamMemoryRepositoryImpl(world.users["B"].client).list_items(UUID(world.sid))
     assert len(items) == 1 and items[0].kind == "action_item"
     assert items[0].origin_occurrence_id == UUID(world.past)
+
+
+@pytest.fixture
+def bedrock_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from src.config import settings
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if "tools" in payload:
+                content = [
+                    {
+                        "type": "tool_use",
+                        "name": "record_meeting_memory",
+                        "input": {
+                            "new_items": [{"kind": "decision", "body": "Extracted through real HTTP"}],
+                            "closures": [],
+                        },
+                    }
+                ]
+            elif payload["max_tokens"] == 2048:
+                content = [
+                    {
+                        "type": "text",
+                        "text": json.dumps({"normalized_text": "Normalized meeting notes", "replacements": []}),
+                    }
+                ]
+            else:
+                content = [{"type": "text", "text": ""}]
+            data = json.dumps({"content": content}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://127.0.0.1:{server.server_port}"
+    monkeypatch.setattr(settings, "AWS_BEARER_TOKEN_BEDROCK", "local-stub")
+    monkeypatch.setattr(settings, "AWS_BEDROCK_ENDPOINT", url)
+    try:
+        yield url
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_real_http_member_topic_creator_agenda_memory_and_dictionary(
+    world: World,
+    service_client: Client,
+    bedrock_stub: str,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    assert bedrock_stub.startswith("http://127.0.0.1:")
+    service_client.table("series").update({"google_integration_id": None}).eq("id", world.sid).execute()
+    middle = datetime.now(UTC) - timedelta(days=2)
+    service_client.table("occurrences").insert(
+        {"series_id": world.sid, "start_at": middle.isoformat(), "original_start": middle.isoformat()}
+    ).execute()
+    headers = {tag: {"Authorization": f"Bearer {user.access_token}"} for tag, user in world.users.items()}
+    base = f"/api/v1/series/{world.sid}"
+    occurrence = f"{base}/occurrences/{world.oid}"
+    with TestClient(app) as api:
+        assert api.get(base, headers=headers["C"]).status_code == 404
+        assert api.get("/api/v1/series", headers=headers["B"]).json()["series"][0]["role"] == "member"
+        assert api.post(f"{occurrence}/agenda", headers=headers["B"]).status_code == 403
+        assert (
+            api.post(
+                f"{occurrence}/knowledge", json={"source": "upload", "text": "forged"}, headers=headers["B"]
+            ).status_code
+            == 403
+        )
+        topic = api.post(
+            f"{occurrence}/topics",
+            json={"title": "Member's required topic", "details": "Must remain"},
+            headers=headers["B"],
+        )
+        assert topic.status_code == 201, topic.text
+        assert topic.json()["is_mine"] is True
+        generated = api.post(f"{occurrence}/agenda", headers=headers["A"])
+        assert generated.status_code == 200, generated.text
+        agenda = generated.json()
+        assert "Member's required topic" in agenda["agenda"]["content"]
+        assert "Follow up" in agenda["agenda"]["content"]
+        assert "1回持ち越し" in agenda["agenda"]["content"]
+        assert agenda["sources"]["topics"] == 2
+        assert agenda["sources"]["carried_action_items"] == 1
+        assert agenda["sources"]["calendar_error"] is not None
+        assert "series_id" not in agenda["agenda"]
+        edited = api.put(f"{occurrence}/agenda", json={"content": "Creator edit"}, headers=headers["A"])
+        assert edited.status_code == 200
+        assert api.get(occurrence, headers=headers["B"]).json()["agenda"]["content"] == "Creator edit"
+        dictionary = api.post(
+            f"{base}/dictionary",
+            json={"canonical_name": "Shared term", "category": "term", "aliases": ["alias"], "description": "Context"},
+            headers=headers["A"],
+        )
+        assert dictionary.status_code == 201, dictionary.text
+        eid = dictionary.json()["id"]
+        assert api.put(f"{base}/dictionary/{eid}", json={"description": None}, headers=headers["B"]).status_code == 403
+        updated = api.put(f"{base}/dictionary/{eid}", json={"description": None}, headers=headers["A"])
+        assert updated.status_code == 200 and updated.json()["aliases"] == ["alias"]
+        assert len(api.get(f"{base}/dictionary", headers=headers["B"]).json()) == 2
+        upload = api.post(
+            f"{base}/occurrences/{world.past}/knowledge",
+            json={"source": "upload", "text": "Raw notes"},
+            headers=headers["A"],
+        )
+        assert upload.status_code == 201, upload.text
+        kid = upload.json()["knowledge"]["id"]
+        assert api.get(f"{base}/knowledge/{kid}", headers=headers["B"]).json()["text"] == "Normalized meeting notes"
+        extraction = api.post(f"{base}/occurrences/{world.past}/extract", headers=headers["A"])
+        assert extraction.status_code == 200, extraction.text
+        assert extraction.json()["created"] == 1 and extraction.json()["truncated"] is False
+        assert api.post(f"{base}/occurrences/{world.past}/extract", headers=headers["A"]).json()["created"] == 0
+        manual = api.post(
+            f"{base}/memory",
+            json={"kind": "open_issue", "body": "Human issue", "origin_occurrence_id": world.past},
+            headers=headers["A"],
+        )
+        assert manual.status_code == 201, manual.text
+        manual_id = next(i["id"] for i in manual.json()["items"] if i["body"] == "Human issue")
+        update = api.put(
+            f"{base}/memory/{manual_id}",
+            json={"kind": "open_issue", "body": "Edited issue", "origin_occurrence_id": world.past},
+            headers=headers["A"],
+        )
+        assert update.status_code == 200, update.text
+        wrong_kind = api.put(
+            f"{base}/memory/{manual_id}",
+            json={"kind": "decision", "body": "Changed kind", "origin_occurrence_id": world.past},
+            headers=headers["A"],
+        )
+        assert wrong_kind.status_code == 422
+        assert api.delete(f"{base}/memory/{manual_id}", headers=headers["A"]).status_code == 200
+        action_id = str(world.rows["memory_items"]["id"])
+        resolution = api.put(f"{base}/memory/{action_id}/resolution", json={"resolution": "done"}, headers=headers["B"])
+        assert resolution.status_code == 200, resolution.text
+        assert any(i["id"] == action_id and i["resolution"] == "done" for i in resolution.json()["items"])
+        assert all("series_id" not in i and "human_updated_at" not in i for i in resolution.json()["items"])
+        assert api.delete(f"{base}/dictionary/{eid}", headers=headers["A"]).status_code == 204
+        assert api.delete(f"{base}/knowledge/{kid}", headers=headers["A"]).status_code == 204
+        assert api.delete(f"{base}/topics/{topic.json()['id']}", headers=headers["B"]).status_code == 204
+
+
+def test_resolution_reopen_protects_human_choice_from_extraction(world: World) -> None:
+    action = str(world.rows["memory_items"]["id"])
+    for resolution in ("done", None):
+        world.users["B"].client.rpc(
+            "set_memory_item_resolution", {"p_item_id": action, "p_resolution": resolution}
+        ).execute()
+    result = (
+        world.users["A"]
+        .client.rpc(
+            "apply_extraction",
+            {
+                "p_occurrence_id": world.past,
+                "p_items": [],
+                "p_closures": [{"item_id": action, "resolution": "done"}],
+                "p_input_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        .execute()
+        .data
+    )
+    assert result == {"created": 0, "closed": 0}
+    assert world.users["B"].client.table("memory_items").select("resolution,closed_at").eq("series_id", world.sid).eq(
+        "id", action
+    ).execute().data == [{"resolution": None, "closed_at": None}]
+
+
+def test_database_resolution_constraints_match_all_variants(world: World, service_client: Client) -> None:
+    allowed = {"decision": {"reversed"}, "action_item": {"done", "dropped"}, "open_issue": {"resolved", "dropped"}}
+    for kind, resolutions in allowed.items():
+        for resolution in ("reversed", "done", "dropped", "resolved"):
+            payload: dict[str, JSON] = {
+                "series_id": world.sid,
+                "origin_occurrence_id": world.past,
+                "kind": kind,
+                "body": "Constraint",
+                "extracted": False,
+                "resolution": resolution,
+                "closed_at": datetime.now(UTC).isoformat(),
+            }
+            if resolution in resolutions:
+                assert service_client.table("memory_items").insert(payload).execute().data
+            else:
+                with pytest.raises(APIError) as error:
+                    service_client.table("memory_items").insert(payload).execute()
+                assert error.value.code == "23514"
+
+
+def test_anonymous_cannot_read_team_tables_or_call_team_rpcs(world: World, rls_env: RlsEnvironment) -> None:
+    anonymous = create_client(rls_env.SUPABASE_URL, rls_env.SUPABASE_ANON_KEY)
+    for table in ("series", "series_attendees", "occurrences", *world.rows, "occurrence_overview"):
+        denied(anonymous.table(table).select("*").execute)
+    denied(anonymous.rpc("my_series_roles").execute)
+    denied(
+        anonymous.rpc(
+            "set_memory_item_resolution",
+            {
+                "p_item_id": str(world.rows["memory_items"]["id"]),
+                "p_resolution": "done",
+            },
+        ).execute
+    )
+    denied(
+        anonymous.rpc(
+            "apply_extraction",
+            {
+                "p_occurrence_id": world.past,
+                "p_items": [],
+                "p_closures": [],
+                "p_input_at": datetime.now(UTC).isoformat(),
+            },
+        ).execute
+    )
+    denied(
+        anonymous.rpc(
+            "apply_calendar_snapshot",
+            {"p_series_id": world.sid, "p_snapshot": world.snapshot, "p_fetched_at": datetime.now(UTC).isoformat()},
+        ).execute
+    )
+
+
+def test_service_claim_is_atomic_and_duplicate_claim_does_not_apply_joiners_snapshot(
+    world: World,
+    service_client: Client,
+) -> None:
+    from pydantic import TypeAdapter
+
+    ical_uid = str(uuid4())
+    arguments = {
+        "p_creator_id": str(world.users["A"].id),
+        "p_integration_id": world.integration,
+        "p_snapshot": {**world.snapshot, "ical_uid": ical_uid, "event_id": "new-creator-id"},
+        "p_fetched_at": datetime.now(UTC).isoformat(),
+    }
+    try:
+        first = TypeAdapter(list[dict[str, JSON]]).validate_python(
+            service_client.rpc("claim_series", arguments).execute().data
+        )
+        assert first[0]["created"] is True
+        second = TypeAdapter(list[dict[str, JSON]]).validate_python(
+            service_client.rpc(
+                "claim_series",
+                {
+                    **arguments,
+                    "p_snapshot": {
+                        **world.snapshot,
+                        "ical_uid": ical_uid,
+                        "event_id": "imported",
+                        "title": "Forged title",
+                        "attendees": [],
+                    },
+                },
+            )
+            .execute()
+            .data
+        )
+        assert second[0]["created"] is False and second[0]["series_id"] == first[0]["series_id"]
+        sid = str(first[0]["series_id"])
+        assert world.users["B"].client.table("series").select("title,creator_event_id").eq(
+            "id", sid
+        ).execute().data == [{"title": "Weekly", "creator_event_id": "new-creator-id"}]
+        assert service_client.table("occurrences").select("id").eq("series_id", sid).execute().data
+    finally:
+        service_client.table("series").delete().eq("ical_uid", ical_uid).execute()
+
+
+def test_omitted_guest_snapshot_keeps_last_trusted_membership(world: World, service_client: Client) -> None:
+    service_client.rpc(
+        "apply_calendar_snapshot",
+        {
+            "p_series_id": world.sid,
+            "p_snapshot": {**world.snapshot, "attendees_omitted": True, "attendees": []},
+            "p_fetched_at": (datetime.now(UTC) + timedelta(seconds=1)).isoformat(),
+        },
+    ).execute()
+    assert world.users["B"].client.table("series").select("calendar_sync_error").eq("id", world.sid).execute().data == [
+        {"calendar_sync_error": "attendees_omitted"}
+    ]

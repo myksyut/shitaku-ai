@@ -6,9 +6,9 @@ Following ADR-0004 RLS-based authorization architecture.
 
 import logging
 from datetime import datetime
-from typing import Any
-from uuid import UUID
 
+from postgrest.types import JSON
+from pydantic import TypeAdapter
 from supabase import Client
 
 from src.domain.entities.oauth_state import OAuthState
@@ -21,7 +21,7 @@ class OAuthStateRepositoryImpl:
 
     ADR-0004のRLSパターンに準拠:
     - OAuth開始時: get_user_supabase_client()（ユーザーコンテキスト付き）
-    - Callback時: get_supabase_client()（service_role、RLSバイパス）
+    - Callback時: service_role（RLSバイパス）
     """
 
     def __init__(self, client: Client) -> None:
@@ -47,7 +47,7 @@ class OAuthStateRepositoryImpl:
             oauth_state.user_id,
         )
 
-        data: dict[str, Any] = {
+        data: dict[str, JSON] = {
             "id": str(oauth_state.id),
             "state": oauth_state.state,
             "user_id": str(oauth_state.user_id),
@@ -80,7 +80,7 @@ class OAuthStateRepositoryImpl:
             logger.warning("Invalid OAuth state: state=%s...", state[:8] if state else "")
             return None
 
-        data: dict[str, Any] = dict(result.data)  # type: ignore[arg-type]
+        data = TypeAdapter(dict[str, object]).validate_python(result.data)
         oauth_state = self._to_entity(data)
 
         # 取得後に削除（一回使用のため）
@@ -105,36 +105,6 @@ class OAuthStateRepositoryImpl:
 
         return deleted_count
 
-    def _to_entity(self, data: dict[str, Any]) -> OAuthState:
-        """DB結果をOAuthStateエンティティに変換する.
-
-        Args:
-            data: Database row as dictionary.
-
-        Returns:
-            OAuthState entity.
-        """
-        expires_at_str = data["expires_at"]
-        created_at_str = data["created_at"]
-        scopes_raw = data.get("scopes")
-
-        # scopesの型変換: DBからはlist | Noneが返る
-        scopes: list[str] | None = [str(s) for s in scopes_raw] if isinstance(scopes_raw, list) else None
-
-        redirect_origin_raw = data.get("redirect_origin")
-        redirect_origin: str | None = str(redirect_origin_raw) if redirect_origin_raw is not None else None
-
-        return OAuthState(
-            id=UUID(str(data["id"])),
-            state=str(data["state"]),
-            user_id=UUID(str(data["user_id"])),
-            provider=str(data["provider"]),
-            scopes=scopes,
-            redirect_origin=redirect_origin,
-            expires_at=(
-                datetime.fromisoformat(str(expires_at_str)) if isinstance(expires_at_str, str) else datetime.now()
-            ),
-            created_at=(
-                datetime.fromisoformat(str(created_at_str)) if isinstance(created_at_str, str) else datetime.now()
-            ),
-        )
+    def _to_entity(self, data: object) -> OAuthState:
+        """Parse persisted state at the database boundary."""
+        return TypeAdapter(OAuthState).validate_python(data)

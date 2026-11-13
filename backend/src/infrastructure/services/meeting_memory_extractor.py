@@ -37,7 +37,7 @@ RECORD_MEETING_MEMORY: dict[str, object] = {
                     "required": ["kind", "body"],
                     "properties": {
                         "kind": {"enum": ["decision", "action_item", "open_issue"]},
-                        "body": {"type": "string"},
+                        "body": {"type": "string", "minLength": 1, "maxLength": 1000},
                         "assignee_email": {"type": ["string", "null"]},
                         "due_on": {"type": ["string", "null"]},
                     },
@@ -103,9 +103,9 @@ def _objects(value: object) -> list[dict[str, object]]:
 
 def _new_item(raw: dict[str, object], context: ExtractionContext) -> NewMemory | None:
     body = raw.get("body")
-    if not isinstance(body, str) or not body.strip():
+    if not isinstance(body, str) or not body.strip() or len(body.strip()) > 1000:
         return None
-    body = body.strip()[:1000]
+    body = body.strip()
     if raw.get("kind") == "decision":
         return NewDecision(body=body, origin_occurrence_id=context.occurrence_id)
     if raw.get("kind") == "open_issue":
@@ -148,6 +148,10 @@ class MeetingMemoryExtractor:
         """Fail visibly if no structured output is available."""
         prompt, truncated = build_extraction_prompt(context)
         result = await asyncio.to_thread(invoke_claude_tool, prompt, RECORD_MEETING_MEMORY)
-        if result is None:
+        if (
+            result is None
+            or not isinstance(result.get("new_items"), list)
+            or not isinstance(result.get("closures"), list)
+        ):
             raise SeriesError(502, "Memory extraction unavailable")
         return parse_extraction(result, context, truncated=truncated)

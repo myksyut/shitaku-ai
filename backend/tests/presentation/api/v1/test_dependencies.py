@@ -83,3 +83,13 @@ class TestGetCurrentUserId:
             assert exc_info.value.status_code == 401
             assert exc_info.value.detail == "Invalid user ID format"
             assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+def test_service_client_never_falls_back_to_anonymous_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import settings
+    from src.infrastructure.external.supabase_client import get_supabase_client
+
+    monkeypatch.setattr(settings, "SUPABASE_URL", "http://127.0.0.1:54321")
+    monkeypatch.setattr(settings, "SUPABASE_KEY", "anonymous-only")
+    monkeypatch.setattr(settings, "SUPABASE_SERVICE_KEY", None)
+    assert get_supabase_client() is None
