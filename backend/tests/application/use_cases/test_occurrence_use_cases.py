@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from src.application.use_cases.occurrence_use_cases import OccurrenceUseCases
+from src.domain.entities.knowledge import Knowledge, KnowledgeDraft
 from src.domain.entities.series import CreatorAccess, MemberAccess, Occurrence, SeriesError
 from src.domain.repositories.dictionary_repository import DictionaryRepository
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
@@ -72,11 +73,24 @@ def test_drive_candidates_are_live_creator_scoped_and_windowed() -> None:
     credentials.google_for_series.assert_called_once_with(series.get.return_value, "drive")
     knowledge.add.assert_not_called()
     docs.get_document_content.return_value = DocsDocument("lower", "Picked", "Shared transcript")
-    knowledge.add.side_effect = lambda access, document: document
+    knowledge.add.return_value = Knowledge(
+        uuid4(),
+        sid,
+        target.id,
+        "meet_transcript",
+        "lower",
+        "Picked",
+        "Shared transcript",
+        "Shared transcript",
+        datetime.now(UTC),
+    )
     result = use_cases.add_transcript(CreatorAccess(sid, owner), target.id, "lower")
     assert result.knowledge.google_doc_id == "lower"
     assert result.knowledge.series_id == sid
     assert result.knowledge.normalized_text == "Shared transcript"
+    draft = knowledge.add.call_args.args[2]
+    assert isinstance(draft, KnowledgeDraft) and not hasattr(draft, "created_at")
+    assert knowledge.add.call_args.args[1] == target.id
     docs.get_document_content.assert_called_once_with("lower")
     with pytest.raises(SeriesError) as error:
         use_cases.add_transcript(CreatorAccess(sid, owner), target.id, "outside")

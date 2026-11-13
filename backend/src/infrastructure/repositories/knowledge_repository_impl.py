@@ -4,8 +4,8 @@ from uuid import UUID
 from pydantic import TypeAdapter
 from supabase import Client
 
-from src.domain.entities.knowledge import Knowledge
-from src.domain.entities.series import CreatorAccess, SeriesError
+from src.domain.entities.knowledge import Knowledge, KnowledgeDraft
+from src.domain.entities.series import CreatorAccess
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
 
 
@@ -55,24 +55,33 @@ class KnowledgeRepositoryImpl(KnowledgeRepository):
         )
         return frozenset(r["google_doc_id"] for r in TypeAdapter(list[dict[str, str]]).validate_python(rows))
 
-    def add(self, access: CreatorAccess, knowledge: Knowledge) -> Knowledge:
-        """Persist creator-selected content and retain idempotent imports."""
-        if knowledge.series_id != access.series_id:
-            raise SeriesError(404, "Occurrence not found")
-        if knowledge.google_doc_id:
+    def add(self, access: CreatorAccess, occurrence_id: UUID, draft: KnowledgeDraft) -> Knowledge:
+        """Persist selected content with database-owned identity and creation time."""
+        if draft.google_doc_id:
             rows = (
                 self._client.table("knowledge")
                 .select("*")
                 .eq("series_id", str(access.series_id))
-                .eq("google_doc_id", knowledge.google_doc_id)
+                .eq("google_doc_id", draft.google_doc_id)
                 .execute()
                 .data
             )
             existing = TypeAdapter(list[Knowledge]).validate_python(rows)
             if existing:
                 return existing[0]
-        self._client.table("knowledge").insert(TypeAdapter(Knowledge).dump_python(knowledge, mode="json")).execute()
-        return knowledge
+        rows = (
+            self._client.table("knowledge")
+            .insert(
+                {
+                    **TypeAdapter(KnowledgeDraft).dump_python(draft, mode="json"),
+                    "series_id": str(access.series_id),
+                    "occurrence_id": str(occurrence_id),
+                }
+            )
+            .execute()
+            .data
+        )
+        return TypeAdapter(list[Knowledge]).validate_python(rows)[0]
 
     def delete(self, access: CreatorAccess, knowledge_id: UUID) -> None:
         """Remove only the selected series' content."""

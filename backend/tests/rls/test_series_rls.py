@@ -455,7 +455,16 @@ def bedrock_extraction_payload() -> dict[str, JSON]:
 
 
 @pytest.fixture
-def bedrock_stub(monkeypatch: pytest.MonkeyPatch, bedrock_extraction_payload: dict[str, JSON]) -> Iterator[str]:
+def before_bedrock_tool_reply() -> list[Callable[[], None]]:
+    return []
+
+
+@pytest.fixture
+def bedrock_stub(
+    monkeypatch: pytest.MonkeyPatch,
+    bedrock_extraction_payload: dict[str, JSON],
+    before_bedrock_tool_reply: list[Callable[[], None]],
+) -> Iterator[str]:
     import json
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -466,6 +475,8 @@ def bedrock_stub(monkeypatch: pytest.MonkeyPatch, bedrock_extraction_payload: di
         def do_POST(self) -> None:  # noqa: N802
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             if "tools" in payload:
+                for callback in before_bedrock_tool_reply:
+                    callback()
                 content = [
                     {
                         "type": "tool_use",
@@ -1266,3 +1277,92 @@ def test_batched_series_read_models_keep_rls_roles_and_counts(world: World) -> N
         assert repository.visible_calendar_series() == {world.sid: sid}
         assert repository.get_occurrence(sid, UUID(world.oid)) is not None
         assert repository.get_occurrence(sid, uuid4()) is None
+
+
+def test_knowledge_creation_time_is_database_owned(world: World, bedrock_stub: str) -> None:
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+    from pydantic import TypeAdapter
+
+    from src.main import app
+
+    ancient = datetime(2000, 1, 1, tzinfo=UTC)
+    assert bedrock_stub.startswith("http://127.0.0.1:")
+    with patch("src.application.use_cases.occurrence_use_cases.datetime") as clock, TestClient(app) as api:
+        clock.now.return_value = ancient
+        response = api.post(
+            f"/api/v1/series/{world.sid}/occurrences/{world.past}/knowledge",
+            json={"source": "upload", "text": "Database timestamps this document"},
+            headers={"Authorization": f"Bearer {world.users['A'].access_token}"},
+        )
+    assert response.status_code == 201, response.text
+    created = TypeAdapter(datetime).validate_python(response.json()["knowledge"]["created_at"])
+    assert created > datetime(2020, 1, 1, tzinfo=UTC)
+    clock.now.assert_not_called()
+
+
+def test_document_committed_after_extraction_read_remains_unextracted(
+    world: World,
+    service_client: Client,
+    bedrock_stub: str,
+    before_bedrock_tool_reply: list[Callable[[], None]],
+) -> None:
+    from uuid import UUID
+
+    from fastapi.testclient import TestClient
+    from pydantic import TypeAdapter
+
+    from src.domain.entities.knowledge import Knowledge, KnowledgeDraft
+    from src.domain.entities.series import CreatorAccess
+    from src.infrastructure.repositories.knowledge_repository_impl import KnowledgeRepositoryImpl
+    from src.main import app
+
+    assert bedrock_stub.startswith("http://127.0.0.1:")
+    source_at = datetime.now(UTC) - timedelta(minutes=1)
+    service_client.table("knowledge").update({"created_at": source_at.isoformat()}).eq("series_id", world.sid).eq(
+        "occurrence_id", world.past
+    ).execute()
+    repository = KnowledgeRepositoryImpl(world.users["A"].client)
+    draft = KnowledgeDraft(
+        "upload",
+        None,
+        None,
+        "Prepared before extraction, committed during generation",
+        "Prepared before extraction, committed during generation",
+    )
+    inserted: list[Knowledge] = []
+
+    def commit_late_document() -> None:
+        inserted.append(repository.add(CreatorAccess(UUID(world.sid), world.users["A"].id), UUID(world.past), draft))
+
+    before_bedrock_tool_reply.append(commit_late_document)
+    path = f"/api/v1/series/{world.sid}/occurrences/{world.past}"
+    headers = {"Authorization": f"Bearer {world.users['A'].access_token}"}
+    with TestClient(app) as api:
+        first = api.post(f"{path}/extract", headers=headers)
+        assert first.status_code == 200, first.text
+        assert len(inserted) == 1 and inserted[0].created_at > source_at
+        marker = (
+            service_client.table("occurrences")
+            .select("extracted_at")
+            .eq("series_id", world.sid)
+            .eq("id", world.past)
+            .execute()
+            .data
+        )
+        assert TypeAdapter(list[dict[str, datetime]]).validate_python(marker) == [{"extracted_at": source_at}]
+        assert api.get(path, headers=headers).json()["occurrence"]["needs_extraction"] is True
+        before_bedrock_tool_reply.clear()
+        second = api.post(f"{path}/extract", headers=headers)
+        assert second.status_code == 200, second.text
+        assert api.get(path, headers=headers).json()["occurrence"]["needs_extraction"] is False
+    marker = (
+        service_client.table("occurrences")
+        .select("extracted_at")
+        .eq("series_id", world.sid)
+        .eq("id", world.past)
+        .execute()
+        .data
+    )
+    assert TypeAdapter(list[dict[str, datetime]]).validate_python(marker) == [{"extracted_at": inserted[0].created_at}]

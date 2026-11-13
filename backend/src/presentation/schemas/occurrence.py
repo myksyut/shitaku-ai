@@ -30,7 +30,7 @@ class TopicView(BaseModel):
 
     @classmethod
     def of(cls, topic: AgendaTopic, user_id: UUID) -> "TopicView":
-        """Do not expose another participant's internal auth identifier."""
+        """Project the topic's API fields and caller ownership."""
         return cls(
             id=topic.id,
             title=topic.title,
