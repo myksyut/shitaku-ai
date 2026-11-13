@@ -87,7 +87,7 @@ def world(
         service_client.table("occurrences").update({"id": oid}).eq("series_id", sid).execute()
         service_client.table("occurrences").insert(
             [
-                {"id": past, "series_id": sid, "original_start": before, "start_at": before},
+                {"id": past, "series_id": sid, "original_start": before, "start_at": before, "is_cancelled": False},
                 {
                     "id": cancelled,
                     "series_id": sid,
