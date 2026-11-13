@@ -5,11 +5,18 @@ import httpx
 from pydantic import TypeAdapter
 from supabase import Client
 
-from src.domain.entities.series import CalendarSnapshot, Series, SeriesError
-from src.infrastructure.external.series_credentials import SeriesCredentials
+from src.domain.entities.series import CalendarErrorCode, CalendarSnapshot, Series, SeriesError
+from src.infrastructure.external.series_credentials import CredentialUnavailableError, SeriesCredentials
 from src.infrastructure.external.supabase_client import get_supabase_client
 from src.infrastructure.repositories.google_integration_repository_impl import GoogleIntegrationRepositoryImpl
 from src.infrastructure.repositories.slack_integration_repository_impl import SlackIntegrationRepositoryImpl
+
+_HTTP_ERROR_CODES: dict[int, CalendarErrorCode] = {
+    401: "revoked",
+    403: "scope_missing",
+    404: "event_not_found",
+    410: "event_not_found",
+}
 
 
 class SeriesCalendarMirror:
@@ -60,19 +67,25 @@ class SeriesCalendarMirror:
             },
         ).execute()
 
-    async def refresh(self, series: Series) -> str | None:
+    async def refresh(self, series: Series) -> CalendarErrorCode | None:
         """Refresh the creator's calendar without deleting retained content on failure."""
         fetched_at = datetime.now(UTC)
         try:
             apis = await self._credentials.google_for_series(series, "calendar")
             snapshot = await apis.calendar.snapshot(series.creator_event_id, fetched_at)
             if snapshot is None or snapshot.ical_uid != series.ical_uid:
-                raise SeriesError(409, "Creator calendar event unavailable")
-            await self.apply(series.id, snapshot, fetched_at)
-            return "attendees_omitted" if snapshot.attendees_omitted else None
-        except (SeriesError, ValueError, httpx.HTTPError) as error:
-            self._client.table("series").update({"calendar_sync_error": str(error)}).eq("id", str(series.id)).execute()
-            return str(error)
+                error_code: CalendarErrorCode = "event_not_found"
+            else:
+                await self.apply(series.id, snapshot, fetched_at)
+                return "attendees_omitted" if snapshot.attendees_omitted else None
+        except CredentialUnavailableError as error:
+            error_code = error.code
+        except httpx.HTTPStatusError as error:
+            error_code = _HTTP_ERROR_CODES.get(error.response.status_code, "calendar_unavailable")
+        except (SeriesError, ValueError, httpx.HTTPError):
+            error_code = "calendar_unavailable"
+        self._client.table("series").update({"calendar_sync_error": error_code}).eq("id", str(series.id)).execute()
+        return error_code
 
     async def refresh_for_join(self, ical_uid: str) -> None:
         """Re-read the trusted invite; reveal no series data to the caller."""
@@ -84,4 +97,4 @@ class SeriesCalendarMirror:
         if datetime.now(UTC) - series.calendar_synced_at < timedelta(minutes=2):
             return
         if await self.refresh(series):
-            raise SeriesError(409, "Creator calendar unavailable")
+            raise SeriesError(409, "calendar_unavailable")

@@ -51,6 +51,14 @@ class GoogleUserInfo:
     picture: str | None
 
 
+class GoogleTokenRefreshError(ValueError):
+    """Preserve the provider's machine-readable refresh failure reason."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
 class GoogleOAuthClient:
     """Google OAuth client for authentication and token management."""
 
@@ -161,8 +169,7 @@ class GoogleOAuthClient:
 
             if response.status_code != 200:
                 error_data = response.json()
-                error_msg = error_data.get("error_description", error_data.get("error", "Unknown error"))
-                raise ValueError(f"Google OAuth token refresh failed: {error_msg}")
+                raise GoogleTokenRefreshError(str(error_data.get("error", "unknown_error")))
 
             data = response.json()
             return GoogleTokenResponse(

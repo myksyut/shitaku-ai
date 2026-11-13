@@ -6,6 +6,10 @@ from uuid import UUID
 SeriesId = NewType("SeriesId", UUID)
 OccurrenceId = NewType("OccurrenceId", UUID)
 SeriesRole = Literal["creator", "member"]
+CalendarErrorCode = Literal[
+    "not_connected", "scope_missing", "revoked", "attendees_omitted", "event_not_found", "calendar_unavailable"
+]
+SlackErrorCode = Literal["not_connected", "not_in_channel", "rate_limited", "slack_unavailable"]
 
 
 def parse_email(value: object) -> str | None:
@@ -103,7 +107,7 @@ class Series:
     slack_integration_id: UUID | None
     slack_channels: tuple[SlackChannelRef, ...]
     calendar_synced_at: datetime
-    calendar_sync_error: str | None
+    calendar_sync_error: CalendarErrorCode | None
 
     @property
     def slack(self) -> SlackSource | None:
@@ -165,7 +169,7 @@ class CalendarStatus:
     """Public synchronization status."""
 
     synced_at: datetime
-    error: str | None
+    error: CalendarErrorCode | None
     google_connected: bool
 
 
@@ -193,7 +197,7 @@ class SeriesSummary:
     role: SeriesRole
     next_occurrence: OccurrenceSummary | None
     open_action_items: int
-    calendar_sync_error: str | None
+    calendar_sync_error: CalendarErrorCode | None
 
 
 @dataclass(frozen=True, slots=True)

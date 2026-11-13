@@ -534,7 +534,12 @@ def test_real_http_member_topic_creator_agenda_memory_and_dictionary(
         assert "1回持ち越し" in agenda["agenda"]["content"]
         assert agenda["sources"]["topics"] == 2
         assert agenda["sources"]["carried_action_items"] == 1
-        assert agenda["sources"]["calendar_error"] is not None
+        assert agenda["sources"]["calendar_error"] == "not_connected"
+        assert api.get(base, headers=headers["B"]).json()["calendar"]["error"] == "not_connected"
+        assert (
+            api.get("/api/v1/series", headers=headers["B"]).json()["series"][0]["calendar_sync_error"]
+            == "not_connected"
+        )
         assert "series_id" not in agenda["agenda"]
         edited = api.put(f"{occurrence}/agenda", json={"content": "Creator edit"}, headers=headers["A"])
         assert edited.status_code == 200
@@ -729,3 +734,24 @@ def test_omitted_guest_snapshot_keeps_last_trusted_membership(world: World, serv
     assert world.users["B"].client.table("series").select("calendar_sync_error").eq("id", world.sid).execute().data == [
         {"calendar_sync_error": "attendees_omitted"}
     ]
+
+
+def test_calendar_error_constraint_accepts_only_public_codes(world: World, service_client: Client) -> None:
+    codes = (
+        "not_connected",
+        "scope_missing",
+        "revoked",
+        "attendees_omitted",
+        "event_not_found",
+        "calendar_unavailable",
+    )
+    for code in (*codes, None):
+        service_client.table("series").update({"calendar_sync_error": code}).eq("id", world.sid).execute()
+        assert world.users["B"].client.table("series").select("calendar_sync_error").eq(
+            "id", world.sid
+        ).execute().data == [{"calendar_sync_error": code}]
+    with pytest.raises(APIError) as error:
+        service_client.table("series").update({"calendar_sync_error": "Google integration not connected"}).eq(
+            "id", world.sid
+        ).execute()
+    assert error.value.code == "23514"

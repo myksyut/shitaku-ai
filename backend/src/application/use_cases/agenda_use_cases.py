@@ -3,10 +3,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from slack_sdk.errors import SlackApiError
+from slack_sdk.errors import SlackApiError, SlackClientError
 
 from src.domain.entities.agenda import Agenda
-from src.domain.entities.series import CreatorAccess, Occurrence, Series, SeriesError
+from src.domain.entities.series import CalendarErrorCode, CreatorAccess, Occurrence, Series, SeriesError, SlackErrorCode
 from src.domain.entities.team_memory import ActionItem, Decision, OpenIssue
 from src.domain.repositories.dictionary_repository import DictionaryRepository
 from src.domain.repositories.knowledge_repository import KnowledgeRepository
@@ -16,9 +16,23 @@ from src.domain.repositories.team_memory_repository import TeamMemoryRepository
 from src.domain.services.agenda_rules import render_agenda
 from src.domain.services.team_memory_rules import with_carry_over
 from src.infrastructure.external.series_calendar_mirror import SeriesCalendarMirror
-from src.infrastructure.external.series_credentials import SeriesCredentials
+from src.infrastructure.external.series_credentials import CredentialUnavailableError, SeriesCredentials
 from src.infrastructure.external.slack_client import SlackMessageData
 from src.infrastructure.services.agenda_generation_service import AgendaContext, AgendaGenerationService
+
+
+def _slack_error_code(error: SlackApiError) -> SlackErrorCode:
+    codes: dict[str, SlackErrorCode] = {
+        "invalid_auth": "not_connected",
+        "not_authed": "not_connected",
+        "token_revoked": "not_connected",
+        "account_inactive": "not_connected",
+        "not_in_channel": "not_in_channel",
+        "channel_not_found": "not_in_channel",
+        "ratelimited": "rate_limited",
+    }
+    code = error.response.get("error")
+    return codes.get(code, "slack_unavailable") if isinstance(code, str) else "slack_unavailable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,8 +44,8 @@ class AgendaSources:
     open_issues: int
     knowledge: int
     slack_messages: int
-    slack_error: str | None
-    calendar_error: str | None
+    slack_error: SlackErrorCode | None
+    calendar_error: CalendarErrorCode | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +76,7 @@ class GenerateAgenda:
 
     async def _slack(
         self, series: Series, previous: Occurrence | None, target: Occurrence
-    ) -> tuple[list[SlackMessageData], str | None]:
+    ) -> tuple[list[SlackMessageData], SlackErrorCode | None]:
         if series.slack is None:
             return [], None
         oldest = previous.start_at if previous else target.start_at - timedelta(days=series.slack_message_days)
@@ -77,8 +91,12 @@ class GenerateAgenda:
             return sorted(
                 (m for m in messages if oldest <= m.posted_at <= now), key=lambda m: float(m.ts), reverse=True
             )[:100], None
-        except (SeriesError, SlackApiError) as error:
-            return [], str(error)
+        except CredentialUnavailableError as error:
+            return [], "not_connected" if error.code == "not_connected" else "slack_unavailable"
+        except SlackApiError as error:
+            return [], _slack_error_code(error)
+        except (SeriesError, SlackClientError):
+            return [], "slack_unavailable"
 
     async def execute(self, access: CreatorAccess, occurrence_id: UUID) -> GeneratedAgenda:
         """Refresh calendar best-effort, then persist deterministic sections and proposals."""
